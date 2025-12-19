@@ -39,10 +39,11 @@ def search_jobs(state: AgentState):
     prefs = state.get("preferences")
     query = prefs.role if prefs else "Software Engineer"
     location = prefs.location if prefs else "Remote"
+    level = prefs.experience_level if prefs else "Intermediate"
     weeks = prefs.posted_within_weeks if prefs else 1
     
     jobs = mock_job_search(query, location)
-    return {"found_jobs": jobs, "logs": [f"Found {len(jobs)} jobs for {query} in {location} (posted within {weeks} weeks)"]}
+    return {"found_jobs": jobs, "logs": [f"Found {len(jobs)} jobs for {level} {query} in {location} (posted within {weeks} weeks)"]}
 
 def analyze_fit(state: AgentState):
     """

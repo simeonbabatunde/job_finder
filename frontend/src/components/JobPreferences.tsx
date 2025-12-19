@@ -8,6 +8,7 @@ export interface JobPreferencesHandle {
 export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => {
     const [formData, setFormData] = useState({
         role: '',
+        experience_level: 'Intermediate',
         location: '',
         job_type: 'Full-time',
         min_salary: 0,
@@ -47,7 +48,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
     return (
         <div className="w-full">
             <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Target Role</label>
                         <input
@@ -59,6 +60,31 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             required
                             placeholder="e.g. Software Engineer"
                         />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Experience Level</label>
+                        <div className="relative">
+                            <select
+                                name="experience_level"
+                                value={formData.experience_level}
+                                onChange={handleChange}
+                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none transition-shadow"
+                            >
+                                <option>Intern</option>
+                                <option>Entry-level</option>
+                                <option>Intermediate</option>
+                                <option>Senior</option>
+                                <option>Staff</option>
+                                <option>Principal</option>
+                                <option>Manager</option>
+                                <option>Director</option>
+                                <option>Executive</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                            </div>
+                        </div>
                     </div>
 
                     <div>
@@ -120,6 +146,12 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                                 <option value={2}>2 Weeks</option>
                                 <option value={3}>3 Weeks</option>
                                 <option value={4}>4 Weeks</option>
+                                <option value={5}>5 Weeks</option>
+                                <option value={6}>6 Weeks</option>
+                                <option value={7}>7 Weeks</option>
+                                <option value={8}>8 Weeks</option>
+                                <option value={9}>9 Weeks</option>
+                                <option value={10}>10 Weeks</option>
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
                                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>

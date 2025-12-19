@@ -11,6 +11,7 @@ class Resume(SQLModel, table=True):
 class JobPreference(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     role: str
+    experience_level: str = Field(default="Intermediate") # e.g., "Entry-level", "Intermediate", "Senior", "Lead"
     location: str
     job_type: str  # e.g., "Full-time", "Contract"
     min_salary: Optional[int] = None
