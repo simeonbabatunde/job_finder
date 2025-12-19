@@ -14,4 +14,21 @@ class JobPreference(SQLModel, table=True):
     location: str
     job_type: str  # e.g., "Full-time", "Contract"
     min_salary: Optional[int] = None
+    posted_within_weeks: int = Field(default=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(unique=True)
+    subscription_tier: str = Field(default="free")  # "free" or "pro"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class Application(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    job_title: str
+    company: str
+    job_url: str
+    status: str = Field(default="Applied") # Applied, Rejected, Interview
+    fit_score: float
     created_at: datetime = Field(default_factory=datetime.utcnow)

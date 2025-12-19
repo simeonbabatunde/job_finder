@@ -1,11 +1,46 @@
-import { useState } from 'react';
+import { useState, forwardRef, useImperativeHandle } from 'react';
 import { uploadResume } from '../api/client';
 
-export function ResumeUpload() {
+export interface ResumeUploadHandle {
+  hasFile: boolean;
+  setError: (msg: string | null) => void;
+  handleUpload: (silent?: boolean) => Promise<boolean>;
+}
+
+export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [isError, setIsError] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    hasFile: !!file,
+    setError: (msg: string | null) => {
+      setIsError(!!msg);
+      if (msg) setMessage(msg);
+    },
+    handleUpload: async (silent: boolean = false) => {
+      if (!file) return true; // No file is okay if already uploaded or skipped
+
+      setUploading(true);
+      setMessage('');
+      try {
+        await uploadResume(file);
+        if (!silent) {
+          setMessage('Resume uploaded successfully!');
+        }
+        setFile(null);
+        return true;
+      } catch (error) {
+        setMessage('Error uploading resume.');
+        console.error(error);
+        return false;
+      } finally {
+        setUploading(false);
+      }
+    }
+  }));
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -33,39 +68,24 @@ export function ResumeUpload() {
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
-
-    setUploading(true);
-    setMessage('');
-    try {
-      await uploadResume(file);
-      setMessage('Resume uploaded successfully!');
-      setFile(null);
-    } catch (error) {
-      setMessage('Error uploading resume.');
-      console.error(error);
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div className="w-full">
       <div
-        className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 ease-in-out ${dragActive
+        className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all duration-200 ease-in-out ${dragActive
           ? 'border-indigo-500 bg-indigo-50'
-          : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+          : isError
+            ? 'border-red-500 bg-red-50 animate-pulse'
+            : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
           }`}
-        onDragEnter={handleDrag}
+        onDragEnter={(e) => { handleDrag(e); setIsError(false); setMessage(''); }}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
-        onDrop={handleDrop}
+        onDrop={(e) => { handleDrop(e); setIsError(false); setMessage(''); }}
       >
         <input
           type="file"
           id="file-upload"
-          onChange={handleChange}
+          onChange={(e) => { handleChange(e); setIsError(false); setMessage(''); }}
           className="hidden"
         />
 
@@ -102,23 +122,13 @@ export function ResumeUpload() {
 
       <div className="mt-4">
         {uploading && (
-          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4 overflow-hidden">
+          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden">
             <div className="bg-indigo-600 h-2.5 rounded-full animate-pulse w-full"></div>
           </div>
         )}
 
-        <button
-          onClick={handleUpload}
-          disabled={!file || uploading}
-          className={`w-full py-3 px-4 rounded-lg text-white font-bold shadow-lg transition-all duration-200 ${!file || uploading
-            ? 'bg-gray-300 cursor-not-allowed shadow-none'
-            : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 hover:shadow-indigo-500/30 transform hover:-translate-y-0.5'
-            }`}
-        >
-          {uploading ? 'Processing...' : 'Analyze Resume'}
-        </button>
         {message && (
-          <div className={`mt-4 p-3 rounded-lg text-sm font-medium text-center ${message.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+          <div className={`mt-2 p-3 rounded-lg text-sm font-medium text-center ${isError ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
             }`}>
             {message}
           </div>
@@ -126,4 +136,5 @@ export function ResumeUpload() {
       </div>
     </div>
   );
-}
+});
+
