@@ -9,7 +9,7 @@ async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
 
-app = FastAPI(title="Job Finder API", lifespan=lifespan)
+app = FastAPI(title="Job Hunter API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,7 +23,7 @@ app.include_router(api_router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from Job Finder API"}
+    return {"message": "Hello from Job Hunter API"}
 
 
 if __name__ == "__main__":

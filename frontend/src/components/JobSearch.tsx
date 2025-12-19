@@ -62,7 +62,7 @@ export function JobSearch() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-8 py-3 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-800 focus:ring-4 focus:ring-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? 'Searching...' : 'Search Jobs'}
                     </button>

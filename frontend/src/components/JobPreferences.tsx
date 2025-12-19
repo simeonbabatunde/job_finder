@@ -56,7 +56,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             name="role"
                             value={formData.role}
                             onChange={handleChange}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
                             placeholder="e.g. Software Engineer"
                         />
@@ -69,7 +69,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                                 name="experience_level"
                                 value={formData.experience_level}
                                 onChange={handleChange}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none transition-shadow"
+                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
                             >
                                 <option>Intern</option>
                                 <option>Entry-level</option>
@@ -94,7 +94,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             name="location"
                             value={formData.location}
                             onChange={handleChange}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
                             placeholder="e.g. Remote, NYC"
                         />
@@ -109,7 +109,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                                 name="job_type"
                                 value={formData.job_type}
                                 onChange={handleChange}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none transition-shadow"
+                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
                             >
                                 <option>Full-time</option>
                                 <option>Contract</option>
@@ -128,7 +128,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             name="min_salary"
                             value={formData.min_salary}
                             onChange={handleChange}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
                         />
                     </div>
@@ -140,7 +140,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                                 name="posted_within_weeks"
                                 value={formData.posted_within_weeks}
                                 onChange={handleChange}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none transition-shadow"
+                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
                             >
                                 <option value={1}>1 Week</option>
                                 <option value={2}>2 Weeks</option>

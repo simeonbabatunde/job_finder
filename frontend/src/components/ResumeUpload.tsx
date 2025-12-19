@@ -72,7 +72,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
     <div className="w-full">
       <div
         className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all duration-200 ease-in-out ${dragActive
-          ? 'border-indigo-500 bg-indigo-50'
+          ? 'border-gray-500 bg-gray-50'
           : isError
             ? 'border-red-500 bg-red-50 animate-pulse'
             : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
@@ -91,7 +91,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
 
         {file ? (
           <div className="flex flex-col items-center">
-            <div className="bg-indigo-100 text-indigo-600 p-3 rounded-full mb-3">
+            <div className="bg-gray-200 text-gray-700 p-3 rounded-full mb-3">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
@@ -107,7 +107,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
           </div>
         ) : (
           <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-            <div className="bg-gray-100 text-gray-400 p-3 rounded-full mb-3 group-hover:bg-indigo-100 group-hover:text-indigo-500 transition-colors">
+            <div className="bg-gray-100 text-gray-400 p-3 rounded-full mb-3 group-hover:bg-gray-200 group-hover:text-gray-600 transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
@@ -123,7 +123,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
       <div className="mt-4">
         {uploading && (
           <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden">
-            <div className="bg-indigo-600 h-2.5 rounded-full animate-pulse w-full"></div>
+            <div className="bg-gray-600 h-2.5 rounded-full animate-pulse w-full"></div>
           </div>
         )}
 

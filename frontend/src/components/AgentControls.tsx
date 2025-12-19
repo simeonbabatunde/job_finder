@@ -77,7 +77,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                     className={`px-10 py-4 rounded-xl font-bold text-white shadow-lg transition-all transform hover:scale-105 active:scale-95 whitespace-nowrap
                         ${isRunning
                             ? 'bg-slate-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-indigo-200'}`}
+                            : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:shadow-gray-400'}`}
                 >
                     {isRunning ? (
                         <span className="flex items-center">
