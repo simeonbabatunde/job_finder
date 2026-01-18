@@ -9,6 +9,7 @@ services:
       - ./backend:/app
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/job_finder
+      - OPENROUTER_API_KEY=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
     depends_on:
       - db
 

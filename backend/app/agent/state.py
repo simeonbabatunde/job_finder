@@ -8,9 +8,11 @@ class Job(TypedDict):
     description: str
     url: str
     source: str # "api", "mock", "linkedin_scrape"
+    fit_score: Optional[float]
 
 class AgentState(TypedDict):
     resume: str
+    resume_summary: Optional[str]
     preferences: JobPreference
     found_jobs: List[Job]
     current_job: Optional[Job]

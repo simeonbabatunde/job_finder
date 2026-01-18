@@ -1,4 +1,4 @@
-import { useState, forwardRef, useImperativeHandle } from 'react';
+import { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { savePreferences } from '../api/client';
 
 export interface JobPreferencesHandle {
@@ -7,15 +7,16 @@ export interface JobPreferencesHandle {
 
 export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => {
     const [formData, setFormData] = useState({
-        role: '',
-        experience_level: 'Intermediate',
-        location: '',
-        job_type: 'Full-time',
-        min_salary: 0,
-        posted_within_weeks: 1,
+        role: [''] as string[],
+        experience_level: ['Intermediate'] as string[],
+        location: [''] as string[],
+        job_type: ['Full-time'] as string[],
+        min_match_score: 70,
+        posted_within_days: 7,
     });
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState('');
+    const [openDropdown, setOpenDropdown] = useState<'experience_level' | 'job_type' | null>(null);
 
     useImperativeHandle(ref, () => ({
         submitPrefs: async (silent: boolean = false) => {
@@ -39,11 +40,50 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: (name === 'min_salary' || name === 'posted_within_weeks') ? parseInt(value) || 0 : value
-        }));
+        setFormData(prev => {
+            // Handle comma-separated values for role and location
+            if (name === 'role' || name === 'location') {
+                const arrayValue = value.split(',').map(item => item.trim()).filter(item => item !== '');
+                return { ...prev, [name]: arrayValue.length > 0 ? arrayValue : [''] };
+            }
+            // Handle numeric fields
+            if (name === 'min_match_score' || name === 'posted_within_days') {
+                return { ...prev, [name]: parseInt(value) || 0 };
+            }
+            return { ...prev, [name]: value };
+        });
     };
+
+    const handleCheckboxChange = (name: 'job_type' | 'experience_level', value: string) => {
+        setFormData(prev => {
+            const currentArray = prev[name] as string[];
+            const newArray = currentArray.includes(value)
+                ? currentArray.filter(item => item !== value)
+                : [...currentArray, value];
+            return {
+                ...prev,
+                [name]: newArray
+            };
+        });
+    };
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('.relative')) {
+                setOpenDropdown(null);
+            }
+        };
+
+        if (openDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [openDropdown]);
 
     return (
         <div className="w-full">
@@ -54,37 +94,45 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                         <input
                             type="text"
                             name="role"
-                            value={formData.role}
+                            value={formData.role.join(', ')}
                             onChange={handleChange}
                             className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
-                            placeholder="e.g. Software Engineer"
+                            placeholder="e.g. Software Engineer, Data Scientist"
                         />
+                        <p className="text-xs text-gray-500 mt-1">Separate multiple roles with commas</p>
                     </div>
 
-                    <div>
+                    <div className="relative">
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Experience Level</label>
-                        <div className="relative">
-                            <select
-                                name="experience_level"
-                                value={formData.experience_level}
-                                onChange={handleChange}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
-                            >
-                                <option>Intern</option>
-                                <option>Entry-level</option>
-                                <option>Intermediate</option>
-                                <option>Senior</option>
-                                <option>Staff</option>
-                                <option>Principal</option>
-                                <option>Manager</option>
-                                <option>Director</option>
-                                <option>Executive</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
-                            </div>
+                        <div
+                            onClick={() => setOpenDropdown(openDropdown === 'experience_level' ? null : 'experience_level')}
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
+                        >
+                            <span className="text-sm text-gray-700">
+                                {formData.experience_level.length > 0
+                                    ? `${formData.experience_level.length} Selected`
+                                    : 'Select experience levels'}
+                            </span>
+                            <svg className="fill-current h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                            </svg>
                         </div>
+                        {openDropdown === 'experience_level' && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {['Intern', 'Entry-level', 'Intermediate', 'Senior', 'Staff', 'Principal', 'Manager', 'Director', 'Executive'].map(level => (
+                                    <label key={level} className="flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.experience_level.includes(level)}
+                                            onChange={() => handleCheckboxChange('experience_level', level)}
+                                            className="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-2 focus:ring-gray-500"
+                                        />
+                                        <span className="text-sm text-gray-700">{level}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div>
@@ -92,41 +140,57 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                         <input
                             type="text"
                             name="location"
-                            value={formData.location}
+                            value={formData.location.join(', ')}
                             onChange={handleChange}
                             className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
-                            placeholder="e.g. Remote, NYC"
+                            placeholder="e.g. Remote, NYC, San Francisco"
                         />
+                        <p className="text-xs text-gray-500 mt-1">Separate multiple locations with commas</p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div>
+                    <div className="relative">
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Job Type</label>
-                        <div className="relative">
-                            <select
-                                name="job_type"
-                                value={formData.job_type}
-                                onChange={handleChange}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
-                            >
-                                <option>Full-time</option>
-                                <option>Contract</option>
-                                <option>Part-time</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
-                            </div>
+                        <div
+                            onClick={() => setOpenDropdown(openDropdown === 'job_type' ? null : 'job_type')}
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
+                        >
+                            <span className="text-sm text-gray-700">
+                                {formData.job_type.length > 0
+                                    ? `${formData.job_type.length} Selected`
+                                    : 'Select job types'}
+                            </span>
+                            <svg className="fill-current h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                            </svg>
                         </div>
+                        {openDropdown === 'job_type' && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                                {['Full-time', 'Contract', 'Part-time'].map(type => (
+                                    <label key={type} className="flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.job_type.includes(type)}
+                                            onChange={() => handleCheckboxChange('job_type', type)}
+                                            className="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-2 focus:ring-gray-500"
+                                        />
+                                        <span className="text-sm text-gray-700">{type}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">Min Annual Salary ($)</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Min Match Score (%)</label>
                         <input
                             type="number"
-                            name="min_salary"
-                            value={formData.min_salary}
+                            name="min_match_score"
+                            min="0"
+                            max="100"
+                            value={formData.min_match_score}
                             onChange={handleChange}
                             className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
@@ -137,21 +201,19 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Jobs Posted in the past...</label>
                         <div className="relative">
                             <select
-                                name="posted_within_weeks"
-                                value={formData.posted_within_weeks}
+                                name="posted_within_days"
+                                value={formData.posted_within_days}
                                 onChange={handleChange}
                                 className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
                             >
-                                <option value={1}>1 Week</option>
-                                <option value={2}>2 Weeks</option>
-                                <option value={3}>3 Weeks</option>
-                                <option value={4}>4 Weeks</option>
-                                <option value={5}>5 Weeks</option>
-                                <option value={6}>6 Weeks</option>
-                                <option value={7}>7 Weeks</option>
-                                <option value={8}>8 Weeks</option>
-                                <option value={9}>9 Weeks</option>
-                                <option value={10}>10 Weeks</option>
+                                <option value={1}>24 Hrs</option>
+                                <option value={2}>48 Hrs</option>
+                                <option value={7}>1 Week</option>
+                                <option value={14}>2 Weeks</option>
+                                <option value={30}>1 Month</option>
+                                <option value={90}>3 Months</option>
+                                <option value={180}>6 Months</option>
+                                <option value={365}>1 Year</option>
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
                                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>

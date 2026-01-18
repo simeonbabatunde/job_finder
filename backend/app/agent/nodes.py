@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from typing import List
 import json
 import random
+from langchain_core.output_parsers import JsonOutputParser
 
 # Mock Job Data Generator
 def mock_job_search(query: str, location: str) -> List[Job]:
@@ -26,11 +27,47 @@ def mock_job_search(query: str, location: str) -> List[Job]:
 
 def parse_resume(state: AgentState):
     """
-    Extracts key skills and summary from resume.
-    In a real app, this would use an LLM or parser.
+    Extracts key skills and summary from resume using LLM.
     """
-    # Simply passing through for now, assuming content is text
-    return {"logs": ["Resume parsed (simple pass-through)"]}
+    resume_content = state.get("resume", "")
+    prefs = state.get("preferences")
+    target_role = prefs.role[0] if prefs and prefs.role else "General"
+    
+    if not resume_content or resume_content == "None":
+        return {
+            "resume_summary": "No resume content provided.", 
+            "logs": ["No resume found to parse."]
+        }
+
+    try:
+        # Use OpenRouter LLM (same as analyze_fit)
+        llm = get_llm(model_type="openrouter", model_name="openai/gpt-oss-20b:free")
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an expert career coach. Extract a professional summary and key skills from the resume, highlighting experience relevant to the target role ({target_role}). Return few paragraphs that capture the essence of the resume and can be used to analyze the fit between the resume and the job."),
+            ("user", "Resume Content:\n{resume_text}\n\nExtract Summary:")
+        ])
+        
+        chain = prompt | llm
+        
+        response = chain.invoke({
+            "target_role": target_role,
+            "resume_text": resume_content[:5000] # Truncate to avoid huge context usage
+        })
+        
+        summary = response.content
+        print(f"Resume Summary: {summary}")
+        log_msg = f"Resume parsed for {target_role}"
+        
+    except Exception as e:
+        print(f"Resume Parsing Error: {e}")
+        summary = "Error parsing resume."
+        log_msg = f"Error parsing resume: {e}"
+
+    return {
+        "resume_summary": summary, 
+        "logs": [log_msg]
+    }
 
 def search_jobs(state: AgentState):
     """
@@ -39,18 +76,23 @@ def search_jobs(state: AgentState):
     prefs = state.get("preferences")
     query = prefs.role if prefs else "Software Engineer"
     location = prefs.location if prefs else "Remote"
-    level = prefs.experience_level if prefs else "Intermediate"
-    weeks = prefs.posted_within_weeks if prefs else 1
+    levels = prefs.experience_level if prefs else ["Intermediate"]
+    job_types = prefs.job_type if prefs else ["Full-time"]
+    days = prefs.posted_within_days if prefs else 7
+    
+    # Convert arrays to strings for display
+    levels_str = ", ".join(levels) if isinstance(levels, list) else levels
+    job_types_str = ", ".join(job_types) if isinstance(job_types, list) else job_types
     
     jobs = mock_job_search(query, location)
-    return {"found_jobs": jobs, "logs": [f"Found {len(jobs)} jobs for {level} {query} in {location} (posted within {weeks} weeks)"]}
+    return {
+        "found_jobs": jobs, 
+        "logs": [f"Found {len(jobs)} jobs for {levels_str} {query} ({job_types_str}) in {location} (posted within {days} days)"]
+    }
 
 def analyze_fit(state: AgentState):
     """
     Analyzes the fit of the found jobs using an LLM.
-    We will just pick the first one to 'apply' to for the demo loop, 
-    or we could iterate. For simplicity in this node, let's just 
-    analyze the list and pick the best one to 'apply'.
     """
     jobs = state.get("found_jobs", [])
     if not jobs:
@@ -59,14 +101,49 @@ def analyze_fit(state: AgentState):
     # Just picking the first one for the prototype flow
     current_job = jobs[0]
     
-    # Real logic: use LLM to score.
-    # llm = get_llm("openai") # Or from config
-    # ...
-    
+    # Use OpenRouter LLM
+    try:
+        llm = get_llm(model_type="openrouter", model_name="openai/gpt-oss-20b:free")
+        parser = JsonOutputParser()
+        
+        # Simple prompt requiring JSON output
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a world class career assistant. Analyze the fit between the candidate's resume and the job description. Return a JSON object with two keys: 'score' (between 0 and 1) and 'explanation' (one paragraph string)."),
+            ("user", "Job: {job_title} at {company}\nDescription: {description}\n\nResume Summary: {resume_summary}\n\nAnalyze fit and return a structured output in JSON format:")
+        ])
+        
+        chain = prompt | llm | parser
+        
+        result = chain.invoke({
+            "job_title": current_job["title"],
+            "company": current_job["company"],
+            "description": current_job["description"],
+            "resume_summary": state.get("resume_summary")
+        })
+        
+        # Result is already a dict
+        score_val = result.get("score", 0.5)
+        try:
+            s = float(score_val)
+            if s > 1.0: s = s / 100.0
+            score = s
+        except:
+            score = 0.5
+            
+        explanation = result.get("explanation", "No explanation provided.")
+        log_msg = f"Fit Score: {score:.2f}. {explanation[:100]}..."
+
+    except Exception as e:
+        print(f"LLM Error: {e}")
+        log_msg = f"Error analyzing job: {e}"
+        score = 0.5
+
+    current_job["fit_score"] = score
+
     return {
         "current_job": current_job, 
         "application_status": "analyzing",
-        "logs": [f"Selected {current_job['title']} at {current_job['company']} for analysis"]
+        "logs": [log_msg]
     }
 
 def submit_application(state: AgentState):
@@ -77,11 +154,19 @@ def submit_application(state: AgentState):
     if not job:
         return {"application_status": "completed"}
     
-    # Store in DB would happen here or via API callback
-    # For the agent state, we just mark it.
+    prefs = state.get("preferences")
+    min_score = prefs.min_match_score if prefs and hasattr(prefs, 'min_match_score') else 70
     
+    fit_score = job.get("fit_score", 0.0)
+    
+    if (fit_score * 100) < min_score:
+        return {
+            "application_status": "completed",
+            "logs": [f"Skipped {job['title']} at {job['company']}: Fit Score {fit_score*100:.0f}% < Min {min_score}%"]
+        }
+
     return {
         "applications_submitted": state.get("applications_submitted", []) + [job["url"]],
         "application_status": "completed",
-        "logs": [f"Applied to {job['title']} at {job['company']}"]
+        "logs": [f"Applied to {job['title']} at {job['company']} (Score: {fit_score:.2f})"]
     }

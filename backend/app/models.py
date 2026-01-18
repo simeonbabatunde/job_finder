@@ -1,5 +1,5 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel
+from typing import Optional, List
+from sqlmodel import Field, SQLModel, Column, JSON
 from datetime import datetime
 
 class Resume(SQLModel, table=True):
@@ -10,12 +10,12 @@ class Resume(SQLModel, table=True):
 
 class JobPreference(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    role: str
-    experience_level: str = Field(default="Intermediate") # e.g., "Entry-level", "Intermediate", "Senior", "Lead"
-    location: str
-    job_type: str  # e.g., "Full-time", "Contract"
-    min_salary: Optional[int] = None
-    posted_within_weeks: int = Field(default=1)
+    role: List[str] = Field(default=[""], sa_column=Column(JSON))
+    experience_level: List[str] = Field(default=["Intermediate"], sa_column=Column(JSON))
+    location: List[str] = Field(default=[""], sa_column=Column(JSON))
+    job_type: List[str] = Field(default=["Full-time"], sa_column=Column(JSON))
+    min_match_score: int = Field(default=70)
+    posted_within_days: int = Field(default=7)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class User(SQLModel, table=True):

@@ -83,7 +83,7 @@ async def run_agent(session: Session = Depends(get_session)):
                 job_title=job_details["title"],
                 company=job_details["company"],
                 job_url=job_url,
-                fit_score=0.85,  # Mocked fit score
+                fit_score=job_details.get("fit_score", 0.0),  # Use score from agent analysis
                 status="Applied"
             )
             session.add(app)
