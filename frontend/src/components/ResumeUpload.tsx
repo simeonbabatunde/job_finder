@@ -5,6 +5,7 @@ export interface ResumeUploadHandle {
   hasFile: boolean;
   setError: (msg: string | null) => void;
   handleUpload: (silent?: boolean) => Promise<boolean>;
+  setExistingResume: (filename: string) => void;
 }
 
 export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
@@ -13,15 +14,19 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [isError, setIsError] = useState(false);
+  const [existingFile, setExistingFile] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
-    hasFile: !!file,
+    hasFile: !!file || !!existingFile,
     setError: (msg: string | null) => {
       setIsError(!!msg);
       if (msg) setMessage(msg);
     },
     handleUpload: async (silent: boolean = false) => {
-      if (!file) return true; // No file is okay if already uploaded or skipped
+      if (!file) {
+        if (existingFile) return true;
+        return true;
+      }
 
       setUploading(true);
       setMessage('');
@@ -39,6 +44,9 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
       } finally {
         setUploading(false);
       }
+    },
+    setExistingResume: (filename: string) => {
+      setExistingFile(filename);
     }
   }));
 
@@ -105,6 +113,22 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
               Remove file
             </button>
           </div>
+        ) : existingFile ? (
+          <div className="flex flex-col items-center">
+            <div className="bg-green-100 text-green-700 p-3 rounded-full mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-gray-900 mb-1">Stored: {existingFile}</p>
+            <p className="text-xs text-gray-500 mb-4">Ready for use</p>
+            <button
+              onClick={() => setExistingFile(null)}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              Upload Different File
+            </button>
+          </div>
         ) : (
           <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
             <div className="bg-gray-100 text-gray-400 p-3 rounded-full mb-3 group-hover:bg-gray-200 group-hover:text-gray-600 transition-colors">
@@ -117,8 +141,9 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
             </p>
             <p className="text-xs text-gray-500 mt-1">PDF, DOCX, or TXT (MAX. 5MB)</p>
           </label>
-        )}
-      </div>
+        )
+        }
+      </div >
 
       <div className="mt-4">
         {uploading && (
@@ -134,7 +159,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 });
 

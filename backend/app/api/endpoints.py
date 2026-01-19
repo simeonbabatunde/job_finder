@@ -104,5 +104,9 @@ def get_applications(session: Session = Depends(get_session)):
 @router.get("/user/status")
 def get_user_status(session: Session = Depends(get_session)):
     user = get_demo_user(session)
-    return user
+    resume = session.exec(select(Resume).order_by(Resume.upload_date.desc())).first()
+    return {
+        "user": user,
+        "resume": {"filename": resume.filename, "uploaded_at": resume.upload_date} if resume else None
+    }
 

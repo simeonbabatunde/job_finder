@@ -17,7 +17,14 @@ function App() {
   useEffect(() => {
     fetch('http://localhost:8000/user/status')
       .then(res => res.json())
-      .then(data => setUser(data))
+      .then(data => {
+        if (data.user) {
+          setUser(data.user);
+          if (data.resume && resumeRef.current) {
+            resumeRef.current.setExistingResume(data.resume.filename);
+          }
+        }
+      })
       .catch(err => console.error("Error fetching user status", err));
   }, []);
 

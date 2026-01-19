@@ -3,7 +3,7 @@ from typing import Generator
 
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_finder")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_hunter")
 
 engine = create_engine(DATABASE_URL, echo=True)
 

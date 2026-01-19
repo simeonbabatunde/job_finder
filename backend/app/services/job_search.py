@@ -1,40 +1,71 @@
+from jobspy import scrape_jobs
+import pandas as pd
 from typing import List, Dict
 
 class JobSearchService:
     @staticmethod
-    def search_jobs(query: str, location: str) -> List[Dict]:
+    def search_jobs(query: str, location: str, posted_within_days: int = 7) -> List[Dict]:
         """
-        Searches for jobs using an external API.
-        Currently returns mock data for demonstration purposes.
+        Searches for jobs using python-jobspy across multiple sites (Indeed, LinkedIn, Glassdoor).
         """
-        # TODO: Integrate with a real API like LinkedIn, Indeed, or others.
+        print(f"JobSpy: Scraping jobs for '{query}' in '{location}' (Last {posted_within_days} days)...")
+        results = []
         
-        # Mock results
-        mock_jobs = [
-            {
-                "id": "1",
-                "title": f"Senior {query} Developer",
-                "company": "Tech Corp",
-                "location": location,
-                "description": "We are looking for an experienced developer...",
-                "salary": "$120k - $150k"
-            },
-            {
-                "id": "2",
-                "title": f"Junior {query} Engineer",
-                "company": "Startup Inc",
-                "location": location,
-                "description": "Great opportunity for growth...",
-                "salary": "$80k - $100k"
-            },
-            {
-                "id": "3",
-                "title": "Product Manager",
-                "company": "Business Solns",
-                "location": "Remote",
-                "description": "Lead our product team...",
-                "salary": "$110k - $140k"
-            }
-        ]
-        
-        return mock_jobs
+        try:
+            # JobSpy uses 'hours_old'
+            hours = posted_within_days * 24
+            
+            # Scrape Indeed & LinkedIn & Glassdoor
+            # Note: We limit results_wanted to 15 for speed in this demo
+            jobs: pd.DataFrame = scrape_jobs(
+                site_name=["indeed", "linkedin", "glassdoor"], 
+                search_term=query,
+                location=location,
+                results_wanted=15, 
+                hours_old=hours, 
+                country_indeed='USA',
+                linkedin_fetch_description=True # Need description for analysis
+            )
+            
+            if jobs.empty:
+                print("JobSpy: No jobs found.")
+                return []
+            
+            print(f"JobSpy: Found {len(jobs)} jobs.")
+            
+            # Convert to our format
+            for _, row in jobs.iterrows():
+                # Handle missing description or NaN
+                description = row.get("description")
+                if pd.isna(description) or not description:
+                    description = "No description available."
+                
+                title = row.get("title")
+                if pd.isna(title): title = "Unknown Title"
+                
+                company = row.get("company")
+                if pd.isna(company): company = "Unknown Company"
+                
+                loc = row.get("location")
+                if pd.isna(loc): loc = location
+                
+                url = row.get("job_url")
+                if pd.isna(url): url = ""
+
+                # Create job dict
+                job_data = {
+                    "id": str(row.get("id")) if not pd.isna(row.get("id")) else "",
+                    "title": str(title),
+                    "company": str(company),
+                    "location": str(loc),
+                    "description": str(description),
+                    "url": str(url),
+                    "fit_score": 0.0 # Will be populated by Agent
+                }
+                results.append(job_data)
+                
+            return results
+
+        except Exception as e:
+            print(f"JobSpy Error: {e}")
+            return []

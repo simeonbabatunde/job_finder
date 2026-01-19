@@ -6,24 +6,9 @@ import json
 import random
 from langchain_core.output_parsers import JsonOutputParser
 
-# Mock Job Data Generator
-def mock_job_search(query: str, location: str) -> List[Job]:
-    """Generates mock jobs for demonstration."""
-    titles = ["Software Engineer", "Backend Developer", "Full Stack Engineer", "AI Engineer", "Data Scientist"]
-    companies = ["TechCorp", "DataSystems", "AI Solutions", "WebWorks", "CloudNine"]
-    
-    jobs = []
-    for _ in range(5):
-        job: Job = {
-            "title": random.choice(titles),
-            "company": random.choice(companies),
-            "location": location,
-            "description": f"We are looking for a skilled {query} to join our team...",
-            "url": f"https://example.com/job/{random.randint(1000, 9999)}",
-            "source": "mock"
-        }
-        jobs.append(job)
-    return jobs
+from app.services.job_search import JobSearchService
+
+# Mock job search removed
 
 def parse_resume(state: AgentState):
     """
@@ -80,14 +65,24 @@ def search_jobs(state: AgentState):
     job_types = prefs.job_type if prefs else ["Full-time"]
     days = prefs.posted_within_days if prefs else 7
     
-    # Convert arrays to strings for display
-    levels_str = ", ".join(levels) if isinstance(levels, list) else levels
-    job_types_str = ", ".join(job_types) if isinstance(job_types, list) else job_types
+    # Prepare prompt for log
+    levels_str = ", ".join(levels) if isinstance(levels, list) else str(levels)
+    job_types_str = ", ".join(job_types) if isinstance(job_types, list) else str(job_types)
+    role_str = ", ".join(query) if isinstance(query, list) else str(query)
+    loc_str = ", ".join(location) if isinstance(location, list) else str(location)
     
-    jobs = mock_job_search(query, location)
+    # Use first role and location for search (simplification for prototype)
+    search_query = query[0] if isinstance(query, list) and query else "Software Engineer"
+    search_loc = location[0] if isinstance(location, list) and location else "Remote"
+    
+    print(f"Searching for: {search_query} in {search_loc}")
+    
+    # Call Real Service
+    jobs = JobSearchService.search_jobs(search_query, search_loc, posted_within_days=days)
+    
     return {
         "found_jobs": jobs, 
-        "logs": [f"Found {len(jobs)} jobs for {levels_str} {query} ({job_types_str}) in {location} (posted within {days} days)"]
+        "logs": [f"Found {len(jobs)} jobs for {role_str} ({job_types_str}) in {loc_str} (posted within {days} days)"]
     }
 
 def analyze_fit(state: AgentState):
