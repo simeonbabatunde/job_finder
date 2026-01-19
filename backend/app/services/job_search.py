@@ -15,13 +15,13 @@ class JobSearchService:
             # JobSpy uses 'hours_old'
             hours = posted_within_days * 24
             
-            # Scrape Indeed & LinkedIn & Glassdoor
+            # Scrape Indeed & LinkedIn & Glassdoor "indeed", "linkedin", "glassdoor"
             # Note: We limit results_wanted to 15 for speed in this demo
             jobs: pd.DataFrame = scrape_jobs(
-                site_name=["indeed", "linkedin", "glassdoor"], 
+                site_name=["glassdoor"], 
                 search_term=query,
                 location=location,
-                results_wanted=15, 
+                results_wanted=5, 
                 hours_old=hours, 
                 country_indeed='USA',
                 linkedin_fetch_description=True # Need description for analysis
@@ -31,7 +31,7 @@ class JobSearchService:
                 print("JobSpy: No jobs found.")
                 return []
             
-            print(f"JobSpy: Found {len(jobs)} jobs.")
+            print(f"JobSpy: Found {len(jobs)} jobs. \n Details: {jobs}")
             
             # Convert to our format
             for _, row in jobs.iterrows():

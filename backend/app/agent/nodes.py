@@ -45,7 +45,7 @@ def parse_resume(state: AgentState):
         log_msg = f"Resume parsed for {target_role}"
         
     except Exception as e:
-        print(f"Resume Parsing Error: {e}")
+        print(f"Resume Parsing Error: {e}. Check OPENROUTER_API_KEY in .env.")
         summary = "Error parsing resume."
         log_msg = f"Error parsing resume: {e}"
 
@@ -72,8 +72,13 @@ def search_jobs(state: AgentState):
     loc_str = ", ".join(location) if isinstance(location, list) else str(location)
     
     # Use first role and location for search (simplification for prototype)
-    search_query = query[0] if isinstance(query, list) and query else "Software Engineer"
-    search_loc = location[0] if isinstance(location, list) and location else "Remote"
+    # Use first valid role and location
+    # Handle [""] case which is non-empty list but empty string
+    valid_queries = [q for q in query if q and q.strip()] if isinstance(query, list) else []
+    search_query = valid_queries[0] if valid_queries else "Software Engineer"
+    
+    valid_locs = [l for l in location if l and l.strip()] if isinstance(location, list) else []
+    search_loc = valid_locs[0] if valid_locs else "Remote"
     
     print(f"Searching for: {search_query} in {search_loc}")
     
@@ -129,7 +134,7 @@ def analyze_fit(state: AgentState):
         log_msg = f"Fit Score: {score:.2f}. {explanation[:100]}..."
 
     except Exception as e:
-        print(f"LLM Error: {e}")
+        print(f"LLM Error: {e}. Check OPENROUTER_API_KEY in .env.")
         log_msg = f"Error analyzing job: {e}"
         score = 0.5
 

@@ -35,6 +35,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
         if (!silent) {
           setMessage('Resume uploaded successfully!');
         }
+        setExistingFile(file.name);
         setFile(null);
         return true;
       } catch (error) {
