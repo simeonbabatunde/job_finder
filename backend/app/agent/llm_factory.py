@@ -1,6 +1,7 @@
 import os
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 def get_llm(model_type: str = "openai", model_name: str = None):
     """
@@ -10,6 +11,12 @@ def get_llm(model_type: str = "openai", model_name: str = None):
     if model_type == "ollama":
         name = model_name or "llama3" # Default to llama3 for Ollama
         return ChatOllama(model=name)
+    elif model_type == "gemini":
+        name = model_name or "gemini-flash-latest"
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            print("Warning: GOOGLE_API_KEY not found in .env")
+        return ChatGoogleGenerativeAI(model=name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True)
     elif model_type == "openrouter":
         name = model_name or "openai/gpt-oss-120b:free"
         api_key = os.getenv("OPENROUTER_API_KEY")

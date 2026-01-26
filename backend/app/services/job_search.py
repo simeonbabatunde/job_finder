@@ -16,12 +16,12 @@ class JobSearchService:
             hours = posted_within_days * 24
             
             # Scrape Indeed & LinkedIn & Glassdoor "indeed", "linkedin", "glassdoor"
-            # Note: We limit results_wanted to 15 for speed in this demo
+            # Note: We limit results_wanted to 20 for better coverage
             jobs: pd.DataFrame = scrape_jobs(
-                site_name=["glassdoor"], 
+                site_name=["indeed", "linkedin", "glassdoor"], 
                 search_term=query,
                 location=location,
-                results_wanted=5, 
+                results_wanted=20, 
                 hours_old=hours, 
                 country_indeed='USA',
                 linkedin_fetch_description=True # Need description for analysis

@@ -7,9 +7,9 @@ export interface JobPreferencesHandle {
 
 export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => {
     const [formData, setFormData] = useState({
-        role: [''] as string[],
+        role: '',
         experience_level: ['Intermediate'] as string[],
-        location: [''] as string[],
+        location: '',
         job_type: ['Full-time'] as string[],
         min_match_score: 70,
         posted_within_days: 7,
@@ -23,7 +23,13 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
             setSaving(true);
             setMessage('');
             try {
-                await savePreferences(formData);
+                // Convert strings to arrays for API
+                const payload = {
+                    ...formData,
+                    role: formData.role.split(',').map(s => s.trim()).filter(s => s !== ''),
+                    location: formData.location.split(',').map(s => s.trim()).filter(s => s !== ''),
+                };
+                await savePreferences(payload);
                 if (!silent) {
                     setMessage('Preferences saved successfully!');
                 }
@@ -41,11 +47,6 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => {
-            // Handle comma-separated values for role and location
-            if (name === 'role' || name === 'location') {
-                const arrayValue = value.split(',').map(item => item.trim()).filter(item => item !== '');
-                return { ...prev, [name]: arrayValue.length > 0 ? arrayValue : [''] };
-            }
             // Handle numeric fields
             if (name === 'min_match_score' || name === 'posted_within_days') {
                 return { ...prev, [name]: parseInt(value) || 0 };
@@ -94,7 +95,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                         <input
                             type="text"
                             name="role"
-                            value={formData.role.join(', ')}
+                            value={formData.role}
                             onChange={handleChange}
                             className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
@@ -140,7 +141,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                         <input
                             type="text"
                             name="location"
-                            value={formData.location.join(', ')}
+                            value={formData.location}
                             onChange={handleChange}
                             className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required

@@ -8,6 +8,13 @@ interface Job {
     location: string;
     description: string;
     salary: string;
+    url?: string;
+    analysis?: {
+        score: number;
+        explanation: string;
+        cover_letter: string;
+    };
+    analyzing?: boolean;
 }
 
 export function JobSearch() {
@@ -37,6 +44,30 @@ export function JobSearch() {
         }
     };
 
+    const handleAnalyze = async (jobId: string) => {
+        const job = jobs.find(j => j.id === jobId);
+        if (!job) return;
+
+        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, analyzing: true } : j));
+
+        try {
+            const email = localStorage.getItem('user_email');
+            const response = await fetch('http://localhost:8000/agent/analyze-single', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Email': email || ''
+                },
+                body: JSON.stringify(job)
+            });
+            const analysis = await response.json();
+            setJobs(prev => prev.map(j => j.id === jobId ? { ...j, analysis, analyzing: false } : j));
+        } catch (err) {
+            console.error('Analysis failed', err);
+            setJobs(prev => prev.map(j => j.id === jobId ? { ...j, analyzing: false } : j));
+        }
+    };
+
     return (
         <div className="w-full">
             <form onSubmit={handleSearch} className="mb-8">
@@ -62,7 +93,7 @@ export function JobSearch() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="px-8 py-3 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-800 focus:ring-4 focus:ring-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-8 py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-black focus:ring-4 focus:ring-slate-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                     >
                         {loading ? 'Searching...' : 'Search Jobs'}
                     </button>
@@ -75,38 +106,81 @@ export function JobSearch() {
                 </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-6">
                 {jobs.length > 0 ? (
                     jobs.map((job) => (
-                        <div key={job.id} className="p-6 bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex justify-between items-start mb-2">
+                        <div key={job.id} className="p-8 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all group">
+                            <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900">{job.title}</h3>
-                                    <p className="text-gray-600 font-medium">{job.company}</p>
+                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{job.title}</h3>
+                                    <p className="text-slate-600 font-semibold">{job.company}</p>
                                 </div>
                                 {job.salary && (
-                                    <span className="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">
+                                    <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-100">
                                         {job.salary}
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center text-sm text-gray-500 mb-3">
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex items-center text-sm text-slate-400 mb-4 font-medium">
+                                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                 </svg>
                                 {job.location}
                             </div>
-                            <p className="text-gray-600 text-sm line-clamp-2">{job.description}</p>
-                            <button className="mt-4 text-indigo-600 font-semibold text-sm hover:text-indigo-800">
-                                View Details →
-                            </button>
+                            <p className="text-slate-500 text-sm line-clamp-3 mb-6 leading-relaxed">{job.description}</p>
+
+                            <div className="flex flex-wrap items-center gap-4">
+                                {job.url && (
+                                    <a
+                                        href={job.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-white bg-indigo-600 px-6 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
+                                    >
+                                        Apply on Site
+                                    </a>
+                                )}
+                                <button
+                                    onClick={() => handleAnalyze(job.id)}
+                                    disabled={job.analyzing}
+                                    className="text-indigo-600 border border-indigo-200 px-6 py-2 rounded-xl text-sm font-bold hover:bg-indigo-50 transition-all"
+                                >
+                                    {job.analyzing ? 'Analyzing...' : job.analysis ? 'Re-Analyze Fit' : 'Analyze Fit with AI'}
+                                </button>
+                            </div>
+
+                            {job.analysis && (
+                                <div className="mt-8 pt-8 border-t border-slate-50 animate-in fade-in slide-in-from-top-4 duration-500">
+                                    <div className="flex items-center mb-4">
+                                        <div className="text-2xl font-black text-indigo-600 mr-4">
+                                            {(job.analysis.score * 100).toFixed(0)}%
+                                        </div>
+                                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000"
+                                                style={{ width: `${job.analysis.score * 100}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-indigo-50/50 rounded-xl p-5 border border-indigo-100">
+                                        <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2 flex items-center">
+                                            <span className="mr-2">🧠</span> AI Fit Analysis
+                                        </h4>
+                                        <p className="text-sm text-slate-700 leading-relaxed">
+                                            {job.analysis.explanation}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))
                 ) : (
                     searched && !loading && (
-                        <div className="text-center py-12 text-gray-500">
-                            No jobs found. Try adjusting your search criteria.
+                        <div className="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                            <div className="text-4xl mb-4">🔍</div>
+                            <h3 className="text-lg font-bold text-slate-800">No jobs found</h3>
+                            <p className="text-slate-500">Try adjusting your search keywords or location.</p>
                         </div>
                     )
                 )}

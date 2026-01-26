@@ -31,5 +31,7 @@ class ResumeService:
             return ResumeService.extract_text_from_pdf(file_content)
         elif filename.lower().endswith(".docx"):
             return ResumeService.extract_text_from_docx(file_content)
+        elif filename.lower().endswith(".txt"):
+            return file_content.decode("utf-8", errors="ignore")
         else:
-            raise ValueError("Unsupported file format. Please upload a PDF or DOCX file.")
+            raise ValueError("Unsupported file format. Please upload a PDF, DOCX, or TXT file.")

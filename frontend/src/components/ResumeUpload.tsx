@@ -6,6 +6,7 @@ export interface ResumeUploadHandle {
   setError: (msg: string | null) => void;
   handleUpload: (silent?: boolean) => Promise<boolean>;
   setExistingResume: (filename: string) => void;
+  setResumeData: (data: { filename: string, skills?: string[], summary?: string }) => void;
 }
 
 export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
@@ -15,6 +16,8 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
   const [dragActive, setDragActive] = useState(false);
   const [isError, setIsError] = useState(false);
   const [existingFile, setExistingFile] = useState<string | null>(null);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [summary, setSummary] = useState<string>('');
 
   useImperativeHandle(ref, () => ({
     hasFile: !!file || !!existingFile,
@@ -48,6 +51,11 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
     },
     setExistingResume: (filename: string) => {
       setExistingFile(filename);
+    },
+    setResumeData: (data) => {
+      setExistingFile(data.filename);
+      if (data.skills) setSkills(data.skills);
+      if (data.summary) setSummary(data.summary);
     }
   }));
 
@@ -124,7 +132,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
             <p className="text-sm font-medium text-gray-900 mb-1">Stored: {existingFile}</p>
             <p className="text-xs text-gray-500 mb-4">Ready for use</p>
             <button
-              onClick={() => setExistingFile(null)}
+              onClick={() => { setExistingFile(null); setSkills([]); setSummary(''); }}
               className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
             >
               Upload Different File
@@ -145,6 +153,26 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
         )
         }
       </div >
+
+      {skills.length > 0 && (
+        <div className="mt-6 animate-in fade-in slide-in-from-top-4 duration-500">
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Extracted Skills</h4>
+          <div className="flex flex-wrap gap-2">
+            {skills.map((skill, i) => (
+              <span key={i} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-semibold border border-indigo-100">
+                {skill}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {summary && (
+        <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-700">
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Resume Summary</h4>
+          <p className="text-sm text-slate-600 italic">"{summary}"</p>
+        </div>
+      )}
 
       <div className="mt-4">
         {uploading && (

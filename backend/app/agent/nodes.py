@@ -7,10 +7,9 @@ import random
 from langchain_core.output_parsers import JsonOutputParser
 
 from app.services.job_search import JobSearchService
+from app.services.browser_apply import BrowserApplyService
 
-# Mock job search removed
-
-def parse_resume(state: AgentState):
+async def parse_resume(state: AgentState):
     """
     Extracts key skills and summary from resume using LLM.
     """
@@ -21,152 +20,231 @@ def parse_resume(state: AgentState):
     if not resume_content or resume_content == "None":
         return {
             "resume_summary": "No resume content provided.", 
-            "logs": ["No resume found to parse."]
+            "extracted_skills": [],
+            "logs": state.get("logs", []) + ["No resume found to parse."]
         }
 
     try:
-        # Use OpenRouter LLM (same as analyze_fit)
-        llm = get_llm(model_type="openrouter", model_name="openai/gpt-oss-20b:free")
+        # Use Gemini
+        llm = get_llm(model_type="gemini")
+        parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an expert career coach. Extract a professional summary and key skills from the resume, highlighting experience relevant to the target role ({target_role}). Return few paragraphs that capture the essence of the resume and can be used to analyze the fit between the resume and the job."),
-            ("user", "Resume Content:\n{resume_text}\n\nExtract Summary:")
+            ("system", "You are an expert career coach. Extract a professional summary and a list of key skills from the resume. Return a JSON object with two keys: 'summary' (a string) and 'skills' (a list of strings)."),
+            ("user", "Resume Content:\n{resume_text}\n\nExtract Summary and Skills:")
         ])
         
-        chain = prompt | llm
+        chain = prompt | llm | parser
         
-        response = chain.invoke({
-            "target_role": target_role,
-            "resume_text": resume_content[:5000] # Truncate to avoid huge context usage
+        response = await chain.ainvoke({
+            "resume_text": resume_content[:5000]
         })
         
-        summary = response.content
+        summary = response.get("summary", "")
+        skills = response.get("skills", [])
+        
         print(f"Resume Summary: {summary}")
-        log_msg = f"Resume parsed for {target_role}"
+        print(f"Extracted Skills: {skills}")
+        
+        # We don't have session here easily to update the DB, 
+        # but we can return it in the state and let the next node or endpoint handle it.
+        # Actually, let's just keep it in state for now.
+        
+        log_msg = f"Resume parsed: {len(skills)} skills found."
         
     except Exception as e:
-        print(f"Resume Parsing Error: {e}. Check OPENROUTER_API_KEY in .env.")
+        print(f"Resume Parsing Error: {e}")
         summary = "Error parsing resume."
+        skills = []
         log_msg = f"Error parsing resume: {e}"
 
     return {
         "resume_summary": summary, 
-        "logs": [log_msg]
+        "extracted_skills": skills,
+        "logs": state.get("logs", []) + [log_msg]
     }
 
-def search_jobs(state: AgentState):
+async def search_jobs(state: AgentState):
     """
     Searches for jobs based on preferences.
     """
     prefs = state.get("preferences")
-    query = prefs.role if prefs else "Software Engineer"
-    location = prefs.location if prefs else "Remote"
-    levels = prefs.experience_level if prefs else ["Intermediate"]
-    job_types = prefs.job_type if prefs else ["Full-time"]
+    query_roles = prefs.role if prefs else ["Software Engineer"]
+    location = prefs.location if prefs else ["Remote"]
     days = prefs.posted_within_days if prefs else 7
+    exp_levels = prefs.experience_level if prefs else ["Intermediate"]
+    job_types = prefs.job_type if prefs else ["Full-time"]
     
-    # Prepare prompt for log
-    levels_str = ", ".join(levels) if isinstance(levels, list) else str(levels)
-    job_types_str = ", ".join(job_types) if isinstance(job_types, list) else str(job_types)
-    role_str = ", ".join(query) if isinstance(query, list) else str(query)
-    loc_str = ", ".join(location) if isinstance(location, list) else str(location)
+    # Construct a more specific search term
+    # Example: "Senior Software Engineer Full-time"
+    base_role = query_roles[0] if query_roles else "Software Engineer"
+    exp = exp_levels[0] if exp_levels else ""
+    jtype = job_types[0] if job_types else ""
     
-    # Use first role and location for search (simplification for prototype)
-    # Use first valid role and location
-    # Handle [""] case which is non-empty list but empty string
-    valid_queries = [q for q in query if q and q.strip()] if isinstance(query, list) else []
-    search_query = valid_queries[0] if valid_queries else "Software Engineer"
+    search_query = f"{exp} {base_role} {jtype}".strip()
+    search_loc = location[0] if location else "Remote"
     
-    valid_locs = [l for l in location if l and l.strip()] if isinstance(location, list) else []
-    search_loc = valid_locs[0] if valid_locs else "Remote"
-    
-    print(f"Searching for: {search_query} in {search_loc}")
+    print(f"Searching for: '{search_query}' in '{search_loc}'")
     
     # Call Real Service
     jobs = JobSearchService.search_jobs(search_query, search_loc, posted_within_days=days)
     
     return {
         "found_jobs": jobs, 
-        "logs": [f"Found {len(jobs)} jobs for {role_str} ({job_types_str}) in {loc_str} (posted within {days} days)"]
+        "logs": state.get("logs", []) + [f"Found {len(jobs)} jobs for '{search_query}' in '{search_loc}'"]
     }
 
-def analyze_fit(state: AgentState):
+async def analyze_fit(state: AgentState):
     """
-    Analyzes the fit of the found jobs using an LLM.
+    Analyzes the fit of ALL found jobs using an LLM in batch.
     """
     jobs = state.get("found_jobs", [])
     if not jobs:
-        return {"application_status": "completed", "logs": ["No jobs found to analyze"]}
+        return {"application_status": "completed", "logs": state.get("logs", []) + ["No jobs found to analyze"]}
     
-    # Just picking the first one for the prototype flow
-    current_job = jobs[0]
+    resume_summary = state.get("resume_summary", "")
+    prefs = state.get("preferences")
     
-    # Use OpenRouter LLM
+    # Extract criteria string for the LLM
+    criteria = {
+        "Desired Experience Level": ", ".join(prefs.experience_level) if prefs else "Not specified",
+        "Desired Job Type": ", ".join(prefs.job_type) if prefs else "Not specified",
+        "Desired Roles": ", ".join(prefs.role) if prefs else "Not specified"
+    }
+    criteria_str = json.dumps(criteria, indent=2)
+
+    # Prepare batch inputs
+    inputs = []
+    for job in jobs:
+        inputs.append({
+            "job_title": job.get("title", ""),
+            "company": job.get("company", ""),
+            "description": job.get("description", ""),
+            "resume_summary": resume_summary,
+            "user_preferences": criteria_str
+        })
+    
+    new_logs = []
+    
+    # Use Gemini
     try:
-        llm = get_llm(model_type="openrouter", model_name="openai/gpt-oss-20b:free")
+        llm = get_llm(model_type="gemini")
         parser = JsonOutputParser()
         
-        # Simple prompt requiring JSON output
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a world class career assistant. Analyze the fit between the candidate's resume and the job description. Return a JSON object with two keys: 'score' (between 0 and 1) and 'explanation' (one paragraph string)."),
+            ("system", "You are a world class career assistant. Analyze the fit between the candidate's resume, their specific job preferences, and the job description. \n\nUser Preferences:\n{user_preferences}\n\nStrictly penalize matches where the job seniority (e.g. Senior vs Junior) or job type (e.g. Contract vs Full-time) does not align with the user preferences. Return a JSON object with three keys: 'score' (between 0 and 1), 'explanation' (one paragraph string justifying the score based on skills AND preferences), and 'cover_letter' (a professional, customized cover letter text)."),
             ("user", "Job: {job_title} at {company}\nDescription: {description}\n\nResume Summary: {resume_summary}\n\nAnalyze fit and return a structured output in JSON format:")
         ])
         
         chain = prompt | llm | parser
         
-        result = chain.invoke({
-            "job_title": current_job["title"],
-            "company": current_job["company"],
-            "description": current_job["description"],
-            "resume_summary": state.get("resume_summary")
-        })
+        print(f"Analyzing {len(inputs)} jobs in batch...")
+        results = await chain.abatch(inputs)
         
-        # Result is already a dict
-        score_val = result.get("score", 0.5)
-        try:
-            s = float(score_val)
-            if s > 1.0: s = s / 100.0
-            score = s
-        except:
-            score = 0.5
+        # Map results back to jobs
+        for i, result in enumerate(results):
+            score_val = result.get("score", 0.5)
+            try:
+                s = float(score_val)
+                if s > 1.0: s = s / 100.0
+                score = s
+            except:
+                score = 0.5
+                
+            explanation = result.get("explanation", "No explanation provided.")
+            cover_letter = result.get("cover_letter", "")
             
-        explanation = result.get("explanation", "No explanation provided.")
-        log_msg = f"Fit Score: {score:.2f}. {explanation[:100]}..."
+            # Update the job in the list
+            jobs[i]["fit_score"] = score
+            jobs[i]["cover_letter"] = cover_letter
+            new_logs.append(f"Analyzed {jobs[i]['title']}: {score:.2f}")
 
     except Exception as e:
-        print(f"LLM Error: {e}. Check OPENROUTER_API_KEY in .env.")
-        log_msg = f"Error analyzing job: {e}"
-        score = 0.5
-
-    current_job["fit_score"] = score
+        print(f"LLM Error: {e}. Check GOOGLE_API_KEY in .env.")
+        new_logs.append(f"Error analyzing jobs: {e}")
+        for job in jobs:
+            if "fit_score" not in job:
+                job["fit_score"] = 0.5
 
     return {
-        "current_job": current_job, 
+        "found_jobs": jobs, 
         "application_status": "analyzing",
-        "logs": [log_msg]
+        "logs": state.get("logs", []) + new_logs
     }
 
-def submit_application(state: AgentState):
+async def submit_application(state: AgentState):
     """
-    Mocks the application submission.
+    Submits applications for jobs that meet the minimum score.
     """
-    job = state.get("current_job")
-    if not job:
-        return {"application_status": "completed"}
+    jobs = state.get("found_jobs", [])
+    if not jobs:
+        return {"application_status": "completed", "logs": state.get("logs", [])}
     
     prefs = state.get("preferences")
     min_score = prefs.min_match_score if prefs and hasattr(prefs, 'min_match_score') else 70
     
-    fit_score = job.get("fit_score", 0.0)
+    current_submitted = state.get("applications_submitted", [])
+    new_submitted = []
+    new_logs = []
     
-    if (fit_score * 100) < min_score:
-        return {
-            "application_status": "completed",
-            "logs": [f"Skipped {job['title']} at {job['company']}: Fit Score {fit_score*100:.0f}% < Min {min_score}%"]
-        }
+    for job in jobs:
+        fit_score = job.get("fit_score", 0.0)
+        pct_score = fit_score * 100
+        
+        if pct_score >= min_score:
+            if job["url"] not in current_submitted:
+                new_submitted.append(job["url"])
+                new_logs.append(f"Ready to apply to {job['title']} at {job['company']}")
+    
+    return {
+        "applications_submitted": current_submitted + new_submitted,
+        "application_status": "applying" if state.get("auto_apply") else "completed",
+        "logs": state.get("logs", []) + new_logs
+    }
+
+async def apply_browser(state: AgentState):
+    """
+    Autonomous browser application node.
+    """
+    if not state.get("auto_apply"):
+        return {"application_status": "completed"}
+
+    profile = state.get("profile")
+    if not profile:
+        return {"logs": state.get("logs", []) + ["Auto-apply skipped: No profile found."]}
+
+    submitted_urls = state.get("applications_submitted", [])
+    found_jobs = state.get("found_jobs", [])
+    resume_bytes = state.get("resume_bytes")
+    resume_filename = state.get("resume_filename", "resume.pdf")
+
+    new_logs = []
+    applied_successfully = []
+
+    # Only apply to jobs in 'submitted_urls' that aren't already applied in DB?
+    # (Actually, endpoints.py handles DB sync from state['applications_submitted'])
+    # We should only apply to 'newly' submitted ones.
+    
+    for job_url in submitted_urls:
+        job = next((j for j in found_jobs if j["url"] == job_url), None)
+        if not job: continue
+        
+        print(f"Auto-Applying to {job['title']}...")
+        result = await BrowserApplyService.apply_to_job(
+            job_url=job["url"],
+            profile=profile,
+            resume_bytes=resume_bytes,
+            resume_filename=resume_filename,
+            cover_letter=job.get("cover_letter")
+        )
+        
+        if result["status"] == "success":
+            new_logs.append(f"Successfully auto-filled {job['title']} at {job['company']}")
+            applied_successfully.append(job_url)
+        else:
+            new_logs.append(f"Auto-apply failed for {job['title']}: {result['message']}")
 
     return {
-        "applications_submitted": state.get("applications_submitted", []) + [job["url"]],
         "application_status": "completed",
-        "logs": [f"Applied to {job['title']} at {job['company']} (Score: {fit_score:.2f})"]
+        "logs": state.get("logs", []) + new_logs
     }
