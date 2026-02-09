@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getAuthHeaders } from '../api/client';
+import { getAuthHeaders, API_URL } from '../api/client';
 
 interface Application {
     id: number;
@@ -21,7 +21,7 @@ export const AgentDashboard: React.FC = () => {
 
     const fetchApplications = async () => {
         try {
-            const response = await fetch('http://localhost:8000/applications', {
+            const response = await fetch(`${API_URL}/applications`, {
                 headers: getAuthHeaders()
             });
             const data = await response.json();

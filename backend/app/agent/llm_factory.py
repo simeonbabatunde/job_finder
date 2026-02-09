@@ -29,7 +29,7 @@ def get_llm(model_type: str = "openai", model_name: str = None):
             api_key=api_key,
             model_kwargs={"extra_body": {"reasoning": {"enabled": True}}},
             default_headers={
-                "HTTP-Referer": "http://localhost:5173",
+                "HTTP-Referer": os.getenv("FRONTEND_URL", "http://localhost:5173"),
                 "X-Title": "J Hunter Agent"
             }
         )

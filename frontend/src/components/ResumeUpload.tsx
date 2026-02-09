@@ -88,7 +88,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
   return (
     <div className="w-full">
       <div
-        className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all duration-200 ease-in-out ${dragActive
+        className={`relative border-2 border-dashed rounded-xl p-5 text-center transition-all duration-200 ease-in-out ${dragActive
           ? 'border-gray-500 bg-gray-50'
           : isError
             ? 'border-red-500 bg-red-50 animate-pulse'
@@ -155,7 +155,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
       </div >
 
       {skills.length > 0 && (
-        <div className="mt-6 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="mt-4 animate-in fade-in slide-in-from-top-4 duration-500">
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Extracted Skills</h4>
           <div className="flex flex-wrap gap-2">
             {skills.map((skill, i) => (
@@ -168,13 +168,13 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
       )}
 
       {summary && (
-        <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-700">
+        <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-700">
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Resume Summary</h4>
           <p className="text-sm text-slate-600 italic">"{summary}"</p>
         </div>
       )}
 
-      <div className="mt-4">
+      <div className="mt-3">
         {uploading && (
           <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden">
             <div className="bg-gray-600 h-2.5 rounded-full animate-pulse w-full"></div>

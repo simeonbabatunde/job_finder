@@ -26,6 +26,7 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True)
     hashed_password: Optional[str] = Field(default=None)
     subscription_tier: str = Field(default="free")  # "free" or "pro"
+    role: str = Field(default="user") # "user" or "admin"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Application(SQLModel, table=True):
@@ -54,3 +55,17 @@ class Profile(SQLModel, table=True):
     years_experience: int = Field(default=0)
     expected_salary: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ScraperConfig(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    site_names: List[str] = Field(default=["linkedin", "indeed", "glassdoor"], sa_column=Column(JSON))
+    results_wanted: int = Field(default=20)
+    country_indeed: str = Field(default='USA')
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class PasswordResetToken(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    token: str = Field(unique=True)
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)

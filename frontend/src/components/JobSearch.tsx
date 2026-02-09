@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { searchJobs } from '../api/client';
+import { searchJobs, API_URL } from '../api/client';
 
 interface Job {
     id: string;
@@ -52,7 +52,7 @@ export function JobSearch() {
 
         try {
             const email = localStorage.getItem('user_email');
-            const response = await fetch('http://localhost:8000/agent/analyze-single', {
+            const response = await fetch(`${API_URL}/agent/analyze-single`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

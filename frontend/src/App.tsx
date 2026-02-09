@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_URL } from './api/client';
 import { ResumeUpload } from './components/ResumeUpload';
 import type { ResumeUploadHandle } from './components/ResumeUpload';
 import { JobPreferences } from './components/JobPreferences';
@@ -6,12 +7,27 @@ import type { JobPreferencesHandle } from './components/JobPreferences';
 import { AgentControls } from './components/AgentControls';
 import { AgentDashboard } from './components/AgentDashboard';
 import { Login } from './components/Login';
+import { AdminPanel } from './components/AdminPanel';
+import { ResetPassword } from './components/ResetPassword';
+
+import { OAuthCallback } from './components/OAuthCallback';
 
 function App() {
   const [refreshHistory, setRefreshHistory] = useState(0);
-  const [user, setUser] = useState<{ email: string, subscription_tier: string } | null>(null);
+  const [user, setUser] = useState<{ email: string, subscription_tier: string, role: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState<'login' | 'register' | null>(null);
+
+  // Simple manual routing
+  if (window.location.pathname === '/oauth-callback') {
+    return <OAuthCallback />;
+  }
+  if (window.location.pathname === '/admin') {
+    return <AdminPanel />;
+  }
+  if (window.location.pathname === '/reset-password') {
+    return <ResetPassword />;
+  }
 
   const resumeRef = useRef<ResumeUploadHandle>(null);
   const prefsRef = useRef<JobPreferencesHandle>(null);
@@ -20,7 +36,7 @@ function App() {
     const email = localStorage.getItem('user_email');
     if (email) {
       setLoading(true);
-      fetch('http://localhost:8000/user/status', {
+      fetch(`${API_URL}/user/status`, {
         headers: { 'X-User-Email': email }
       })
         .then(res => res.json())
@@ -70,7 +86,7 @@ function App() {
         <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-white/20">
 
           {/* Header & Hero */}
-          <div className="relative px-8 py-8 sm:px-12 bg-slate-900 overflow-hidden">
+          <div className="relative px-8 py-6 sm:px-12 bg-slate-900 overflow-hidden">
             {/* Decorative background effects */}
             <div className="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl"></div>
             <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-violet-500/20 rounded-full blur-3xl"></div>
@@ -108,7 +124,15 @@ function App() {
                       {user.subscription_tier} Tier
                     </div>
                     <span className="text-[10px] text-slate-500 mt-2 font-mono">{user.email}</span>
-                    <button onClick={handleLogout} className="text-[10px] text-indigo-400 font-bold uppercase mt-2 hover:text-indigo-300 tracking-widest">Sign Out</button>
+                    <div className="flex gap-4 items-center">
+                      {user.role === 'admin' && (
+                        <a href="/admin" className="text-[10px] text-emerald-400 font-bold uppercase mt-2 hover:text-emerald-300 tracking-widest transition-colors flex items-center gap-1">
+                          <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
+                          Admin Panel
+                        </a>
+                      )}
+                      <button onClick={handleLogout} className="text-[10px] text-indigo-400 font-bold uppercase mt-2 hover:text-indigo-300 tracking-widest transition-colors">Sign Out</button>
+                    </div>
                   </>
                 ) : (
                   <button
@@ -122,10 +146,10 @@ function App() {
             </div>
           </div>
 
-          <div className="px-8 py-10 sm:px-12 space-y-12">
+          <div className="px-8 py-6 sm:px-12 space-y-8">
             <section className="relative">
-              <div className="flex items-center mb-6">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-4 border border-slate-200 shadow-sm">1</div>
+              <div className="flex items-center mb-4">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">1</div>
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Your Resume</h2>
                   <p className="text-sm text-slate-500">Upload your latest experience to guide the AI.</p>
@@ -135,8 +159,8 @@ function App() {
             </section>
 
             <section className="relative">
-              <div className="flex items-center mb-6">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-4 border border-slate-200 shadow-sm">2</div>
+              <div className="flex items-center mb-4">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">2</div>
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Job Preferences</h2>
                   <p className="text-sm text-slate-500">Define what roles and locations interest you.</p>
@@ -146,10 +170,10 @@ function App() {
             </section>
 
             <section className="relative">
-              <div className="flex items-center mb-6">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold mr-4 border border-indigo-100 shadow-sm">3</div>
+              <div className="flex items-center mb-4">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">3</div>
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight text-indigo-600">Search & Apply Automatically</h2>
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Search & Apply Automatically</h2>
                   <p className="text-sm text-slate-500">Let the agent handle the difficult part of job hunting for you.</p>
                 </div>
               </div>
@@ -165,9 +189,9 @@ function App() {
               />
             </section>
 
-            <section className="relative bg-slate-50/50 rounded-3xl p-8 border border-slate-100">
-              <div className="flex items-center mb-6">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-4 border border-slate-200 shadow-sm">4</div>
+            <section className="relative bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
+              <div className="flex items-center mb-4">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">4</div>
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 tracking-tight">History & Status</h2>
                   <p className="text-sm text-slate-500">Track and view your generated applications.</p>

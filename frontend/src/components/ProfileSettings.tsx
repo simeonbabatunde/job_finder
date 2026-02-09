@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAuthHeaders } from '../api/client';
+import { getAuthHeaders, API_URL } from '../api/client';
 
 interface ProfileData {
     first_name: string;
@@ -33,7 +33,7 @@ export const ProfileSettings: React.FC = () => {
     useEffect(() => {
         const fetchProfile = async () => {
             try {
-                const response = await fetch('http://localhost:8000/profile', {
+                const response = await fetch(`${API_URL}/profile`, {
                     headers: getAuthHeaders()
                 });
                 if (response.ok) {
@@ -58,7 +58,7 @@ export const ProfileSettings: React.FC = () => {
         e.preventDefault();
         setSaving(true);
         try {
-            const response = await fetch('http://localhost:8000/profile', {
+            const response = await fetch(`${API_URL}/profile`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

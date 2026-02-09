@@ -10,7 +10,7 @@ from langchain_core.output_parsers import JsonOutputParser
 
 class BrowserApplyService:
     @staticmethod
-    async def apply_to_job(job_url: str, profile: Profile, resume_bytes: bytes, resume_filename: str, cover_letter: Optional[str] = None) -> Dict[str, Any]:
+    async def apply_to_job(job_url: str, profile: Profile, resume_bytes: bytes, resume_filename: str, cover_letter: Optional[str] = None, submit: bool = False) -> Dict[str, Any]:
         """
         Main entry point for autonomous job application.
         """
@@ -18,8 +18,11 @@ class BrowserApplyService:
             return {"status": "failed", "message": "User profile is required for auto-apply."}
 
         async with async_playwright() as p:
-            # Launch browser
-            browser = await p.chromium.launch(headless=True)
+            # Launch browser with sandbox args for Docker
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox"]
+            )
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             )
@@ -31,7 +34,7 @@ class BrowserApplyService:
                 
                 # Check for "Apply" button or form
                 # For prototype, we'll try a generic form filler
-                result = await BrowserApplyService._fill_form_with_ai(page, profile, resume_bytes, resume_filename, cover_letter)
+                result = await BrowserApplyService._fill_form_with_ai(page, profile, resume_bytes, resume_filename, cover_letter, submit=submit)
                 
                 return result
             except Exception as e:
@@ -41,7 +44,7 @@ class BrowserApplyService:
                 await browser.close()
 
     @staticmethod
-    async def _fill_form_with_ai(page: Page, profile: Profile, resume_bytes: bytes, resume_filename: str, cover_letter: Optional[str] = None) -> Dict[str, Any]:
+    async def _fill_form_with_ai(page: Page, profile: Profile, resume_bytes: bytes, resume_filename: str, cover_letter: Optional[str] = None, submit: bool = False) -> Dict[str, Any]:
         """
         Uses LLM to identify fields and fill the form.
         """
@@ -106,10 +109,16 @@ class BrowserApplyService:
                     await page.fill(mapping[field], value)
                     print(f"Filled {field}")
 
-            # Submit (disabled in prototype for safety unless specifically requested)
-            # await page.click(mapping["submit_button"])
+            # Submit if enabled
+            if submit and "submit_button" in mapping:
+                print(f"Clicking submit button: {mapping['submit_button']}")
+                await page.click(mapping["submit_button"])
+                # Wait for navigation or success message? 
+                # For now just wait a bit
+                await page.wait_for_timeout(3000)
+                return {"status": "success", "message": "Application submitted successfully!"}
             
-            return {"status": "success", "message": "Form filled successfully (Submit pending confirmation)"}
+            return {"status": "success", "message": "Form filled successfully (Submit pending confirmation)" if not submit else "Form filled but submit button not found/clicked"}
             
         except Exception as e:
             return {"status": "failed", "message": f"AI Mapping failed: {str(e)}"}

@@ -1,6 +1,9 @@
 from jobspy import scrape_jobs
 import pandas as pd
 from typing import List, Dict
+from sqlmodel import Session, select
+from app.database import engine
+from app.models import ScraperConfig
 
 class JobSearchService:
     @staticmethod
@@ -15,15 +18,29 @@ class JobSearchService:
             # JobSpy uses 'hours_old'
             hours = posted_within_days * 24
             
-            # Scrape Indeed & LinkedIn & Glassdoor "indeed", "linkedin", "glassdoor"
-            # Note: We limit results_wanted to 20 for better coverage
+            # Fetch config from DB
+            site_names = ["indeed", "linkedin", "glassdoor"]
+            results_wanted = 20
+            country_indeed = 'USA'
+            
+            try:
+                with Session(engine) as session:
+                    config = session.exec(select(ScraperConfig).order_by(ScraperConfig.updated_at.desc())).first()
+                    if config:
+                        site_names = config.site_names
+                        results_wanted = config.results_wanted
+                        country_indeed = config.country_indeed
+            except Exception as e:
+                print(f"Error fetching scraper config: {e}")
+
+            # Scrape Indeed & LinkedIn & Glassdoor
             jobs: pd.DataFrame = scrape_jobs(
-                site_name=["indeed", "linkedin", "glassdoor"], 
+                site_name=site_names, 
                 search_term=query,
                 location=location,
-                results_wanted=20, 
+                results_wanted=results_wanted, 
                 hours_old=hours, 
-                country_indeed='USA',
+                country_indeed=country_indeed,
                 linkedin_fetch_description=True # Need description for analysis
             )
             

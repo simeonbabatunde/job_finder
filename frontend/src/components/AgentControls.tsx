@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getAuthHeaders } from '../api/client';
+import { getAuthHeaders, API_URL } from '../api/client';
 import type { ResumeUploadHandle } from './ResumeUpload';
 import type { JobPreferencesHandle } from './JobPreferences';
 
@@ -53,7 +53,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             }
 
             // 3. Run the Agent
-            const response = await fetch(`http://localhost:8000/agent/run?auto_apply=${autoApply}`, {
+            const response = await fetch(`${API_URL}/agent/run?auto_apply=${autoApply}`, {
                 method: 'POST',
                 headers: getAuthHeaders()
             });
@@ -61,7 +61,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             if (response.ok) {
                 const prefix = wasFileSelected ? "Resume uploaded! " : "";
                 const msg = autoApply
-                    ? `Successfully auto-filled ${data.applications_count} jobs!`
+                    ? `Successfully auto-submitted ${data.applications_count} jobs!`
                     : `Discovered and analyzed ${data.applications_count} jobs! Check history below.`;
                 setStatus(`${prefix}${msg}`);
                 onComplete();
@@ -77,25 +77,25 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
     };
 
     return (
-        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-8 border border-indigo-100 shadow-sm">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6 lg:gap-8">
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-6 border border-indigo-100 shadow-sm">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 lg:gap-6">
                 {/* Left: Description */}
-                <div className="flex-1 space-y-4">
+                <div className="flex-1 space-y-3">
                     <div>
-                        <h3 className="text-2xl font-black text-slate-900 mb-2">Start Your Job Hunt</h3>
-                        <p className="text-slate-600 leading-relaxed">
-                            Our AI will search across job boards, match roles to your resume, generate custom cover letters, and track everything in your dashboard.
+                        <h3 className="text-2xl font-black text-slate-900 mb-1.5">Start Your Job Hunt</h3>
+                        <p className="text-slate-600 leading-relaxed text-sm">
+                            Our AI Agent will search across job boards, match roles to your resume, generate custom cover letters, and apply to jobs if you enable auto submit.
                         </p>
                     </div>
 
-                    <label className="relative inline-flex items-center cursor-pointer bg-white/60 px-4 py-2.5 rounded-xl border border-indigo-100/80 hover:bg-white/80 transition-all">
+                    <label className="relative inline-flex items-center cursor-pointer bg-white/60 px-3.5 py-2 rounded-xl border border-indigo-100/80 hover:bg-white/80 transition-all">
                         <input
                             type="checkbox"
                             checked={autoApply}
                             onChange={(e) => setAutoApply(e.target.checked)}
                             className="sr-only peer"
                         />
-                        <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[10px] after:left-[18px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[9px] after:left-[16px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                         <span className="ml-3 text-sm font-bold text-slate-700">Auto-submit applications (BETA)</span>
                     </label>
                 </div>
@@ -105,7 +105,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                     <button
                         onClick={startAgent}
                         disabled={isRunning}
-                        className={`w-full lg:w-auto px-12 py-5 rounded-2xl font-black text-white shadow-xl transition-all transform hover:scale-105 active:scale-95 text-lg
+                        className={`w-full lg:w-auto px-10 py-4 rounded-2xl font-black text-white shadow-xl transition-all transform hover:scale-105 active:scale-95 text-base
                             ${isRunning
                                 ? 'bg-slate-400 cursor-not-allowed opacity-80'
                                 : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 shadow-indigo-200'}`}
@@ -123,7 +123,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
-                                Find Jobs Now
+                                Start Hunting
                             </span>
                         )}
                     </button>
@@ -131,7 +131,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             </div>
 
             {status && (
-                <div className={`mt-6 p-4 rounded-xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${status.startsWith('Error') || status.includes('sign in') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                <div className={`mt-4 p-3.5 rounded-xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${status.startsWith('Error') || status.includes('sign in') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
                     {status.startsWith('Error') || status.includes('sign in') ? '⚠️' : '✅'}
                     {status}
                 </div>

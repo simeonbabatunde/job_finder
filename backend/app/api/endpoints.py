@@ -1,18 +1,34 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Header
+from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
-from app.models import Resume, JobPreference, User, Application, Profile
+from app.models import Resume, JobPreference, User, Application, Profile, ScraperConfig, PasswordResetToken
 from app.database import get_session
-from typing import List
+from typing import List, Optional
 from app.services.resume_parser import ResumeService
 from app.services.job_search import JobSearchService
+from app.services.email import send_reset_email
 from app.agent.graph import agent_graph
-from datetime import datetime
+from datetime import datetime, timedelta
+from uuid import uuid4
 import json
 from app.agent.llm_factory import get_llm
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 import bcrypt
 import hashlib
+import requests
+from urllib.parse import urlencode, quote
+from app.oauth_config import (
+    get_google_oauth_url, 
+    get_linkedin_oauth_url,
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_REDIRECT_URI,
+    LINKEDIN_CLIENT_ID,
+    LINKEDIN_CLIENT_SECRET,
+    LINKEDIN_REDIRECT_URI,
+    FRONTEND_URL
+)
 
 router = APIRouter()
 
@@ -96,32 +112,142 @@ def register_user(payload: dict, session: Session = Depends(get_session)):
     
     return {"user": user, "message": "User registered successfully"}
 
-@router.post("/auth/social")
-def social_login(payload: dict, session: Session = Depends(get_session)):
-    # Placeholder for social login
-    email = payload.get("email")
-    provider = payload.get("provider") # google, github, linkedin
+@router.get("/auth/google/login")
+def google_login():
+    return RedirectResponse(get_google_oauth_url())
+
+@router.get("/auth/google/callback")
+def google_callback(code: str, session: Session = Depends(get_session)):
+    # 1. Exchange code for token using requests
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+    }
     
+    try:
+        token_response = requests.post(token_url, data=data)
+        token_data = token_response.json()
+        
+        if "error" in token_data:
+            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={quote(token_data.get('error_description', 'Google Auth Error'))}")
+        
+        access_token = token_data.get("access_token")
+        
+        # 2. Get user info
+        user_info_response = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        user_info = user_info_response.json()
+        email = user_info.get("email")
+        first_name = user_info.get("given_name", "")
+        last_name = user_info.get("family_name", "")
+
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=No email received from Google")
+
+        # 3. Handle user in DB
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user:
+            user = User(email=email, subscription_tier="free")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            
+            profile = Profile(
+                user_id=user.id,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                phone=""
+            )
+            session.add(profile)
+            session.commit()
+        
+        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?email={email}")
+    except Exception as e:
+        print(f"Error in Google callback: {e}")
+        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=Internal server error during Google login")
+
+@router.get("/auth/linkedin/login")
+def linkedin_login():
+    return RedirectResponse(get_linkedin_oauth_url())
+
+@router.get("/auth/linkedin/callback")
+def linkedin_callback(code: str, session: Session = Depends(get_session)):
+    try:
+        # 1. Exchange code for token
+        token_url = "https://www.linkedin.com/oauth/v2/accessToken"
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": LINKEDIN_REDIRECT_URI,
+            "client_id": LINKEDIN_CLIENT_ID,
+            "client_secret": LINKEDIN_CLIENT_SECRET,
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        
+        token_response = requests.post(token_url, data=data, headers=headers)
+        token_data = token_response.json()
+        
+        if "error" in token_data:
+            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={quote(token_data.get('error_description', 'LinkedIn Auth Error'))}")
+        
+        access_token = token_data.get("access_token")
+        
+        # 2. Get user data (OpenID Connect compliant endpoint)
+        user_info_url = "https://api.linkedin.com/v2/userinfo"
+        user_response = requests.get(
+            user_info_url,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        user_data = user_response.json()
+        
+        email = user_data.get("email")
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=No email received from LinkedIn")
+
+        first_name = user_data.get("given_name", "")
+        last_name = user_data.get("family_name", "")
+
+        # 3. Handle user in DB
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user:
+            user = User(email=email, subscription_tier="free")
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            
+            profile = Profile(
+                user_id=user.id,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                phone=""
+            )
+            session.add(profile)
+            session.commit()
+        
+        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?email={email}")
+    except Exception as e:
+        print(f"Error in LinkedIn callback: {e}")
+        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=Internal server error during LinkedIn login")
+
+@router.post("/auth/social")
+def legacy_social_login(payload: dict, session: Session = Depends(get_session)):
+    # Kept for compatibility but we now use redirect flow
+    email = payload.get("email")
     user = session.exec(select(User).where(User.email == email)).first()
     if not user:
-        # Auto-register for social? Let's say yes for prototype simplicity
         user = User(email=email, subscription_tier="free")
         session.add(user)
         session.commit()
         session.refresh(user)
-        
-        # Create minimal profile
-        profile = Profile(
-            user_id=user.id,
-            first_name=payload.get("first_name", "Social"),
-            last_name=payload.get("last_name", "User"),
-            email=email,
-            phone=""
-        )
-        session.add(profile)
-        session.commit()
-    
-    return {"user": user, "provider": provider}
+    return {"user": user}
 
 @router.post("/upload-resume")
 async def upload_resume(file: UploadFile = File(...), session: Session = Depends(get_session)):
@@ -204,26 +330,8 @@ async def run_agent(auto_apply: bool = False, user: User = Depends(get_current_u
     if result.get("extracted_skills") or result.get("resume_summary"):
         resume.skills = result.get("extracted_skills", [])
         resume.summary = result.get("resume_summary")
-        session.add(resume)
-
-    # In a real app, the agent nodes would update the DB. 
-    # For this prototype, we'll sync the 'applied' jobs here.
-    for job_url in result.get("applications_submitted", []):
-        # Find the job details from found_jobs
-        job_details = next((j for j in result["found_jobs"] if j["url"] == job_url), None)
-        if job_details:
-            app = Application(
-                user_id=user.id,
-                job_title=job_details["title"],
-                company=job_details["company"],
-                job_url=job_url,
-                fit_score=job_details.get("fit_score", 0.0),
-                explanation=job_details.get("explanation"),
-                cover_letter=job_details.get("cover_letter"),
-                status="Applied"
-            )
-            session.add(app)
-    
+    # Resume is updated if configured
+    session.add(resume)
     session.commit()
 
     return {
@@ -282,4 +390,89 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
             "summary": resume.summary
         } if resume else None
     }
+
+@router.get("/admin/config")
+def get_admin_config(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Enforce Admin Access
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    
+    config = session.exec(select(ScraperConfig).order_by(ScraperConfig.updated_at.desc())).first()
+    if not config:
+        return ScraperConfig() # Return defaults
+    return config
+
+@router.put("/admin/config")
+def update_admin_config(new_config: ScraperConfig, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    # Enforce Admin Access
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+
+    config = session.exec(select(ScraperConfig).order_by(ScraperConfig.updated_at.desc())).first()
+    if config:
+        config.site_names = new_config.site_names
+        config.results_wanted = new_config.results_wanted
+        config.country_indeed = new_config.country_indeed
+        config.updated_at = datetime.utcnow()
+        session.add(config)
+    else:
+        session.add(new_config)
+    session.commit()
+    return {"message": "Configuration updated"}
+
+@router.post("/auth/forgot-password")
+def forgot_password(payload: dict, session: Session = Depends(get_session)):
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+        
+    user = session.exec(select(User).where(User.email == email)).first()
+    if not user:
+        # Mock behavior: pretend we sent it
+        return {"message": "If this email is registered, a reset link has been sent."}
+    
+    token_str = str(uuid4())
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token=token_str,
+        expires_at=datetime.utcnow() + timedelta(hours=1)
+    )
+    session.add(reset_token)
+    session.commit()
+    
+    # MOCK EMAIL -> REAL EMAIL
+    reset_link = f"{FRONTEND_URL}/reset-password?token={token_str}"
+    
+    # Send email (prints to log if creds are missing)
+    send_reset_email(email, reset_link)
+    
+    return {"message": "Password reset link sent to your email."}
+
+@router.post("/auth/reset-password")
+def reset_password(payload: dict, session: Session = Depends(get_session)):
+    token = payload.get("token")
+    new_password = payload.get("password")
+    
+    if not token or not new_password:
+        raise HTTPException(status_code=400, detail="Token and password required")
+        
+    reset_record = session.exec(select(PasswordResetToken).where(PasswordResetToken.token == token)).first()
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Invalid token")
+        
+    if reset_record.expires_at < datetime.utcnow():
+        session.delete(reset_record)
+        session.commit()
+        raise HTTPException(status_code=400, detail="Token expired")
+        
+    user = session.get(User, reset_record.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.hashed_password = hash_password(new_password)
+    session.add(user)
+    session.delete(reset_record) # Consume token
+    session.commit()
+    
+    return {"message": "Password updated successfully"}
 

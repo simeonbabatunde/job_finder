@@ -88,8 +88,8 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
 
     return (
         <div className="w-full">
-            <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Target Role</label>
                         <input
@@ -97,7 +97,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             name="role"
                             value={formData.role}
                             onChange={handleChange}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
                             placeholder="e.g. Software Engineer, Data Scientist"
                         />
@@ -108,7 +108,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Experience Level</label>
                         <div
                             onClick={() => setOpenDropdown(openDropdown === 'experience_level' ? null : 'experience_level')}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
                         >
                             <span className="text-sm text-gray-700">
                                 {formData.experience_level.length > 0
@@ -143,7 +143,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             name="location"
                             value={formData.location}
                             onChange={handleChange}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
                             placeholder="e.g. Remote, NYC, San Francisco"
                         />
@@ -151,12 +151,12 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="relative">
                         <label className="block text-sm font-semibold text-gray-700 mb-1">Job Type</label>
                         <div
                             onClick={() => setOpenDropdown(openDropdown === 'job_type' ? null : 'job_type')}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
                         >
                             <span className="text-sm text-gray-700">
                                 {formData.job_type.length > 0
@@ -193,7 +193,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                             max="100"
                             value={formData.min_match_score}
                             onChange={handleChange}
-                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
+                            className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-shadow"
                             required
                         />
                     </div>
@@ -205,7 +205,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                                 name="posted_within_days"
                                 value={formData.posted_within_days}
                                 onChange={handleChange}
-                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
+                                className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 appearance-none transition-shadow"
                             >
                                 <option value={1}>24 Hrs</option>
                                 <option value={2}>48 Hrs</option>
@@ -230,7 +230,7 @@ export const JobPreferences = forwardRef<JobPreferencesHandle>((_props, ref) => 
                 )}
 
                 {message && (
-                    <div className={`mt-4 p-3 rounded-lg text-sm font-medium text-center ${message.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+                    <div className={`mt-3 p-3 rounded-lg text-sm font-medium text-center ${message.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
                         }`}>
                         {message}
                     </div>

@@ -8,6 +8,7 @@ from langchain_core.output_parsers import JsonOutputParser
 
 from app.services.job_search import JobSearchService
 from app.services.browser_apply import BrowserApplyService
+from app.services.persistence import PersistenceService
 
 async def parse_resume(state: AgentState):
     """
@@ -89,6 +90,11 @@ async def search_jobs(state: AgentState):
     # Call Real Service
     jobs = JobSearchService.search_jobs(search_query, search_loc, posted_within_days=days)
     
+    # Persist jobs incrementally
+    user_id = state.get("user_id")
+    for job in jobs:
+        PersistenceService.save_job(user_id, job, "Identified")
+    
     return {
         "found_jobs": jobs, 
         "logs": state.get("logs", []) + [f"Found {len(jobs)} jobs for '{search_query}' in '{search_loc}'"]
@@ -157,6 +163,10 @@ async def analyze_fit(state: AgentState):
             # Update the job in the list
             jobs[i]["fit_score"] = score
             jobs[i]["cover_letter"] = cover_letter
+            
+            # Persist analysis results incrementally
+            PersistenceService.save_job(state.get("user_id"), jobs[i], "Analyzed")
+            
             new_logs.append(f"Analyzed {jobs[i]['title']}: {score:.2f}")
 
     except Exception as e:
@@ -235,12 +245,16 @@ async def apply_browser(state: AgentState):
             profile=profile,
             resume_bytes=resume_bytes,
             resume_filename=resume_filename,
-            cover_letter=job.get("cover_letter")
+            cover_letter=job.get("cover_letter"),
+            submit=state.get("auto_apply", False)
         )
         
         if result["status"] == "success":
             new_logs.append(f"Successfully auto-filled {job['title']} at {job['company']}")
             applied_successfully.append(job_url)
+            
+            # Persist successful application
+            PersistenceService.save_job(state.get("user_id"), job, "Submitted")
         else:
             new_logs.append(f"Auto-apply failed for {job['title']}: {result['message']}")
 
