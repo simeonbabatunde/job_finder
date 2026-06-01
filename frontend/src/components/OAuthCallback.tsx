@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react';
+import { saveOAuthSession } from '../api/client';
+import { Button, PageShell, Panel } from './ui';
 
 export const OAuthCallback = () => {
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -7,9 +10,9 @@ export const OAuthCallback = () => {
     useEffect(() => {
         const handleCallback = async () => {
             try {
-                // Get the token/user data from URL params
                 const urlParams = new URLSearchParams(window.location.search);
                 const email = urlParams.get('email');
+                const token = urlParams.get('token');
                 const error = urlParams.get('error');
 
                 if (error) {
@@ -18,76 +21,57 @@ export const OAuthCallback = () => {
                     return;
                 }
 
-                if (email) {
-                    // Store user email in localStorage
-                    localStorage.setItem('user_email', email);
+                if (token) {
+                    saveOAuthSession(token, email);
                     setStatus('success');
-                    setMessage('Login successful! Redirecting...');
+                    setMessage('Login successful. Redirecting...');
 
-                    // Redirect to main app after a short delay
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         window.location.href = '/';
                     }, 1500);
                 } else {
                     setStatus('error');
-                    setMessage('Authentication failed: No user data received');
+                    setMessage('Authentication failed: no access token received.');
                 }
-            } catch (err) {
+            } catch {
                 setStatus('error');
-                setMessage('An error occurred during authentication');
+                setMessage('An error occurred during authentication.');
             }
         };
 
-        handleCallback();
+        void handleCallback();
     }, []);
 
+    const icon = {
+        loading: <LoaderCircle className="animate-spin text-[var(--accent)]" size={30} />,
+        success: <CheckCircle2 className="text-[var(--positive)]" size={30} />,
+        error: <AlertCircle className="text-[var(--danger)]" size={30} />,
+    }[status];
+
+    const title = {
+        loading: 'Authenticating',
+        success: 'Signed in',
+        error: 'Authentication failed',
+    }[status];
+
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-                <div className="mb-6">
-                    {status === 'loading' && (
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
-                            <svg className="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                        </div>
-                    )}
-                    {status === 'success' && (
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                        </div>
-                    )}
+        <div className="min-h-screen bg-[var(--page)] text-[var(--ink)]">
+            <PageShell className="flex min-h-screen max-w-lg items-center">
+                <Panel className="w-full p-8 text-center">
+                    <span className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-[var(--soft)]">
+                        {icon}
+                    </span>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Job Finder</p>
+                    <h1 className="mt-2 text-2xl font-semibold text-[var(--ink)]">{title}</h1>
+                    <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{message}</p>
+
                     {status === 'error' && (
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-                            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </div>
+                        <Button className="mt-6" onClick={() => { window.location.href = '/'; }}>
+                            Return to dashboard
+                        </Button>
                     )}
-                </div>
-
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                    {status === 'loading' && 'Authenticating...'}
-                    {status === 'success' && 'Success!'}
-                    {status === 'error' && 'Authentication Failed'}
-                </h2>
-
-                <p className="text-slate-600 text-sm">
-                    {message}
-                </p>
-
-                {status === 'error' && (
-                    <button
-                        onClick={() => window.location.href = '/'}
-                        className="mt-6 px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
-                    >
-                        Return to Login
-                    </button>
-                )}
-            </div>
+                </Panel>
+            </PageShell>
         </div>
     );
 };

@@ -1,5 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArchiveX, ArrowDownUp, Box, ExternalLink, RefreshCw, Trash2 } from 'lucide-react';
 import { getAuthHeaders, API_URL } from '../api/client';
+import { ApplicationPackageModal } from './ApplicationPackageModal';
+import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
 interface Application {
     id: number;
@@ -13,173 +16,293 @@ interface Application {
     cover_letter?: string;
 }
 
-export const AgentDashboard: React.FC = () => {
+interface AgentDashboardProps {
+    limit?: number;
+    fullPage?: boolean;
+    compact?: boolean;
+}
+
+function statusTone(status: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
+    if (status === 'Submitted' || status === 'Applied' || status === 'Offer') return 'success';
+    if (status === 'Analyzed' || status === 'Interview' || status === 'Phone Screen') return 'accent';
+    if (status === 'Analysis Failed' || status === 'Rejected') return 'danger';
+    if (status === 'Take-Home') return 'warning';
+    return 'neutral';
+}
+
+function scoreTone(score: number): 'neutral' | 'accent' | 'success' | 'warning' {
+    if (score > 0.8) return 'success';
+    if (score > 0.6) return 'accent';
+    if (score > 0.4) return 'warning';
+    return 'neutral';
+}
+
+export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage = false, compact = false }) => {
     const [applications, setApplications] = useState<Application[]>([]);
     const [loading, setLoading] = useState(true);
-    const [viewAll, setViewAll] = useState(false);
-    const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [clearing, setClearing] = useState(false);
+    const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+    const [selectedApp, setSelectedApp] = useState<Application | null>(null);
 
-    const fetchApplications = async () => {
+    const fetchApplications = useCallback(async () => {
+        setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/applications`, {
+            const params = new URLSearchParams({
+                sort: fullPage ? sortBy : 'date',
+                direction: fullPage ? sortDir : 'desc',
+            });
+            if (limit) {
+                params.set('limit', String(limit));
+            }
+
+            const response = await fetch(`${API_URL}/applications?${params.toString()}`, {
                 headers: getAuthHeaders()
             });
+            if (!response.ok) {
+                throw new Error('Failed to fetch applications');
+            }
             const data = await response.json();
-            // Sort by date desc
-            const sorted = data.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-            setApplications(sorted);
+            setApplications(data);
         } catch (error) {
             console.error('Error fetching applications:', error);
         } finally {
             setLoading(false);
         }
-    };
+    }, [fullPage, limit, sortBy, sortDir]);
 
     useEffect(() => {
-        fetchApplications();
-    }, []);
+        void fetchApplications();
+    }, [fetchApplications]);
 
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        alert('Cover letter copied to clipboard!');
+    const clearApplications = async () => {
+        if (!confirm('Clear all application history? This cannot be undone.')) return;
+        setClearing(true);
+        try {
+            await fetch(`${API_URL}/applications`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+            setApplications([]);
+            setSelectedApp(null);
+        } catch (error) {
+            console.error('Error clearing applications:', error);
+        } finally {
+            setClearing(false);
+        }
     };
 
-    const displayedApps = viewAll ? applications : applications.slice(0, 5);
+    const toggleSort = (field: 'date' | 'score') => {
+        if (sortBy === field) {
+            setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(field);
+            setSortDir('desc');
+        }
+    };
+
+    const sortedApplications = useMemo(() => {
+        return [...applications].sort((a, b) => {
+            if (sortBy === 'score') {
+                return sortDir === 'asc' ? a.fit_score - b.fit_score : b.fit_score - a.fit_score;
+            }
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return sortDir === 'asc' ? dateA - dateB : dateB - dateA;
+        });
+    }, [applications, sortBy, sortDir]);
+
+    const displayedApps = limit ? sortedApplications.slice(0, limit) : sortedApplications;
+    const useCompactList = compact && !fullPage;
+
+    const handleStatusChange = (appId: number, status: string) => {
+        setApplications(prev =>
+            prev.map(a => a.id === appId ? { ...a, status } : a)
+        );
+    };
 
     return (
-        <div className="mt-6">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-slate-800 flex items-center">
-                    <span className="mr-2">📋</span> Application History
-                </h3>
-                {applications.length > 5 && (
-                    <button
-                        onClick={() => setViewAll(!viewAll)}
-                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
-                    >
-                        {viewAll ? 'Show Less' : `View All (${applications.length})`}
-                    </button>
-                )}
+        <div className="mt-5 min-w-0">
+            {selectedApp && (
+                <ApplicationPackageModal
+                    app={selectedApp}
+                    onClose={() => setSelectedApp(null)}
+                    onStatusChange={handleStatusChange}
+                />
+            )}
+
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h3 className="text-lg font-semibold text-[var(--ink)]">
+                        {fullPage ? 'All applications' : 'Recent matches'}
+                    </h3>
+                    <p className="text-sm text-[var(--muted)]">
+                        {fullPage
+                            ? `${applications.length} tracked role${applications.length === 1 ? '' : 's'}`
+                            : `${displayedApps.length} recent role${displayedApps.length === 1 ? '' : 's'}`}
+                    </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {!fullPage && applications.length > 0 && (
+                        <Button variant="secondary" size="sm" onClick={() => { window.location.href = '/applications'; }}>
+                            View all
+                        </Button>
+                    )}
+                    <Button variant="secondary" size="sm" onClick={() => void fetchApplications()}>
+                        <RefreshCw size={15} />
+                        Refresh
+                    </Button>
+                    {applications.length > 0 && fullPage && (
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={clearApplications}
+                            disabled={clearing}
+                        >
+                            <Trash2 size={15} />
+                            {clearing ? 'Clearing' : 'Clear'}
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {loading ? (
-                <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <div className="flex justify-center rounded-lg border border-[var(--line)] bg-white py-10">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--accent)]" />
                 </div>
             ) : applications.length === 0 ? (
-                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-8 text-center text-slate-500">
-                    No applications submitted yet. Run the agent to get started!
+                <EmptyState
+                    title="No matched jobs yet."
+                    detail="Run the agent after uploading a resume and setting preferences."
+                />
+            ) : useCompactList ? (
+                <div className="space-y-2">
+                    {displayedApps.map((app) => (
+                        <article key={app.id} className="rounded-lg border border-[var(--line)] bg-white p-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-[var(--ink)]">{app.job_title}</p>
+                                    <p className="mt-1 truncate text-xs text-[var(--muted)]">{app.company}</p>
+                                </div>
+                                <StatusChip tone={scoreTone(app.fit_score)}>
+                                    {(app.fit_score * 100).toFixed(0)}%
+                                </StatusChip>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
+                                <span className="text-xs text-[var(--muted)]">
+                                    {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </span>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => setSelectedApp(app)}
+                                >
+                                    <Box size={15} />
+                                    Package
+                                </Button>
+                                {app.job_url ? (
+                                    <a
+                                        href={app.job_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                                    >
+                                        <ExternalLink size={14} />
+                                        Open
+                                    </a>
+                                ) : (
+                                    <IconButton label="No job URL" variant="ghost" size="sm" disabled>
+                                        <ArchiveX size={15} />
+                                    </IconButton>
+                                )}
+                            </div>
+                        </article>
+                    ))}
                 </div>
             ) : (
-                <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm bg-white">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
+                <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-white">
+                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                        <thead className="bg-[var(--soft)] text-xs uppercase text-[var(--muted)]">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Job</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Score</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                                <th className="px-4 py-3">Role</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSort('score')}
+                                        className="inline-flex items-center gap-1 font-semibold hover:text-[var(--accent)]"
+                                    >
+                                        Fit <ArrowDownUp size={13} />
+                                    </button>
+                                </th>
+                                <th className="px-4 py-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSort('date')}
+                                        className="inline-flex items-center gap-1 font-semibold hover:text-[var(--accent)]"
+                                    >
+                                        Date <ArrowDownUp size={13} />
+                                    </button>
+                                </th>
+                                <th className="px-4 py-3">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-200">
+                        <tbody>
                             {displayedApps.map((app) => (
-                                <React.Fragment key={app.id}>
-                                    <tr className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="text-sm font-medium text-slate-900">{app.job_title}</div>
-                                            <div className="text-sm text-slate-500">{app.company}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                                ${app.status === 'Applied' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                                                {app.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex items-center">
-                                                <div className="text-sm text-slate-900 font-semibold">{(app.fit_score * 100).toFixed(0)}%</div>
-                                                <div className="ml-2 w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden hidden sm:block">
-                                                    <div
-                                                        className={`h-full rounded-full ${app.fit_score > 0.8 ? 'bg-emerald-500' : app.fit_score > 0.6 ? 'bg-indigo-500' : 'bg-amber-500'}`}
-                                                        style={{ width: `${app.fit_score * 100}%` }}
-                                                    ></div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <div className="flex space-x-3">
+                                <tr key={app.id} className="border-t border-[var(--line)] hover:bg-[var(--page)]">
+                                    <td className="px-4 py-4 align-middle">
+                                        <div className="max-w-[320px]">
+                                            <p className="truncate font-semibold text-[var(--ink)]">{app.job_title}</p>
+                                            <p className="mt-1 truncate text-sm text-[var(--muted)]">{app.company}</p>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-4 align-middle">
+                                        <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
+                                    </td>
+                                    <td className="px-4 py-4 align-middle">
+                                        <StatusChip tone={scoreTone(app.fit_score)}>
+                                            {(app.fit_score * 100).toFixed(0)}%
+                                        </StatusChip>
+                                    </td>
+                                    <td className="px-4 py-4 align-middle text-[var(--muted)]">
+                                        {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </td>
+                                    <td className="px-4 py-4 align-middle">
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => setSelectedApp(app)}
+                                            >
+                                                <Box size={15} />
+                                                Package
+                                            </Button>
+                                            {app.job_url ? (
                                                 <a
                                                     href={app.job_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-indigo-600 hover:text-indigo-900"
+                                                    className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
                                                 >
-                                                    Apply
+                                                    <ExternalLink size={14} />
+                                                    Open
                                                 </a>
-                                                {app.cover_letter && (
-                                                    <button
-                                                        onClick={() => setExpandedId(expandedId === app.id ? null : app.id)}
-                                                        className="text-slate-600 hover:text-slate-900"
-                                                    >
-                                                        {expandedId === app.id ? 'Hide Letter' : 'View Letter'}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {expandedId === app.id && app.cover_letter && (
-                                        <tr>
-                                            <td colSpan={4} className="px-6 py-4 bg-slate-50">
-                                                <div className="space-y-4">
-                                                    {app.explanation && (
-                                                        <div className="bg-indigo-50/50 border border-indigo-100 rounded-lg p-6 shadow-sm">
-                                                            <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-3 flex items-center">
-                                                                <span className="mr-2">🧠</span> AI Fit Analysis
-                                                            </h4>
-                                                            <p className="text-sm text-slate-700 leading-relaxed font-medium">
-                                                                {app.explanation}
-                                                            </p>
-                                                        </div>
-                                                    )}
-
-                                                    {app.cover_letter && (
-                                                        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm overflow-hidden relative">
-                                                            <div className="flex justify-between items-center mb-4">
-                                                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                                                                    <span className="mr-2">✍️</span> Tailored Cover Letter
-                                                                </h4>
-                                                                <button
-                                                                    onClick={() => copyToClipboard(app.cover_letter!)}
-                                                                    className="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center"
-                                                                >
-                                                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                                                    </svg>
-                                                                    Copy
-                                                                </button>
-                                                            </div>
-                                                            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed font-serif">
-                                                                {app.cover_letter}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
+                                            ) : (
+                                                <IconButton label="No job URL" variant="ghost" size="sm" disabled>
+                                                    <ArchiveX size={15} />
+                                                </IconButton>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
             )}
-
-            <button
-                onClick={fetchApplications}
-                className="mt-4 text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors"
-            >
-                Refresh List
-            </button>
         </div>
     );
 };

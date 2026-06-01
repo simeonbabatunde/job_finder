@@ -1,5 +1,9 @@
-import { useState, forwardRef, useImperativeHandle } from 'react';
+import { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
+import { CheckCircle2, FileText, Trash2, UploadCloud } from 'lucide-react';
+import type { ResumeStatus } from '../api/client';
 import { uploadResume } from '../api/client';
+import { cn } from '../lib/cn';
+import { Button, StatusChip } from './ui';
 
 export interface ResumeUploadHandle {
   hasFile: boolean;
@@ -9,15 +13,27 @@ export interface ResumeUploadHandle {
   setResumeData: (data: { filename: string, skills?: string[], summary?: string }) => void;
 }
 
-export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
+export interface ResumeUploadProps {
+  initialData?: ResumeStatus | null;
+}
+
+export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((props, ref) => {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [isError, setIsError] = useState(false);
-  const [existingFile, setExistingFile] = useState<string | null>(null);
-  const [skills, setSkills] = useState<string[]>([]);
-  const [summary, setSummary] = useState<string>('');
+  const [existingFile, setExistingFile] = useState<string | null>(props.initialData?.filename || null);
+  const [skills, setSkills] = useState<string[]>(props.initialData?.skills || []);
+  const [summary, setSummary] = useState<string>(props.initialData?.summary || '');
+
+  useEffect(() => {
+    if (props.initialData) {
+      setExistingFile(props.initialData.filename);
+      if (props.initialData.skills) setSkills(props.initialData.skills);
+      if (props.initialData.summary) setSummary(props.initialData.summary);
+    }
+  }, [props.initialData]);
 
   useImperativeHandle(ref, () => ({
     hasFile: !!file || !!existingFile,
@@ -36,13 +52,14 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
       try {
         await uploadResume(file);
         if (!silent) {
-          setMessage('Resume uploaded successfully!');
+          setMessage('Resume uploaded successfully.');
         }
         setExistingFile(file.name);
         setFile(null);
         return true;
       } catch (error) {
         setMessage('Error uploading resume.');
+        setIsError(true);
         console.error(error);
         return false;
       } finally {
@@ -62,9 +79,9 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === 'dragenter' || e.type === 'dragover') {
       setDragActive(true);
-    } else if (e.type === "dragleave") {
+    } else if (e.type === 'dragleave') {
       setDragActive(false);
     }
   };
@@ -85,15 +102,23 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
     }
   };
 
+  const clearCurrentResume = () => {
+    setExistingFile(null);
+    setSkills([]);
+    setSummary('');
+    setMessage('');
+    setIsError(false);
+  };
+
   return (
     <div className="w-full">
       <div
-        className={`relative border-2 border-dashed rounded-xl p-5 text-center transition-all duration-200 ease-in-out ${dragActive
-          ? 'border-gray-500 bg-gray-50'
-          : isError
-            ? 'border-red-500 bg-red-50 animate-pulse'
-            : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
-          }`}
+        className={cn(
+          'relative rounded-lg border border-dashed p-4 text-left transition-colors',
+          dragActive && 'border-[var(--accent)] bg-[var(--accent-soft)]',
+          !dragActive && !isError && 'border-[var(--line)] bg-[var(--page)] hover:border-[var(--accent)]',
+          isError && 'border-[var(--danger)] bg-[var(--danger-soft)]',
+        )}
         onDragEnter={(e) => { handleDrag(e); setIsError(false); setMessage(''); }}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
@@ -107,88 +132,90 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle>((_props, ref) => {
         />
 
         {file ? (
-          <div className="flex flex-col items-center">
-            <div className="bg-gray-200 text-gray-700 p-3 rounded-full mb-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-[var(--accent)]">
+                <FileText size={21} />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[var(--ink)]">{file.name}</p>
+                <p className="text-xs text-[var(--muted)]">{(file.size / 1024).toFixed(0)} KB selected</p>
+              </div>
             </div>
-            <p className="text-sm font-medium text-gray-900 mb-1">{file.name}</p>
-            <p className="text-xs text-gray-500 mb-4">{(file.size / 1024).toFixed(0)} KB</p>
-            <button
-              onClick={() => setFile(null)}
-              className="text-xs text-red-500 hover:text-red-700 font-medium"
-            >
-              Remove file
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
+              <Trash2 size={15} />
+              Remove
+            </Button>
           </div>
         ) : existingFile ? (
-          <div className="flex flex-col items-center">
-            <div className="bg-green-100 text-green-700 p-3 rounded-full mb-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--positive-soft)] text-[var(--positive)]">
+                <CheckCircle2 size={21} />
+              </span>
+              <div className="min-w-0">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-[var(--ink)]">{existingFile}</p>
+                  <StatusChip tone="success">Ready</StatusChip>
+                </div>
+                <p className="text-xs text-[var(--muted)]">Stored resume is available for the next run.</p>
+              </div>
             </div>
-            <p className="text-sm font-medium text-gray-900 mb-1">Stored: {existingFile}</p>
-            <p className="text-xs text-gray-500 mb-4">Ready for use</p>
-            <button
-              onClick={() => { setExistingFile(null); setSkills([]); setSummary(''); }}
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-            >
-              Upload Different File
-            </button>
+            <Button variant="secondary" size="sm" onClick={clearCurrentResume}>
+              Upload different file
+            </Button>
           </div>
         ) : (
-          <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-            <div className="bg-gray-100 text-gray-400 p-3 rounded-full mb-3 group-hover:bg-gray-200 group-hover:text-gray-600 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-gray-700">
-              <span className="text-indigo-600 hover:text-indigo-700">Click to upload</span> or drag and drop
-            </p>
-            <p className="text-xs text-gray-500 mt-1">PDF, DOCX, or TXT (MAX. 5MB)</p>
+          <label htmlFor="file-upload" className="flex cursor-pointer flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-[var(--accent)]">
+                <UploadCloud size={22} />
+              </span>
+              <span>
+                <span className="block text-sm font-semibold text-[var(--ink)]">Upload resume</span>
+                <span className="mt-1 block text-xs text-[var(--muted)]">PDF, DOCX, or TXT. Drag and drop works here too.</span>
+              </span>
+            </span>
+            <span className="inline-flex min-h-10 items-center justify-center rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-white">
+              Choose file
+            </span>
           </label>
-        )
-        }
-      </div >
+        )}
+      </div>
 
       {skills.length > 0 && (
-        <div className="mt-4 animate-in fade-in slide-in-from-top-4 duration-500">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Extracted Skills</h4>
+        <div className="mt-3">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">Extracted skills</h4>
           <div className="flex flex-wrap gap-2">
             {skills.map((skill, i) => (
-              <span key={i} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-semibold border border-indigo-100">
+              <StatusChip key={`${skill}-${i}`} tone="accent">
                 {skill}
-              </span>
+              </StatusChip>
             ))}
           </div>
         </div>
       )}
 
       {summary && (
-        <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-700">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Resume Summary</h4>
-          <p className="text-sm text-slate-600 italic">"{summary}"</p>
+        <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--page)] p-3">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">Resume summary</h4>
+          <p className="text-sm leading-6 text-[var(--ink)]">{summary}</p>
         </div>
       )}
 
       <div className="mt-3">
         {uploading && (
-          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2 overflow-hidden">
-            <div className="bg-gray-600 h-2.5 rounded-full animate-pulse w-full"></div>
+          <div className="h-2 overflow-hidden rounded-full bg-[var(--soft)]">
+            <div className="h-full w-full animate-pulse rounded-full bg-[var(--accent)]" />
           </div>
         )}
 
         {message && (
-          <div className={`mt-2 p-3 rounded-lg text-sm font-medium text-center ${isError ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
-            }`}>
+          <div className={`mt-3 rounded-lg border p-3 text-sm font-semibold ${isError ? 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]' : 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]'}`}>
             {message}
           </div>
         )}
       </div>
-    </div >
+    </div>
   );
 });
-

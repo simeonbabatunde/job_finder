@@ -1,34 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { getAuthHeaders, API_URL } from '../api/client';
+import { useEffect, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
+import { CheckCircle2, LoaderCircle, Save } from 'lucide-react';
+import { getAuthHeaders, API_URL, saveProfile } from '../api/client';
+import type { ProfilePayload } from '../api/client';
+import { Button, Panel, TextField } from './ui';
 
-interface ProfileData {
-    first_name: string;
-    last_name: string;
-    email: string;
-    phone: string;
-    location: string;
-    linkedin_url?: string;
-    portfolio_url?: string;
-    github_url?: string;
-    years_experience: number;
-    expected_salary?: string;
-}
+const EMPTY_PROFILE: ProfilePayload = {
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    location: '',
+    linkedin_url: '',
+    portfolio_url: '',
+    github_url: '',
+    years_experience: 0,
+    expected_salary: '',
+};
 
-export const ProfileSettings: React.FC = () => {
-    const [profile, setProfile] = useState<ProfileData>({
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        location: '',
-        linkedin_url: '',
-        portfolio_url: '',
-        github_url: '',
-        years_experience: 0,
-        expected_salary: ''
-    });
+export const ProfileSettings = () => {
+    const [profile, setProfile] = useState<ProfilePayload>(EMPTY_PROFILE);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [status, setStatus] = useState('');
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -38,7 +32,7 @@ export const ProfileSettings: React.FC = () => {
                 });
                 if (response.ok) {
                     const data = await response.json();
-                    if (data) setProfile(data);
+                    if (data) setProfile({ ...EMPTY_PROFILE, ...data });
                 }
             } catch (error) {
                 console.error('Error fetching profile:', error);
@@ -46,140 +40,91 @@ export const ProfileSettings: React.FC = () => {
                 setLoading(false);
             }
         };
-        fetchProfile();
+        void fetchProfile();
     }, []);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setProfile(prev => ({ ...prev, [name]: name === 'years_experience' ? parseInt(value) || 0 : value }));
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        setStatus('');
         try {
-            const response = await fetch(`${API_URL}/profile`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders()
-                },
-                body: JSON.stringify(profile)
-            });
-            if (response.ok) {
-                alert('Profile saved successfully!');
-            }
+            await saveProfile(profile);
+            setStatus('Profile saved successfully.');
         } catch (error) {
             console.error('Error saving profile:', error);
-            alert('Failed to save profile.');
+            setStatus('Failed to save profile.');
         } finally {
             setSaving(false);
         }
     };
 
-    if (loading) return <div className="p-4">Loading profile...</div>;
+    if (loading) {
+        return (
+            <Panel className="p-6">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--muted)]">
+                    <LoaderCircle className="animate-spin" size={16} />
+                    Loading profile
+                </div>
+            </Panel>
+        );
+    }
 
     return (
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl border border-slate-100 mb-6">
-            <h3 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent mb-6">
-                Personal Profile Details
-            </h3>
-            <p className="text-sm text-slate-500 mb-6">
-                These details are used to automatically fill out job application forms.
-            </p>
+        <Panel className="p-5">
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Profile settings</p>
+                    <h3 className="mt-1 text-xl font-semibold text-[var(--ink)]">Personal profile details</h3>
+                    <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
+                        These details are used to fill applications and prepare materials.
+                    </p>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">First Name</label>
-                    <input
-                        type="text"
-                        name="first_name"
-                        value={profile.first_name}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="John"
-                        required
-                    />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <TextField label="First name" name="first_name" value={profile.first_name} onChange={handleChange} required placeholder="John" />
+                    <TextField label="Last name" name="last_name" value={profile.last_name} onChange={handleChange} required placeholder="Doe" />
+                    <TextField label="Email address" name="email" type="email" value={profile.email} onChange={handleChange} required placeholder="john.doe@example.com" />
+                    <TextField label="Phone number" name="phone" type="tel" value={profile.phone} onChange={handleChange} required placeholder="+1 (555) 000-0000" />
+                    <TextField label="Location" name="location" value={profile.location} onChange={handleChange} required placeholder="City, State" containerClassName="md:col-span-2" />
+                    <TextField label="LinkedIn URL" name="linkedin_url" type="url" value={profile.linkedin_url || ''} onChange={handleChange} placeholder="https://linkedin.com/in/username" />
+                    <TextField label="Portfolio URL" name="portfolio_url" type="url" value={profile.portfolio_url || ''} onChange={handleChange} placeholder="https://portfolio.com" />
+                    <TextField label="GitHub URL" name="github_url" type="url" value={profile.github_url || ''} onChange={handleChange} placeholder="https://github.com/username" />
+                    <TextField label="Expected salary" name="expected_salary" value={profile.expected_salary || ''} onChange={handleChange} placeholder="$120k-$150k / $85/hr" />
+                    <div>
+                        <label className="mb-1 block text-sm font-semibold text-[var(--ink)]">Years of experience</label>
+                        <select
+                            name="years_experience"
+                            value={profile.years_experience}
+                            onChange={handleChange}
+                            className="min-h-10 w-full rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--ink)] outline-none transition-colors focus:border-[var(--accent)]"
+                        >
+                            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 20].map(y => (
+                                <option key={y} value={y}>
+                                    {y === 0 ? 'Less than 1 year' : y === 20 ? '20+ years' : `${y} year${y > 1 ? 's' : ''}`}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Last Name</label>
-                    <input
-                        type="text"
-                        name="last_name"
-                        value={profile.last_name}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="Doe"
-                        required
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
-                    <input
-                        type="email"
-                        name="email"
-                        value={profile.email}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="john.doe@example.com"
-                        required
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phone Number</label>
-                    <input
-                        type="tel"
-                        name="phone"
-                        value={profile.phone}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="+1 (555) 000-0000"
-                        required
-                    />
-                </div>
-                <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Location</label>
-                    <input
-                        type="text"
-                        name="location"
-                        value={profile.location}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="City, State"
-                        required
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">LinkedIn URL</label>
-                    <input
-                        type="url"
-                        name="linkedin_url"
-                        value={profile.linkedin_url}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="https://linkedin.com/in/username"
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Portfolio URL</label>
-                    <input
-                        type="url"
-                        name="portfolio_url"
-                        value={profile.portfolio_url}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-800"
-                        placeholder="https://portfolio.com"
-                    />
-                </div>
-            </div>
 
-            <button
-                type="submit"
-                disabled={saving}
-                className="w-full mt-8 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {saving ? 'Saving...' : 'Save Profile Details'}
-            </button>
-        </form>
+                <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    {status && (
+                        <p className={`flex items-center gap-2 text-sm font-semibold ${status.startsWith('Failed') ? 'text-[var(--danger)]' : 'text-[var(--positive)]'}`}>
+                            <CheckCircle2 size={16} />
+                            {status}
+                        </p>
+                    )}
+                    <Button type="submit" disabled={saving} className="sm:ml-auto">
+                        {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}
+                        {saving ? 'Saving' : 'Save profile details'}
+                    </Button>
+                </div>
+            </form>
+        </Panel>
     );
 };

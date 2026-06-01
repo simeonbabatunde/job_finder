@@ -63,7 +63,7 @@ class BrowserApplyService:
         }""")
 
         # 2. Ask LLM for Mapping
-        llm = get_llm(model_type="gemini")
+        llm = get_llm(model_type="openai")
         parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([

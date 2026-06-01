@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
-import { resetPassword } from '../api/client';
+import { useState } from 'react';
+import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle } from 'lucide-react';
+import { getErrorMessage, resetPassword } from '../api/client';
+import { Button, PageShell, Panel, TextField } from './ui';
 
 export const ResetPassword = () => {
     const [password, setPassword] = useState('');
+    const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState('');
     const [error, setError] = useState('');
 
@@ -18,67 +21,75 @@ export const ResetPassword = () => {
             setError('Invalid or missing token');
             return;
         }
+
+        setSaving(true);
         try {
             await resetPassword(token, password);
-            setMsg('Password reset successfully! You can now log in.');
+            setMsg('Password reset successfully. You can now log in.');
             setPassword('');
-        } catch (err: any) {
-            setError(err.message || 'Failed to reset password');
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to reset password'));
+        } finally {
+            setSaving(false);
         }
     };
 
-    if (!token) return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-            <div className="text-center p-8 bg-white rounded-2xl shadow-xl">
-                <p className="text-red-500 font-bold mb-4">Invalid or missing reset token.</p>
-                <a href="/" className="text-indigo-600 font-bold hover:underline">Return to Home</a>
-            </div>
-        </div>
-    );
-
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-            <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-slate-100">
-                <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-xl mb-4 text-indigo-600">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+        <div className="min-h-screen bg-[var(--page)] text-[var(--ink)]">
+            <PageShell className="flex min-h-screen max-w-xl items-center">
+                <Panel className="w-full p-6 sm:p-8">
+                    <div className="mb-6 flex items-start gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)]">
+                            <KeyRound size={22} />
+                        </span>
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Account access</p>
+                            <h1 className="mt-1 text-2xl font-semibold text-[var(--ink)]">Set new password</h1>
+                            <p className="mt-1 text-sm leading-6 text-[var(--muted)]">Enter a new password to secure your account.</p>
+                        </div>
                     </div>
-                    <h2 className="text-2xl font-black text-slate-900">Set New Password</h2>
-                    <p className="text-slate-500 text-sm mt-2">Enter your new password below to secure your account.</p>
-                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            placeholder="New Password"
-                            required
-                            minLength={6}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium"
-                        />
-                    </div>
-                    <button type="submit" className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95">
-                        Update Password
-                    </button>
-                </form>
+                    {!token ? (
+                        <div className="rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-4 text-sm font-semibold text-[var(--danger)]">
+                            Invalid or missing reset token.
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <TextField
+                                label="New password"
+                                type="password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                placeholder="Enter new password"
+                                required
+                                minLength={6}
+                                name="password"
+                            />
+                            <Button type="submit" disabled={saving} size="lg" className="w-full">
+                                {saving ? <LoaderCircle className="animate-spin" size={17} /> : <KeyRound size={17} />}
+                                {saving ? 'Updating password' : 'Update password'}
+                            </Button>
+                        </form>
+                    )}
 
-                {msg && (
-                    <div className="mt-6 p-4 bg-emerald-50 text-emerald-700 rounded-xl font-bold text-center text-sm border border-emerald-100 animate-in fade-in slide-in-from-bottom-2">
-                        {msg}
-                    </div>
-                )}
-                {error && (
-                    <div className="mt-6 p-4 bg-red-50 text-red-700 rounded-xl font-bold text-center text-sm border border-red-100 animate-in fade-in slide-in-from-bottom-2">
-                        {error}
-                    </div>
-                )}
+                    {msg && (
+                        <div className="mt-5 flex items-start gap-2 rounded-lg border border-[var(--positive-soft)] bg-[var(--positive-soft)] p-3 text-sm font-semibold text-[var(--positive)]">
+                            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                            {msg}
+                        </div>
+                    )}
+                    {error && (
+                        <div className="mt-5 flex items-start gap-2 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">
+                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                            {error}
+                        </div>
+                    )}
 
-                <div className="mt-8 text-center">
-                    <a href="/" className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors">← Back to Login</a>
-                </div>
-            </div>
+                    <a href="/" className="mt-6 inline-flex text-sm font-semibold text-[var(--muted)] hover:text-[var(--accent)]">
+                        Back to dashboard
+                    </a>
+                </Panel>
+            </PageShell>
         </div>
     );
-}
+};

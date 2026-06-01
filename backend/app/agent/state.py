@@ -25,4 +25,6 @@ class AgentState(TypedDict):
     applications_submitted: List[str] # List of job URLs
     logs: List[str]
     user_id: int
+    agent_run_id: Optional[int]
     auto_apply: bool
+    auto_apply_audit: List[dict]

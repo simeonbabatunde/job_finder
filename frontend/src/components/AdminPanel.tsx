@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Plus, Save, Settings, Trash2 } from 'lucide-react';
 import { getAuthHeaders, API_URL } from '../api/client';
+import { cn } from '../lib/cn';
+import { Button, PageShell, Panel, SectionHeader, StatusChip, TextField } from './ui';
 
 export const AdminPanel: React.FC = () => {
     const [config, setConfig] = useState({
@@ -8,7 +11,7 @@ export const AdminPanel: React.FC = () => {
         country_indeed: 'USA'
     });
     const [msg, setMsg] = useState('');
-    const [availableSites, setAvailableSites] = useState(['linkedin', 'indeed', 'glassdoor', 'zip_recruiter']);
+    const [availableSites, setAvailableSites] = useState(['linkedin', 'indeed', 'glassdoor', 'zip_recruiter', 'motion_recruitment']);
     const [newSite, setNewSite] = useState('');
 
     useEffect(() => {
@@ -21,15 +24,14 @@ export const AdminPanel: React.FC = () => {
                         results_wanted: data.results_wanted || 20,
                         country_indeed: data.country_indeed || 'USA'
                     });
-                    // Add any custom sites from DB to available list
-                    const defaults = ['linkedin', 'indeed', 'glassdoor', 'zip_recruiter'];
+                    const defaults = ['linkedin', 'indeed', 'glassdoor', 'zip_recruiter', 'motion_recruitment'];
                     const custom = data.site_names.filter((s: string) => !defaults.includes(s));
                     if (custom.length > 0) {
                         setAvailableSites(prev => [...new Set([...prev, ...custom])]);
                     }
                 }
             })
-            .catch(_err => setMsg('Error loading config'));
+            .catch(() => setMsg('Error loading config'));
     }, []);
 
     const handleSave = () => {
@@ -42,7 +44,7 @@ export const AdminPanel: React.FC = () => {
             body: JSON.stringify(config)
         })
             .then(res => {
-                if (res.ok) setMsg('Configuration saved successfully!');
+                if (res.ok) setMsg('Configuration saved successfully.');
                 else setMsg('Error saving configuration.');
             })
             .catch(() => setMsg('Network error.'));
@@ -58,128 +60,124 @@ export const AdminPanel: React.FC = () => {
     };
 
     const handleAddSite = () => {
-        if (newSite && !availableSites.includes(newSite.toLowerCase())) {
-            const s = newSite.toLowerCase().trim();
-            setAvailableSites([...availableSites, s]);
-            // Auto-select it
-            toggleSite(s);
+        const site = newSite.toLowerCase().trim();
+        if (site && !availableSites.includes(site)) {
+            setAvailableSites([...availableSites, site]);
+            setConfig(prev => ({ ...prev, site_names: [...prev.site_names, site] }));
             setNewSite('');
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-            <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
-                <div className="flex items-center justify-between mb-8">
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Admin Settings</h1>
-                    <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded-full uppercase">Super User</span>
+        <div className="min-h-screen bg-[var(--page)] text-[var(--ink)]">
+            <header className="border-b border-[var(--line)] bg-white">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4">
+                    <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--muted)] hover:text-[var(--accent)]">
+                        <ArrowLeft size={16} />
+                        Dashboard
+                    </a>
+                    <StatusChip tone="accent">Admin</StatusChip>
                 </div>
+            </header>
 
-                <div className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-3">Job Boards to Scrape</label>
+            <PageShell>
+                <Panel className="p-5">
+                    <SectionHeader
+                        eyebrow="Configuration"
+                        title="Scraper settings"
+                        description="Choose job sources and result volume for agent searches."
+                        action={<Settings size={21} className="text-[var(--accent)]" />}
+                    />
 
-                        {/* Compact List (2 Columns) */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-slate-200 border border-slate-200 rounded-xl overflow-hidden mb-4">
-                            {availableSites.map(site => {
-                                const isSelected = config.site_names.includes(site);
-                                return (
-                                    <div key={site} className={`flex items-center justify-between p-3 hover:bg-white transition-colors ${isSelected ? 'bg-indigo-50' : 'bg-slate-50'}`}>
-                                        <label className="flex items-center gap-3 cursor-pointer flex-1">
-                                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
-                                                {isSelected && (
-                                                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                )}
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => toggleSite(site)}
-                                                className="hidden"
-                                            />
-                                            <span className={`font-medium text-sm ${isSelected ? 'text-indigo-900' : 'text-slate-600'}`}>
-                                                {site.charAt(0).toUpperCase() + site.slice(1).replace('_', ' ')}
-                                            </span>
-                                        </label>
+                    <div className="mt-6 space-y-6">
+                        <div>
+                            <label className="mb-3 block text-sm font-semibold text-[var(--ink)]">Job boards to scrape</label>
+                            <div className="grid overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+                                {availableSites.map(site => {
+                                    const isSelected = config.site_names.includes(site);
+                                    return (
+                                        <div key={site} className={cn('flex items-center justify-between gap-3 bg-white p-3', isSelected && 'bg-[var(--accent-soft)]/50')}>
+                                            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => toggleSite(site)}
+                                                    className="h-4 w-4 rounded border-[var(--line)] accent-[var(--accent)]"
+                                                />
+                                                <span className="truncate text-sm font-semibold text-[var(--ink)]">
+                                                    {site.charAt(0).toUpperCase() + site.slice(1).replace('_', ' ')}
+                                                </span>
+                                            </label>
 
-                                        <button
-                                            onClick={() => {
-                                                setAvailableSites(prev => prev.filter(s => s !== site));
-                                                // Also deselect if selected
-                                                if (isSelected) toggleSite(site);
-                                            }}
-                                            className="text-slate-400 hover:text-red-500 p-1 rounded-md hover:bg-red-50 transition-colors"
-                                            title="Remove board"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                            {availableSites.length === 0 && (
-                                <div className="p-4 text-center text-sm text-slate-400 italic col-span-2 bg-slate-50">No job boards added.</div>
-                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAvailableSites(prev => prev.filter(s => s !== site));
+                                                    if (isSelected) toggleSite(site);
+                                                }}
+                                                className="rounded-md p-2 text-[var(--muted)] transition-colors hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]"
+                                                title="Remove board"
+                                                aria-label={`Remove ${site}`}
+                                            >
+                                                <Trash2 size={15} />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                                {availableSites.length === 0 && (
+                                    <div className="bg-white p-4 text-center text-sm text-[var(--muted)] sm:col-span-2">No job boards added.</div>
+                                )}
+                            </div>
+
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                    type="text"
+                                    value={newSite}
+                                    onChange={e => setNewSite(e.target.value)}
+                                    placeholder="Add job board, e.g. google"
+                                    className="min-h-10 flex-1 rounded-md border border-[var(--line)] bg-white px-3 text-sm outline-none transition-colors focus:border-[var(--accent)]"
+                                    onKeyDown={e => e.key === 'Enter' && handleAddSite()}
+                                />
+                                <Button onClick={handleAddSite} variant="secondary">
+                                    <Plus size={16} />
+                                    Add board
+                                </Button>
+                            </div>
                         </div>
 
-                        {/* Add Custom Site */}
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={newSite}
-                                onChange={e => setNewSite(e.target.value)}
-                                placeholder="Add job board (e.g. google)"
-                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                onKeyDown={e => e.key === 'Enter' && handleAddSite()}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <TextField
+                                label="Max results per search"
+                                type="number"
+                                value={config.results_wanted}
+                                onChange={e => setConfig({ ...config, results_wanted: parseInt(e.target.value) })}
+                                name="results_wanted"
+                                hint="Higher numbers will take longer to process."
                             />
-                            <button
-                                onClick={handleAddSite}
-                                className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all"
-                            >
-                                Add Board
-                            </button>
+                            <TextField
+                                label="Indeed country code"
+                                type="text"
+                                value={config.country_indeed}
+                                onChange={e => setConfig({ ...config, country_indeed: e.target.value })}
+                                name="country_indeed"
+                                placeholder="USA"
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                            {msg && (
+                                <div className={`rounded-lg border px-3 py-2 text-sm font-semibold ${msg.includes('Error') || msg.includes('Network') ? 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]' : 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]'}`}>
+                                    {msg}
+                                </div>
+                            )}
+                            <Button onClick={handleSave} className="sm:ml-auto">
+                                <Save size={16} />
+                                Save configuration
+                            </Button>
                         </div>
                     </div>
-
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Max Results Per Search</label>
-                        <input
-                            type="number"
-                            value={config.results_wanted}
-                            onChange={e => setConfig({ ...config, results_wanted: parseInt(e.target.value) })}
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">Higher numbers will take longer to process.</p>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Indeed Country Code</label>
-                        <input
-                            type="text"
-                            value={config.country_indeed}
-                            onChange={e => setConfig({ ...config, country_indeed: e.target.value })}
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium uppercase"
-                            placeholder="USA"
-                        />
-                    </div>
-
-                    <button
-                        onClick={handleSave}
-                        className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl transition-all shadow-lg mt-4 active:scale-95"
-                    >
-                        Save Configuration
-                    </button>
-
-                    {msg && (
-                        <div className={`text-center text-sm font-bold p-3 rounded-lg ${msg.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                            {msg}
-                        </div>
-                    )}
-                </div>
-
-                <a href="/" className="block mt-8 text-center text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors">
-                    ← Back to Dashboard
-                </a>
-            </div>
+                </Panel>
+            </PageShell>
         </div>
     );
 };

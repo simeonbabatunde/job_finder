@@ -1,73 +1,125 @@
-# React + TypeScript + Vite
+# Job Finder Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend is a React 19 + TypeScript + Vite app that powers the Job Finder user workflow.
 
-Currently, two official plugins are available:
+## Current Responsibilities
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Authentication modal and account state.
+- Resume upload and extracted resume display.
+- AI resume feedback.
+- User profile form for application autofill and cover letters.
+- Job preferences form.
+- Agent run controls.
+- Matched jobs and application history.
+- Application package modal with generated materials.
+- Admin scraper configuration.
 
-## React Compiler
+## Key Files
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `src/App.tsx`: top-level app state, manual route handling, main workflow layout.
+- `src/api/client.ts`: fetch helpers and API URL configuration.
+- `src/components/Login.tsx`: login, register, forgot password.
+- `src/components/OAuthCallback.tsx`: OAuth redirect handling.
+- `src/components/ResetPassword.tsx`: reset-password view.
+- `src/components/ResumeUpload.tsx`: upload, stored resume, extracted skills, summary.
+- `src/components/ResumeFeedback.tsx`: AI resume analysis.
+- `src/components/UserProfile.tsx`: profile details and completion state.
+- `src/components/JobPreferences.tsx`: target role, experience, location, job type, companies, score, recency.
+- `src/components/AgentControls.tsx`: agent launch and auto-submit toggle.
+- `src/components/AgentDashboard.tsx`: matched jobs table and status.
+- `src/components/ApplicationPackageModal.tsx`: cover letter, tailored summary, Q&A, interview prep, company brief, status updates.
+- `src/components/AdminPanel.tsx`: scraper site configuration.
+- `src/components/JobSearch.tsx` and `src/components/ProfileSettings.tsx`: older/standalone surfaces that are not currently central to `App.tsx`.
 
-## Expanding the ESLint configuration
+## Local Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Default dev URL:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+http://localhost:5173
 ```
+
+Build:
+
+```bash
+npm run build
+```
+
+Lint:
+
+```bash
+npm run lint
+```
+
+## Environment
+
+The app reads:
+
+```text
+VITE_API_URL=http://localhost:8000
+```
+
+If `VITE_API_URL` is not set, `src/api/client.ts` falls back to `http://localhost:8000`.
+
+## UI/UX Redesign Direction
+
+The next frontend pass should use the Influence Chart design language:
+
+- page background: `#f6f8fb`
+- primary text: `#172033`
+- muted text: `#657084`
+- borders: `#dce2ea`
+- soft panels: `#eef3f7`
+- primary accent: `#176b63`
+- accent soft: `#dff3ee`
+- positive state: `#177245`
+
+The product should read as a career operations dashboard:
+
+- top app header
+- compact workflow panels
+- shared field, button, chip, table, and empty-state components
+- application table as a first-class surface
+- application package modal as a focused workspace
+
+Avoid:
+
+- decorative gradient blobs
+- dark hero-first layout
+- nested cards
+- scattered indigo/violet gradients
+- emoji-led controls
+- inline SVGs where a standard icon exists
+
+Full direction: `../docs/UI_UX_DIRECTION.md`.
+
+## Implemented UI Foundation
+
+The first Influence Chart-style UI pass is now in place:
+
+- CSS variables live in `src/index.css`.
+- Vite template styling has been removed from `src/App.css`.
+- `lucide-react` is installed.
+- Shared primitives live in `src/components/ui.tsx`.
+- Main shell/header lives in `src/components/AppHeader.tsx`.
+- Dashboard, setup workflow, run agent panel, application history table, application package modal, auth modal, and admin settings have been restyled.
+- `/applications` now opens a full application history view.
+
+## Remaining Frontend Implementation Plan
+
+1. Restyle `ResumeFeedback`, `ResetPassword`, `OAuthCallback`, `JobSearch`, and `ProfileSettings`.
+2. Replace manual route branching with a small router as pages grow.
+3. Tighten TypeScript types around API payloads.
+4. Add component or Playwright smoke coverage for the main workflow.
+
+## Known Frontend Issues
+
+- `App.tsx` owns too much state and layout.
+- Routing is manual and will become hard to maintain.
+- Several components use `any`.
+- Some older utility surfaces still use pre-redesign styling.

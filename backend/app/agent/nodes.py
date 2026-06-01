@@ -26,8 +26,8 @@ async def parse_resume(state: AgentState):
         }
 
     try:
-        # Use Gemini
-        llm = get_llm(model_type="gemini")
+        # Use OpenAI
+        llm = get_llm(model_type="openai")
         parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([
@@ -89,6 +89,16 @@ async def search_jobs(state: AgentState):
     
     # Call Real Service
     jobs = JobSearchService.search_jobs(search_query, search_loc, posted_within_days=days)
+
+    # Call Direct ATS Scraper
+    target_companies = getattr(prefs, "target_companies", [])
+    if target_companies:
+        from app.services.ats_scraper import AtsScraper
+        for company in target_companies:
+            print(f"Direct ATS Scraping for target company: {company}")
+            ats_jobs = AtsScraper.scrape_company(company, target_roles=query_roles)
+            print(f"Found {len(ats_jobs)} ATS jobs for {company}")
+            jobs.extend(ats_jobs)
     
     # Persist jobs incrementally
     user_id = state.get("user_id")
@@ -97,7 +107,7 @@ async def search_jobs(state: AgentState):
     
     return {
         "found_jobs": jobs, 
-        "logs": state.get("logs", []) + [f"Found {len(jobs)} jobs for '{search_query}' in '{search_loc}'"]
+        "logs": state.get("logs", []) + [f"Found {len(jobs)} jobs for '{search_query}' in '{search_loc}' (including {len(target_companies)} target companies)"]
     }
 
 async def analyze_fit(state: AgentState):
@@ -132,9 +142,9 @@ async def analyze_fit(state: AgentState):
     
     new_logs = []
     
-    # Use Gemini
+    # Use OpenAI
     try:
-        llm = get_llm(model_type="gemini")
+        llm = get_llm(model_type="openai")
         parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([
@@ -170,11 +180,12 @@ async def analyze_fit(state: AgentState):
             new_logs.append(f"Analyzed {jobs[i]['title']}: {score:.2f}")
 
     except Exception as e:
-        print(f"LLM Error: {e}. Check GOOGLE_API_KEY in .env.")
+        print(f"LLM Error: {e}. Check OPENAI_API_KEY in .env.")
         new_logs.append(f"Error analyzing jobs: {e}")
         for job in jobs:
-            if "fit_score" not in job:
-                job["fit_score"] = 0.5
+            job["fit_score"] = 0.0
+            job["cover_letter"] = "Analysis failed due to LLM error."
+            PersistenceService.save_job(state.get("user_id"), job, "Analysis Failed")
 
     return {
         "found_jobs": jobs, 
@@ -230,6 +241,7 @@ async def apply_browser(state: AgentState):
 
     new_logs = []
     applied_successfully = []
+    audit_records = []
 
     # Only apply to jobs in 'submitted_urls' that aren't already applied in DB?
     # (Actually, endpoints.py handles DB sync from state['applications_submitted'])
@@ -258,7 +270,17 @@ async def apply_browser(state: AgentState):
         else:
             new_logs.append(f"Auto-apply failed for {job['title']}: {result['message']}")
 
+        audit_records.append({
+            "job_url": job.get("url", job_url),
+            "job_title": job.get("title"),
+            "company": job.get("company"),
+            "action": "submit",
+            "status": result.get("status", "failed"),
+            "message": result.get("message"),
+        })
+
     return {
         "application_status": "completed",
-        "logs": state.get("logs", []) + new_logs
+        "logs": state.get("logs", []) + new_logs,
+        "auto_apply_audit": state.get("auto_apply_audit", []) + audit_records,
     }

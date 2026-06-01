@@ -5,18 +5,25 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - /app/.venv
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - SMTP_EMAIL=${SMTP_EMAIL}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - FRONTEND_URL=${FRONTEND_URL}
+      - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-job-finder-dev-secret-change-me}
+      - AUTH_TOKEN_TTL_SECONDS=${AUTH_TOKEN_TTL_SECONDS:-604800}
+      - FREE_DAILY_AGENT_RUN_LIMIT=${FREE_DAILY_AGENT_RUN_LIMIT:-3}
+      - PRO_DAILY_AGENT_RUN_LIMIT=${PRO_DAILY_AGENT_RUN_LIMIT:-50}
     depends_on:
       - db
 
   frontend:
     build: ./frontend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
     volumes:

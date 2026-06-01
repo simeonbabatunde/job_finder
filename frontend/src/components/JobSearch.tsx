@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { searchJobs, API_URL } from '../api/client';
+import { ExternalLink, LoaderCircle, MapPin, Search, Sparkles } from 'lucide-react';
+import { API_URL, getAuthHeaders, searchJobs } from '../api/client';
+import { Button, EmptyState, Panel, ProgressBar, StatusChip } from './ui';
 
 interface Job {
     id: string;
@@ -7,7 +9,7 @@ interface Job {
     company: string;
     location: string;
     description: string;
-    salary: string;
+    salary?: string;
     url?: string;
     analysis?: {
         score: number;
@@ -51,12 +53,11 @@ export function JobSearch() {
         setJobs(prev => prev.map(j => j.id === jobId ? { ...j, analyzing: true } : j));
 
         try {
-            const email = localStorage.getItem('user_email');
             const response = await fetch(`${API_URL}/agent/analyze-single`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-User-Email': email || ''
+                    ...getAuthHeaders()
                 },
                 body: JSON.stringify(job)
             });
@@ -70,118 +71,104 @@ export function JobSearch() {
 
     return (
         <div className="w-full">
-            <form onSubmit={handleSearch} className="mb-8">
-                <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
+            <form onSubmit={handleSearch} className="mb-5">
+                <Panel className="p-3">
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)_auto]">
                         <input
                             type="text"
-                            placeholder="Job Title, Keywords, or Company"
+                            placeholder="Job title, keywords, or company"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                            className="min-h-11 rounded-md border border-[var(--line)] bg-white px-3 text-sm outline-none transition-colors focus:border-[var(--accent)]"
                         />
-                    </div>
-                    <div className="flex-1">
                         <input
                             type="text"
-                            placeholder="Location (e.g. New York, Remote)"
+                            placeholder="Location, e.g. New York or Remote"
                             value={location}
                             onChange={(e) => setLocation(e.target.value)}
-                            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                            className="min-h-11 rounded-md border border-[var(--line)] bg-white px-3 text-sm outline-none transition-colors focus:border-[var(--accent)]"
                         />
+                        <Button type="submit" disabled={loading} className="md:min-w-36">
+                            {loading ? <LoaderCircle className="animate-spin" size={16} /> : <Search size={16} />}
+                            {loading ? 'Searching' : 'Search'}
+                        </Button>
                     </div>
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="px-8 py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-black focus:ring-4 focus:ring-slate-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                    >
-                        {loading ? 'Searching...' : 'Search Jobs'}
-                    </button>
-                </div>
+                </Panel>
             </form>
 
             {error && (
-                <div className="p-4 mb-6 bg-red-50 text-red-700 rounded-lg">
+                <div className="mb-5 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">
                     {error}
                 </div>
             )}
 
-            <div className="space-y-6">
+            <div className="space-y-4">
                 {jobs.length > 0 ? (
                     jobs.map((job) => (
-                        <div key={job.id} className="p-8 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all group">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{job.title}</h3>
-                                    <p className="text-slate-600 font-semibold">{job.company}</p>
+                        <Panel key={job.id} className="p-5">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0">
+                                    <h3 className="text-lg font-semibold text-[var(--ink)]">{job.title}</h3>
+                                    <p className="mt-1 text-sm font-semibold text-[var(--muted)]">{job.company}</p>
+                                    <p className="mt-2 flex items-center gap-1.5 text-sm text-[var(--muted)]">
+                                        <MapPin size={15} />
+                                        {job.location}
+                                    </p>
                                 </div>
-                                {job.salary && (
-                                    <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-100">
-                                        {job.salary}
-                                    </span>
-                                )}
+                                {job.salary && <StatusChip tone="success">{job.salary}</StatusChip>}
                             </div>
-                            <div className="flex items-center text-sm text-slate-400 mb-4 font-medium">
-                                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                                {job.location}
-                            </div>
-                            <p className="text-slate-500 text-sm line-clamp-3 mb-6 leading-relaxed">{job.description}</p>
 
-                            <div className="flex flex-wrap items-center gap-4">
+                            <p className="mt-4 line-clamp-3 text-sm leading-6 text-[var(--muted)]">{job.description}</p>
+
+                            <div className="mt-5 flex flex-wrap items-center gap-2">
                                 {job.url && (
                                     <a
                                         href={job.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-white bg-indigo-600 px-6 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
+                                        className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[var(--line)] bg-white px-4 text-sm font-semibold text-[var(--ink)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
                                     >
-                                        Apply on Site
+                                        <ExternalLink size={16} />
+                                        Open job
                                     </a>
                                 )}
-                                <button
+                                <Button
+                                    variant="secondary"
                                     onClick={() => handleAnalyze(job.id)}
                                     disabled={job.analyzing}
-                                    className="text-indigo-600 border border-indigo-200 px-6 py-2 rounded-xl text-sm font-bold hover:bg-indigo-50 transition-all"
                                 >
-                                    {job.analyzing ? 'Analyzing...' : job.analysis ? 'Re-Analyze Fit' : 'Analyze Fit with AI'}
-                                </button>
+                                    {job.analyzing ? <LoaderCircle className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                                    {job.analyzing ? 'Analyzing' : job.analysis ? 'Re-analyze fit' : 'Analyze fit'}
+                                </Button>
                             </div>
 
                             {job.analysis && (
-                                <div className="mt-8 pt-8 border-t border-slate-50 animate-in fade-in slide-in-from-top-4 duration-500">
-                                    <div className="flex items-center mb-4">
-                                        <div className="text-2xl font-black text-indigo-600 mr-4">
-                                            {(job.analysis.score * 100).toFixed(0)}%
-                                        </div>
-                                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000"
-                                                style={{ width: `${job.analysis.score * 100}%` }}
-                                            ></div>
+                                <div className="mt-5 border-t border-[var(--line)] pt-5">
+                                    <div className="mb-3 flex items-center gap-3">
+                                        <StatusChip tone={job.analysis.score >= 0.75 ? 'success' : job.analysis.score >= 0.5 ? 'accent' : 'warning'}>
+                                            {(job.analysis.score * 100).toFixed(0)}% fit
+                                        </StatusChip>
+                                        <div className="min-w-0 flex-1">
+                                            <ProgressBar value={job.analysis.score * 100} />
                                         </div>
                                     </div>
-                                    <div className="bg-indigo-50/50 rounded-xl p-5 border border-indigo-100">
-                                        <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2 flex items-center">
-                                            <span className="mr-2">🧠</span> AI Fit Analysis
+                                    <div className="rounded-lg border border-[var(--line)] bg-[var(--page)] p-4">
+                                        <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+                                            <Sparkles size={14} />
+                                            AI fit analysis
                                         </h4>
-                                        <p className="text-sm text-slate-700 leading-relaxed">
-                                            {job.analysis.explanation}
-                                        </p>
+                                        <p className="text-sm leading-6 text-[var(--ink)]">{job.analysis.explanation}</p>
                                     </div>
                                 </div>
                             )}
-                        </div>
+                        </Panel>
                     ))
                 ) : (
                     searched && !loading && (
-                        <div className="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                            <div className="text-4xl mb-4">🔍</div>
-                            <h3 className="text-lg font-bold text-slate-800">No jobs found</h3>
-                            <p className="text-slate-500">Try adjusting your search keywords or location.</p>
-                        </div>
+                        <EmptyState
+                            title="No jobs found"
+                            detail="Try adjusting your search keywords or location."
+                        />
                     )
                 )}
             </div>

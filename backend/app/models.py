@@ -4,6 +4,7 @@ from datetime import datetime
 
 class Resume(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     content: str
     file_content: bytes = Field(default=b"")
     filename: str
@@ -13,10 +14,12 @@ class Resume(SQLModel, table=True):
 
 class JobPreference(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     role: List[str] = Field(default=[""], sa_column=Column(JSON))
     experience_level: List[str] = Field(default=["Intermediate"], sa_column=Column(JSON))
     location: List[str] = Field(default=[""], sa_column=Column(JSON))
     job_type: List[str] = Field(default=["Full-time"], sa_column=Column(JSON))
+    target_companies: List[str] = Field(default=[], sa_column=Column(JSON))
     min_match_score: int = Field(default=70)
     posted_within_days: int = Field(default=7)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -39,6 +42,30 @@ class Application(SQLModel, table=True):
     fit_score: float
     explanation: Optional[str] = Field(default=None)
     cover_letter: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AgentRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    status: str = Field(default="running")
+    auto_apply: bool = Field(default=False)
+    logs: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    applications_count: int = Field(default=0)
+    found_jobs_count: int = Field(default=0)
+    error: Optional[str] = Field(default=None)
+    started_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+
+class AutoApplyAudit(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    agent_run_id: Optional[int] = Field(default=None, foreign_key="agentrun.id", index=True)
+    job_url: str
+    job_title: Optional[str] = Field(default=None)
+    company: Optional[str] = Field(default=None)
+    action: str = Field(default="submit")
+    status: str
+    message: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Profile(SQLModel, table=True):

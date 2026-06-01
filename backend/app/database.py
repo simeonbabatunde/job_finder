@@ -1,5 +1,6 @@
+from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, create_engine, Session
-from typing import Generator
+from typing import Callable, Generator
 
 import os
 
@@ -7,8 +8,81 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localho
 
 engine = create_engine(DATABASE_URL, echo=True)
 
+def migrate_user_scope_resume_preferences(connection):
+    """Add ownership columns for databases created before user-scoped setup data."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+
+    for table_name, index_name, date_column in (
+        ("resume", "ix_resume_user_upload", "upload_date"),
+        ("jobpreference", "ix_jobpreference_user_created", "created_at"),
+    ):
+        if table_name not in table_names:
+            continue
+
+        columns = {column["name"] for column in inspector.get_columns(table_name)}
+        if "user_id" not in columns:
+            connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN user_id INTEGER"))
+
+        connection.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {index_name} "
+                f"ON {table_name} (user_id, {date_column} DESC)"
+            )
+        )
+
+        if "user" in table_names:
+            connection.execute(
+                text(
+                    f"""
+                    UPDATE {table_name}
+                    SET user_id = (SELECT id FROM "user" LIMIT 1)
+                    WHERE user_id IS NULL
+                    AND (SELECT COUNT(*) FROM "user") = 1
+                    """
+                )
+            )
+
+SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
+    ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
+)
+
+def ensure_schema_migrations_table(connection):
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id VARCHAR(255) PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    )
+
+def has_migration(connection, migration_id: str):
+    return connection.execute(
+        text("SELECT 1 FROM schema_migrations WHERE id = :id"),
+        {"id": migration_id},
+    ).first() is not None
+
+def record_migration(connection, migration_id: str):
+    connection.execute(
+        text("INSERT INTO schema_migrations (id) VALUES (:id)"),
+        {"id": migration_id},
+    )
+
+def run_schema_migrations():
+    with engine.begin() as connection:
+        ensure_schema_migrations_table(connection)
+        for migration_id, migration in SCHEMA_MIGRATIONS:
+            if has_migration(connection, migration_id):
+                continue
+            migration(connection)
+            record_migration(connection, migration_id)
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    run_schema_migrations()
 
 def get_session() -> Generator[Session, None, None]:
     with Session(engine) as session:

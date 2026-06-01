@@ -1,7 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
-import { API_URL } from './api/client';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { CheckCircle2, Circle, FileText, Play, SlidersHorizontal, UserRound } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { clearAuthSession, getUserStatus, hasAuthSession } from './api/client';
+import type { AgentQuotaStatus, AppUser, JobPreferencesPayload, ProfilePayload, ResumeStatus } from './api/client';
+import { AppHeader } from './components/AppHeader';
 import { ResumeUpload } from './components/ResumeUpload';
 import type { ResumeUploadHandle } from './components/ResumeUpload';
+import { ResumeFeedback } from './components/ResumeFeedback';
+import { UserProfile } from './components/UserProfile';
 import { JobPreferences } from './components/JobPreferences';
 import type { JobPreferencesHandle } from './components/JobPreferences';
 import { AgentControls } from './components/AgentControls';
@@ -9,201 +16,153 @@ import { AgentDashboard } from './components/AgentDashboard';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { ResetPassword } from './components/ResetPassword';
-
 import { OAuthCallback } from './components/OAuthCallback';
+import { PageShell, Panel, SectionHeader, StatusChip } from './components/ui';
+
+interface OverviewItem {
+  label: string;
+  detail: string;
+  ready: boolean;
+  icon: LucideIcon;
+}
 
 function App() {
+  const currentPath = window.location.pathname;
   const [refreshHistory, setRefreshHistory] = useState(0);
-  const [user, setUser] = useState<{ email: string, subscription_tier: string, role: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [loading, setLoading] = useState(() => hasAuthSession());
   const [showAuth, setShowAuth] = useState<'login' | 'register' | null>(null);
-
-  // Simple manual routing
-  if (window.location.pathname === '/oauth-callback') {
-    return <OAuthCallback />;
-  }
-  if (window.location.pathname === '/admin') {
-    return <AdminPanel />;
-  }
-  if (window.location.pathname === '/reset-password') {
-    return <ResetPassword />;
-  }
+  const [resumeData, setResumeData] = useState<ResumeStatus | null>(null);
+  const [prefsData, setPrefsData] = useState<JobPreferencesPayload | null>(null);
+  const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
+  const [quotaData, setQuotaData] = useState<AgentQuotaStatus | null>(null);
 
   const resumeRef = useRef<ResumeUploadHandle>(null);
   const prefsRef = useRef<JobPreferencesHandle>(null);
 
-  const refreshStatus = () => {
-    const email = localStorage.getItem('user_email');
-    if (email) {
-      setLoading(true);
-      fetch(`${API_URL}/user/status`, {
-        headers: { 'X-User-Email': email }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.user) {
-            setUser(data.user);
-            if (data.resume && resumeRef.current) {
-              resumeRef.current.setResumeData({
-                filename: data.resume.filename,
-                skills: data.resume.skills,
-                summary: data.resume.summary
-              });
-            }
-          }
-        })
-        .catch(err => console.error("Error fetching user status", err))
-        .finally(() => setLoading(false));
+  const refreshStatus = useCallback(async (showLoading = true) => {
+    if (hasAuthSession()) {
+      if (showLoading) setLoading(true);
+      try {
+        const data = await getUserStatus();
+        if (data.user) {
+          setUser(data.user);
+          setResumeData(data.resume ?? null);
+          setPrefsData(data.preferences ?? null);
+          setProfileData(data.profile ?? null);
+          setQuotaData(data.quota ?? null);
+        }
+      } catch (err) {
+        console.error('Error fetching user status', err);
+      } finally {
+        setLoading(false);
+      }
     } else {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    refreshStatus();
   }, []);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void refreshStatus(false);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    if (!loading && resumeData && resumeRef.current) {
+      resumeRef.current.setResumeData(resumeData);
+    }
+  }, [loading, resumeData]);
+
   const handleLogout = () => {
-    localStorage.removeItem('user_email');
+    clearAuthSession();
     setUser(null);
+    setResumeData(null);
+    setPrefsData(null);
+    setProfileData(null);
+    setQuotaData(null);
   };
 
-  const handleLoginSuccess = (u: any) => {
+  const handleLoginSuccess = (u: AppUser) => {
     setUser(u);
     setShowAuth(null);
     refreshStatus();
   };
 
-  if (loading && localStorage.getItem('user_email')) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
-    </div>
-  );
+  const profileComplete = useMemo(() => {
+    if (!profileData) return false;
+    const requiredFields: Array<keyof ProfilePayload> = ['first_name', 'last_name', 'email', 'phone', 'location'];
+    return requiredFields.every(
+      key => String(profileData[key] || '').trim() !== '',
+    );
+  }, [profileData]);
 
-  return (
-    <div className="min-h-screen bg-slate-50 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] py-6 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
-      <div className="w-full max-w-4xl">
-        <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-white/20">
+  const preferencesReady = useMemo(() => {
+    if (!prefsData) return false;
+    return Boolean(prefsData.role?.length && prefsData.location?.length);
+  }, [prefsData]);
 
-          {/* Header & Hero */}
-          <div className="relative px-8 py-6 sm:px-12 bg-slate-900 overflow-hidden">
-            {/* Decorative background effects */}
-            <div className="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-violet-500/20 rounded-full blur-3xl"></div>
+  const overviewItems: OverviewItem[] = [
+    {
+      label: 'Resume',
+      ready: !!resumeData?.filename,
+      detail: resumeData?.filename || 'Upload PDF, DOCX, or TXT',
+      icon: FileText,
+    },
+    {
+      label: 'Profile',
+      ready: profileComplete,
+      detail: profileComplete ? 'Complete' : 'Contact details needed',
+      icon: UserRound,
+    },
+    {
+      label: 'Preferences',
+      ready: preferencesReady,
+      detail: prefsData
+        ? `${prefsData.role?.[0] || 'Role'} / ${prefsData.location?.[0] || 'Market'}`
+        : 'Role and market needed',
+      icon: SlidersHorizontal,
+    },
+    {
+      label: 'Daily runs',
+      ready: Boolean(quotaData && quotaData.agent_runs_remaining > 0),
+      detail: quotaData
+        ? `${quotaData.agent_runs_remaining}/${quotaData.agent_run_limit} runs left today`
+        : 'Sign in to view quota',
+      icon: Play,
+    },
+  ];
 
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="text-left">
-                {/* Icon + Title */}
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center shadow-xl border border-white/20">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h1 className="text-4xl font-black text-white tracking-tight">
-                      Job Hunter
-                    </h1>
-                    <div className="h-1 w-20 bg-indigo-500 rounded-full mt-1"></div>
-                  </div>
-                </div>
+  if (currentPath === '/oauth-callback') {
+    return <OAuthCallback />;
+  }
 
-                {/* Subtitle */}
-                <p className="text-slate-400 text-lg font-medium max-w-xl">
-                  Your smart assistant that works 24/7 to find jobs, analyze fit, and apply automatically—while you focus on what matters.
-                </p>
-              </div>
+  if (currentPath === '/reset-password') {
+    return <ResetPassword />;
+  }
 
-              <div className="flex flex-col items-end">
-                {user ? (
-                  <>
-                    <div className={`px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg border backdrop-blur-md
-                        ${user.subscription_tier === 'pro'
-                        ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white border-amber-300/50'
-                        : 'bg-white/10 text-white border-white/20'}`}>
-                      {user.subscription_tier} Tier
-                    </div>
-                    <span className="text-[10px] text-slate-500 mt-2 font-mono">{user.email}</span>
-                    <div className="flex gap-4 items-center">
-                      {user.role === 'admin' && (
-                        <a href="/admin" className="text-[10px] text-emerald-400 font-bold uppercase mt-2 hover:text-emerald-300 tracking-widest transition-colors flex items-center gap-1">
-                          <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
-                          Admin Panel
-                        </a>
-                      )}
-                      <button onClick={handleLogout} className="text-[10px] text-indigo-400 font-bold uppercase mt-2 hover:text-indigo-300 tracking-widest transition-colors">Sign Out</button>
-                    </div>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setShowAuth('login')}
-                    className="px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg border backdrop-blur-md bg-white/10 text-white border-white/20 hover:bg-white/20 transition-all"
-                  >
-                    Sign In
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+  if (currentPath === '/admin') {
+    return <AdminPanel />;
+  }
 
-          <div className="px-8 py-6 sm:px-12 space-y-8">
-            <section className="relative">
-              <div className="flex items-center mb-4">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">1</div>
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Your Resume</h2>
-                  <p className="text-sm text-slate-500">Upload your latest experience to guide the AI.</p>
-                </div>
-              </div>
-              <ResumeUpload ref={resumeRef} />
-            </section>
-
-            <section className="relative">
-              <div className="flex items-center mb-4">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">2</div>
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Job Preferences</h2>
-                  <p className="text-sm text-slate-500">Define what roles and locations interest you.</p>
-                </div>
-              </div>
-              <JobPreferences ref={prefsRef} />
-            </section>
-
-            <section className="relative">
-              <div className="flex items-center mb-4">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">3</div>
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Search & Apply Automatically</h2>
-                  <p className="text-sm text-slate-500">Let the agent handle the difficult part of job hunting for you.</p>
-                </div>
-              </div>
-              <AgentControls
-                resumeRef={resumeRef}
-                prefsRef={prefsRef}
-                isLoggedIn={!!user}
-                onAuthRequired={() => setShowAuth('register')}
-                onComplete={() => {
-                  setRefreshHistory(prev => prev + 1);
-                  refreshStatus();
-                }}
-              />
-            </section>
-
-            <section className="relative bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
-              <div className="flex items-center mb-4">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-bold mr-3 border border-slate-200 shadow-sm text-sm">4</div>
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">History & Status</h2>
-                  <p className="text-sm text-slate-500">Track and view your generated applications.</p>
-                </div>
-              </div>
-              <AgentDashboard key={refreshHistory} />
-            </section>
-
-          </div>
-        </div>
+  if (loading && hasAuthSession()) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--page)]">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--accent)]" />
       </div>
+    );
+  }
 
+  const shell = (children: ReactNode) => (
+    <div className="min-h-screen bg-[var(--page)] text-[var(--ink)]">
+      <AppHeader
+        user={user}
+        currentPath={currentPath}
+        onLogin={() => setShowAuth('login')}
+        onLogout={handleLogout}
+      />
+      {children}
       {showAuth && (
         <Login
           initialMode={showAuth}
@@ -213,6 +172,153 @@ function App() {
       )}
     </div>
   );
+
+  if (currentPath === '/applications') {
+    return shell(
+      <PageShell>
+        <SectionHeader
+          eyebrow="Pipeline"
+          title="Application History"
+          description="Review every matched role, update status, and prepare application materials."
+        />
+        <div className="mt-5">
+          <AgentDashboard key={refreshHistory} fullPage />
+        </div>
+      </PageShell>,
+    );
+  }
+
+  return shell(
+    <PageShell className="space-y-4">
+      <Panel className="p-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(560px,1fr)] xl:items-center">
+          <div>
+            <SectionHeader
+              eyebrow="Dashboard"
+              title="Job search workspace"
+              description="Keep the core inputs current, then run one focused search pass."
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {user ? (
+                <StatusChip tone={user.subscription_tier === 'pro' ? 'accent' : 'neutral'}>
+                  {user.subscription_tier} plan
+                </StatusChip>
+              ) : (
+                <StatusChip tone="warning">Sign in required</StatusChip>
+              )}
+              {quotaData && (
+                <StatusChip tone={quotaData.agent_runs_remaining === 0 ? 'danger' : 'neutral'}>
+                  {quotaData.agent_runs_remaining} runs left today
+                </StatusChip>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-px overflow-hidden rounded-md bg-[var(--line)] text-sm sm:grid-cols-2 lg:grid-cols-4">
+            {overviewItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="flex min-h-[68px] items-center gap-3 bg-[var(--page)] p-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-[var(--accent)]">
+                    <Icon size={17} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-[var(--ink)]">{item.label}</p>
+                      {item.ready ? (
+                        <CheckCircle2 className="shrink-0 text-[var(--positive)]" size={15} />
+                      ) : (
+                        <Circle className="shrink-0 text-[var(--muted)]" size={15} />
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{item.detail}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Panel>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] xl:items-start">
+        <Panel className="min-w-0 p-4">
+          <SectionHeader
+            eyebrow="Setup"
+            title="Workspace setup"
+            description="Resume, targeting, and application details stay together so the workflow is easier to scan."
+          />
+
+          <div className="mt-4 divide-y divide-[var(--line)] border-t border-[var(--line)]">
+            <section className="py-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-base font-semibold text-[var(--ink)]">Resume</h3>
+                <StatusChip tone={resumeData?.filename ? 'success' : 'neutral'}>
+                  {resumeData?.filename ? 'Ready' : 'Upload needed'}
+                </StatusChip>
+              </div>
+              <ResumeUpload ref={resumeRef} initialData={resumeData} />
+              <ResumeFeedback hasResume={!!resumeData?.filename} />
+            </section>
+
+            <section className="py-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-base font-semibold text-[var(--ink)]">Preferences</h3>
+                <StatusChip tone={preferencesReady ? 'success' : 'neutral'}>
+                  {preferencesReady ? 'Ready' : 'Targets needed'}
+                </StatusChip>
+              </div>
+              <JobPreferences ref={prefsRef} initialData={prefsData} />
+            </section>
+
+            <section className="pt-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-base font-semibold text-[var(--ink)]">Application details</h3>
+                <StatusChip tone={profileComplete ? 'success' : 'warning'}>
+                  {profileComplete ? 'Complete' : 'Incomplete'}
+                </StatusChip>
+              </div>
+              <UserProfile initialData={profileData} userEmail={user?.email} />
+            </section>
+          </div>
+        </Panel>
+
+        <aside className="grid min-w-0 gap-4 xl:sticky xl:top-4">
+          <Panel className="min-w-0 p-4">
+            <SectionHeader
+              eyebrow="Action"
+              title="Run agent"
+              description="Queue a search and poll the run status."
+              action={<Play size={19} className="text-[var(--accent)]" />}
+            />
+            <div className="mt-4">
+              <AgentControls
+                resumeRef={resumeRef}
+                prefsRef={prefsRef}
+                isLoggedIn={!!user}
+                quota={quotaData}
+                subscriptionTier={user?.subscription_tier}
+                userRole={user?.role}
+                onAuthRequired={() => setShowAuth('register')}
+                onComplete={() => {
+                  setRefreshHistory(prev => prev + 1);
+                  refreshStatus();
+                }}
+              />
+            </div>
+          </Panel>
+
+          <Panel className="min-w-0 overflow-hidden p-4">
+            <SectionHeader
+              eyebrow="Recent"
+              title="Matched jobs"
+              description="Latest five matches from completed runs."
+            />
+            <AgentDashboard key={refreshHistory} limit={5} compact />
+          </Panel>
+        </aside>
+      </section>
+    </PageShell>,
+  );
 }
 
-export default App
+export default App;

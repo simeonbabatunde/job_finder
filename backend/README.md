@@ -1,13 +1,189 @@
-The overall goal of this app is for it to be able to apply to jobs (say on linkedin for a start) that match the uploaded resume and other information automatically. I want create an LLM that will take and analyze the resume, check each job postings and submit an application to those (maybe top 10 first start, there should be a way to select more on the webpage for subscribed users) that match the skills in the resume. The llm can be built using langgraph and I want it to support both enterprise LLM api calls from OpenAI and others, as well as local LLM deployed via ollama. The app should have a subscription model where users can subscribe to get access to more job postings and other features. The app should penable the user to see the history of job applications submitted and the status of each application. Remember the tech stack currently being used in the app, including Docker-compose, uv etc.
+# Job Finder Backend
 
-The auto apply section of the app should be placed below the resume upload section and the job preferences section. I dont think there should be a separate button for Analyse Resume and Save preferences as the user will click on the auto apply button to do both.
-Also limit the application History displayed to the most recent 5 applications. A more button should be added to view the rest of the applications on a new page.
+The backend is a FastAPI application that supports resume parsing, job discovery, LLM-based matching, application tracking, generated application materials, password reset, OAuth callbacks, scraper configuration, and optional browser automation.
 
-Next Steps
- Real Search Integration: Replace the mock search node with a real LinkedIn/Indeed scraper.
- Enhanced Subscription Logic: Implement actual payment gateways and hard-limit applications for free users.
- Feedback Loop: Allow users to "Thumbs Up/Down" applications to improve the agent's matching accuracy.
+## Current Stack
 
+- FastAPI
+- SQLModel
+- PostgreSQL
+- LangGraph
+- LangChain
+- OpenAI, OpenRouter, Gemini, and Ollama provider hooks
+- python-jobspy
+- Playwright
+- uv
 
-OpenRouter API Key:
-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
+## Key Files
+
+- `main.py`: FastAPI app, CORS, startup table creation, router mount.
+- `app/api/endpoints.py`: API endpoints for auth, resume upload, preferences, profile, agent, applications, packages, admin, password reset, and OAuth.
+- `app/models.py`: SQLModel tables.
+- `app/schemas.py`: Pydantic request schemas for public API inputs.
+- `app/database.py`: engine, session setup, and lightweight versioned startup migrations.
+- `app/agent/state.py`: LangGraph state definition.
+- `app/agent/graph.py`: workflow edges.
+- `app/agent/nodes.py`: resume parsing, search, fit analysis, submission selection, browser application.
+- `app/agent/llm_factory.py`: provider factory.
+- `app/services/resume_parser.py`: PDF/DOCX/text extraction.
+- `app/services/job_search.py`: JobSpy and configured scraper dispatch.
+- `app/services/ats_scraper.py`: target company ATS scraping.
+- `app/services/motion_recruitment.py`: custom scraper.
+- `app/services/persistence.py`: application upsert/dedupe.
+- `app/services/browser_apply.py`: Playwright form fill and optional submit.
+- `app/services/email.py`: password reset email dispatch.
+
+## Local Development
+
+With Docker Compose from the repository root:
+
+```bash
+docker compose up --build
+```
+
+Backend only:
+
+```bash
+uv sync
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Backend tests:
+
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -e backend pytest
+PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests/test_api_contracts.py
+```
+
+Default API URL:
+
+```text
+http://localhost:8000
+```
+
+## Environment
+
+Important variables:
+
+```text
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/job_hunter
+OPENAI_API_KEY=
+OPENROUTER_API_KEY=
+GOOGLE_API_KEY=
+SMTP_EMAIL=
+SMTP_PASSWORD=
+FRONTEND_URL=http://localhost:5173
+AUTH_SECRET_KEY=
+AUTH_TOKEN_TTL_SECONDS=604800
+FREE_DAILY_AGENT_RUN_LIMIT=3
+PRO_DAILY_AGENT_RUN_LIMIT=50
+```
+
+Docker Compose also expects:
+
+```text
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+POSTGRES_DB=
+VITE_API_URL=
+```
+
+## API Surface
+
+Auth and account:
+
+- `POST /auth/login`
+- `POST /auth/register`
+- `GET /auth/google/login`
+- `GET /auth/google/callback`
+- `GET /auth/linkedin/login`
+- `GET /auth/linkedin/callback`
+- `POST /auth/forgot-password`
+- `POST /auth/reset-password`
+- `GET /user/status`
+
+Resume, profile, and preferences:
+
+- `POST /upload-resume`
+- `GET /profile`
+- `POST /profile`
+- `POST /preferences`
+- `POST /agent/resume-feedback`
+
+Jobs and agent:
+
+- `GET /search-jobs`
+- `POST /agent/run`
+- `GET /agent/runs`
+- `GET /agent/runs/{run_id}`
+- `POST /agent/analyze-single`
+
+Applications:
+
+- `GET /applications?limit=5&sort=date&direction=desc`
+- `DELETE /applications`
+- `PATCH /applications/{app_id}/status`
+- `POST /agent/prepare-application`
+- `GET /applications/{app_id}/cover-letter.pdf`
+
+Admin:
+
+- `GET /admin/config`
+- `PUT /admin/config`
+
+## Agent Workflow
+
+The LangGraph workflow is:
+
+1. `parse_resume`
+2. `search_jobs`
+3. `analyze_fit`
+4. `submit_application`
+5. `apply_browser` only when `auto_apply=true` and qualifying jobs exist
+
+The agent currently:
+
+- extracts resume summary and skills
+- searches job boards and target company career pages
+- analyzes jobs in a batch LLM call
+- persists job records incrementally
+- selects jobs above the minimum match score
+- optionally fills or submits application forms through Playwright
+
+## Current Data Models
+
+- `Resume`
+- `JobPreference`
+- `User`
+- `Application`
+- `Profile`
+- `ScraperConfig`
+- `PasswordResetToken`
+
+## Known Backend Issues
+
+- Authentication uses signed bearer tokens stored by the frontend. Move to hardened sessions/JWT infrastructure before production.
+- The previous README contained a plaintext OpenRouter key. It has been removed; rotate the key if it was real.
+- Database startup uses `SQLModel.metadata.create_all` plus a lightweight `schema_migrations` table. Alembic is still a future production upgrade.
+- Core public write endpoints use Pydantic request schemas, and the main app/API responses now have explicit response models.
+- Daily agent-run quotas are enforced for free/pro tiers, and auto-submit is gated to pro/admin users.
+- Agent runs are queued through FastAPI background tasks and persisted for polling.
+- Browser auto-apply has persisted audit records, but still needs stronger confirmation rules and safer production constraints.
+- LLM calls are live by default and need test doubles for repeatable automated tests.
+
+## Backend Implementation Priorities
+
+1. Harden auth secrets, token rotation, and server-side session invalidation.
+2. Move background agent execution to a durable worker/queue for multi-process deployments.
+3. Move schema management to Alembic if the app needs a larger production migration workflow.
+4. Add stronger browser auto-submit confirmation and allow/deny rules.
+5. Expand pytest coverage for package generation, admin access, and external-service failure paths.
+
+## Product Notes Preserved
+
+The original goal remains:
+
+Build an LLM-powered app that can analyze a user's resume, compare it to job postings, submit or prepare applications for the best matches, support enterprise and local LLM providers, offer subscription tiers, and show application history and status.
+
+The current product expectation is that the user should not need separate "Analyze Resume" or "Save Preferences" actions before running the agent. The agent launch should save and analyze the required setup data as part of the workflow.
