@@ -40,7 +40,8 @@ Deliverables:
 - Upload resume.
 - Fill generated cover letter or application Q&A where supported.
 - Stop before final submit.
-- Save screenshot, trace, filled-field summary, missing-field summary, and blocker reason.
+- Save filled-field summary, missing-field summary, and blocker reason.
+- Add screenshots and traces before production auto-submit.
 - Mark the application as `Needs Review`.
 
 Acceptance criteria:
@@ -48,6 +49,15 @@ Acceptance criteria:
 - A user can open a matched job, choose fill-for-review, and see exactly what was filled.
 - Unsupported forms never submit.
 - Missing or ambiguous required fields produce a review state, not a failed silent action.
+
+Current implementation:
+
+- `POST /applications/{app_id}/fill-review` runs a safe review session for a signed-in user's saved application.
+- The first deterministic ATS adapter is Greenhouse.
+- The Greenhouse adapter fills standard contact fields, uploads the saved resume, uses consented application-answer fields where possible, and never clicks submit.
+- The application is marked `Needs Review` after the fill-review attempt.
+- The dashboard shows `Fill review` for resolved Greenhouse applications and returns filled fields, missing fields, blockers, and the application URL.
+- Screenshot and trace persistence remain future work.
 
 ### Phase 2: Application Link Resolution
 
@@ -134,7 +144,7 @@ Replace generic form guessing with board-specific adapters.
 
 Initial adapters:
 
-- Greenhouse
+- Greenhouse. Initial fill-for-review adapter implemented.
 - Lever
 - Ashby
 - SmartRecruiters

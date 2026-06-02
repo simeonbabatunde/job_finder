@@ -110,6 +110,7 @@ The first Influence Chart-style UI pass is now in place:
 - Dashboard, setup workflow, run agent panel, application history table, application package modal, auth modal, and admin settings have been restyled.
 - `/applications` now opens a full application history view.
 - Application history rows show link readiness, can resolve supported aggregator links, and open the resolved employer URL when available.
+- Resolved Greenhouse rows show `Fill review` and return a structured review summary without submitting.
 - Candidate Profile now includes `Application answers` for common application questions and optional self-identification fields.
 
 ## Remaining Frontend Implementation Plan

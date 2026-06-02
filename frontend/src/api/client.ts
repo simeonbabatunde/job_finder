@@ -48,6 +48,17 @@ export interface ApplicationAnswerProfilePayload {
     updated_at?: string;
 }
 
+export interface ApplicationFillReviewResult {
+    status: string;
+    ats_type: string;
+    application_url: string;
+    fields_filled: string[];
+    fields_missing: string[];
+    blockers: string[];
+    message: string;
+    application_status: string;
+}
+
 export interface RegisterProfile {
     first_name: string;
     last_name: string;
@@ -380,6 +391,17 @@ export async function resolveApplicationLink(appId: number) {
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to resolve application link'));
+    }
+    return response.json();
+}
+
+export async function fillApplicationForReview(appId: number): Promise<ApplicationFillReviewResult> {
+    const response = await fetch(`${API_URL}/applications/${appId}/fill-review`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to prepare fill review'));
     }
     return response.json();
 }

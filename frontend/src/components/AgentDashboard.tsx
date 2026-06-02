@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArchiveX, ArrowDownUp, Box, ExternalLink, Link2, RefreshCw, Trash2 } from 'lucide-react';
-import { getAuthHeaders, API_URL, resolveApplicationLink } from '../api/client';
+import { ArchiveX, ArrowDownUp, Box, ClipboardCheck, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
+import {
+    fillApplicationForReview,
+    getAuthHeaders,
+    API_URL,
+    resolveApplicationLink,
+} from '../api/client';
+import type { ApplicationFillReviewResult } from '../api/client';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -79,12 +85,18 @@ function canResolveLink(app: Application) {
     return Boolean(app.job_url) && app.resolution_status !== 'resolved';
 }
 
+function canFillReview(app: Application) {
+    return app.resolution_status === 'resolved' && app.ats_type === 'greenhouse';
+}
+
 export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage = false, compact = false }) => {
     const [applications, setApplications] = useState<Application[]>([]);
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
     const [resolvingId, setResolvingId] = useState<number | null>(null);
+    const [fillingId, setFillingId] = useState<number | null>(null);
     const [linkError, setLinkError] = useState<string | null>(null);
+    const [fillReview, setFillReview] = useState<{ app: Application; result: ApplicationFillReviewResult } | null>(null);
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -179,8 +191,89 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         }
     };
 
+    const handleFillReview = async (app: Application) => {
+        setFillingId(app.id);
+        setLinkError(null);
+        try {
+            const result = await fillApplicationForReview(app.id);
+            const updatedApp = { ...app, status: result.application_status };
+            setApplications(prev => prev.map(item => item.id === app.id ? updatedApp : item));
+            setSelectedApp(prev => prev?.id === app.id ? updatedApp : prev);
+            setFillReview({ app: updatedApp, result });
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to prepare fill review');
+        } finally {
+            setFillingId(null);
+        }
+    };
+
     return (
         <div className="mt-5 min-w-0">
+            {fillReview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[var(--line)] bg-white shadow-xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] p-5">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Fill review</p>
+                                <h3 className="mt-1 text-lg font-semibold text-[var(--ink)]">{fillReview.app.job_title}</h3>
+                                <p className="mt-1 text-sm text-[var(--muted)]">{fillReview.result.message}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setFillReview(null)}
+                                className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--soft)] hover:text-[var(--ink)]"
+                                aria-label="Close fill review"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="grid gap-4 p-5 md:grid-cols-2">
+                            <div>
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-[var(--ink)]">Filled fields</h4>
+                                    <StatusChip tone="success">{fillReview.result.fields_filled.length}</StatusChip>
+                                </div>
+                                <ul className="space-y-1 text-sm text-[var(--muted)]">
+                                    {fillReview.result.fields_filled.length ? fillReview.result.fields_filled.map(field => (
+                                        <li key={field} className="rounded-md bg-[var(--positive-soft)] px-2 py-1 text-[var(--positive)]">{field}</li>
+                                    )) : <li>No fields were filled.</li>}
+                                </ul>
+                            </div>
+                            <div>
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-[var(--ink)]">Needs review</h4>
+                                    <StatusChip tone={fillReview.result.fields_missing.length || fillReview.result.blockers.length ? 'warning' : 'success'}>
+                                        {fillReview.result.fields_missing.length + fillReview.result.blockers.length}
+                                    </StatusChip>
+                                </div>
+                                <ul className="space-y-1 text-sm text-[var(--muted)]">
+                                    {[...fillReview.result.fields_missing, ...fillReview.result.blockers].length ? (
+                                        [...fillReview.result.fields_missing, ...fillReview.result.blockers].map(item => (
+                                            <li key={item} className="rounded-md bg-[var(--warning-soft)] px-2 py-1 text-[var(--warning)]">{item}</li>
+                                        ))
+                                    ) : (
+                                        <li>No blockers found.</li>
+                                    )}
+                                </ul>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2 border-t border-[var(--line)] p-5 sm:flex-row sm:justify-end">
+                            <Button variant="secondary" onClick={() => setFillReview(null)}>
+                                Close
+                            </Button>
+                            <a
+                                href={fillReview.result.application_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-white px-4 text-sm font-semibold text-[var(--ink)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                            >
+                                <ExternalLink size={16} />
+                                Open form
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            )}
             {selectedApp && (
                 <ApplicationPackageModal
                     app={selectedApp}
@@ -284,6 +377,21 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                         {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
                                     </Button>
                                 )}
+                                {canFillReview(app) && (
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => void handleFillReview(app)}
+                                        disabled={fillingId === app.id}
+                                    >
+                                        {fillingId === app.id ? (
+                                            <RefreshCw size={14} className="animate-spin" />
+                                        ) : (
+                                            <ClipboardCheck size={14} />
+                                        )}
+                                        {fillingId === app.id ? 'Preparing' : 'Fill review'}
+                                    </Button>
+                                )}
                                 {app.job_url ? (
                                     <a
                                         href={app.resolved_url || app.job_url}
@@ -380,6 +488,21 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                                         <Link2 size={14} />
                                                     )}
                                                     {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                                </Button>
+                                            )}
+                                            {canFillReview(app) && (
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => void handleFillReview(app)}
+                                                    disabled={fillingId === app.id}
+                                                >
+                                                    {fillingId === app.id ? (
+                                                        <RefreshCw size={14} className="animate-spin" />
+                                                    ) : (
+                                                        <ClipboardCheck size={14} />
+                                                    )}
+                                                    {fillingId === app.id ? 'Preparing' : 'Fill review'}
                                                 </Button>
                                             )}
                                             {app.job_url ? (

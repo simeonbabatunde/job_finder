@@ -221,6 +221,17 @@ class ApplicationStatusResponse(BaseModel):
     status: str
 
 
+class ApplicationFillReviewResponse(BaseModel):
+    status: str
+    ats_type: str
+    application_url: str
+    fields_filled: List[str] = Field(default_factory=list)
+    fields_missing: List[str] = Field(default_factory=list)
+    blockers: List[str] = Field(default_factory=list)
+    message: str
+    application_status: str = "Needs Review"
+
+
 class AutoApplyAuditResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

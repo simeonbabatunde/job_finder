@@ -25,11 +25,13 @@ from app.services.resume_parser import ResumeService
 from app.services.job_search import JobSearchService
 from app.services.email import send_reset_email
 from app.services.application_link_resolver import ApplicationLinkResolver
+from app.services.application_fill_review import ApplicationFillReviewService
 from app.schemas import (
     AgentRunResponse,
     AgentRunRecordResponse,
     ApplicationAnswerProfileRequest,
     ApplicationAnswerProfileResponse,
+    ApplicationFillReviewResponse,
     ApplicationPackageRequest,
     ApplicationPackageResponse,
     ApplicationResponse,
@@ -921,6 +923,50 @@ def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get
 
 
 # ─── Application Package ────────────────────────────────────────────────────
+
+@router.post("/applications/{app_id}/fill-review", response_model=ApplicationFillReviewResponse)
+async def fill_application_for_review(
+    app_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    application_url = app.resolved_url or app.job_url
+    link_resolution = ApplicationLinkResolver.classify_url(application_url)
+    ats_type = app.ats_type or link_resolution.ats_type
+    if app.resolution_status != "resolved" or not application_url:
+        raise HTTPException(status_code=400, detail="Resolve this application link before fill-for-review")
+    if ats_type != "greenhouse":
+        raise HTTPException(status_code=400, detail="Fill-for-review currently supports Greenhouse links only")
+
+    resume = get_latest_resume(session, user.id)
+    profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
+    answer_profile = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+
+    if not resume:
+        raise HTTPException(status_code=400, detail="Please upload a resume first")
+    if not profile:
+        raise HTTPException(status_code=400, detail="Please complete your candidate profile first")
+
+    fill_result = await ApplicationFillReviewService.fill_application_for_review(
+        application_url=application_url,
+        ats_type=ats_type,
+        profile=profile,
+        resume_bytes=resume.file_content,
+        resume_filename=resume.filename,
+        answer_profile=answer_profile if answer_profile and answer_profile.consent_to_use_answers else None,
+        cover_letter=app.cover_letter,
+    )
+
+    app.status = fill_result.application_status
+    session.add(app)
+    session.commit()
+    return fill_result.model_dump()
 
 @router.post("/agent/prepare-application", response_model=ApplicationPackageResponse)
 async def prepare_application(
