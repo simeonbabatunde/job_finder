@@ -49,6 +49,7 @@ export interface ApplicationAnswerProfilePayload {
 }
 
 export interface ApplicationFillReviewResult {
+    review_id?: number;
     status: string;
     ats_type: string;
     application_url: string;
@@ -57,6 +58,19 @@ export interface ApplicationFillReviewResult {
     blockers: string[];
     message: string;
     application_status: string;
+}
+
+export interface ApplicationFillReviewRecord {
+    id: number;
+    application_id: number;
+    ats_type: string;
+    application_url: string;
+    status: string;
+    message?: string;
+    fields_filled: string[];
+    fields_missing: string[];
+    blockers: string[];
+    created_at: string;
 }
 
 export interface RegisterProfile {
@@ -402,6 +416,16 @@ export async function fillApplicationForReview(appId: number): Promise<Applicati
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to prepare fill review'));
+    }
+    return response.json();
+}
+
+export async function getApplicationFillReviews(appId: number): Promise<ApplicationFillReviewRecord[]> {
+    const response = await fetch(`${API_URL}/applications/${appId}/fill-reviews`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch fill-review history'));
     }
     return response.json();
 }

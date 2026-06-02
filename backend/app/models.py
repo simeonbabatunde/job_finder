@@ -74,6 +74,19 @@ class AutoApplyAudit(SQLModel, table=True):
     message: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class ApplicationFillReview(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    application_id: int = Field(foreign_key="application.id", index=True)
+    ats_type: str
+    application_url: str
+    status: str
+    message: Optional[str] = Field(default=None)
+    fields_filled: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    fields_missing: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    blockers: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
 class Profile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", unique=True)

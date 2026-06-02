@@ -222,6 +222,7 @@ class ApplicationStatusResponse(BaseModel):
 
 
 class ApplicationFillReviewResponse(BaseModel):
+    review_id: Optional[int] = None
     status: str
     ats_type: str
     application_url: str
@@ -230,6 +231,21 @@ class ApplicationFillReviewResponse(BaseModel):
     blockers: List[str] = Field(default_factory=list)
     message: str
     application_status: str = "Needs Review"
+
+
+class ApplicationFillReviewRecordResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = None
+    application_id: int
+    ats_type: str
+    application_url: str
+    status: str
+    message: Optional[str] = None
+    fields_filled: List[str] = Field(default_factory=list)
+    fields_missing: List[str] = Field(default_factory=list)
+    blockers: List[str] = Field(default_factory=list)
+    created_at: datetime
 
 
 class AutoApplyAuditResponse(BaseModel):

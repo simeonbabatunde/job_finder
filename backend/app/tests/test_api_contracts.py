@@ -369,9 +369,22 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert body["ats_type"] == "greenhouse"
         assert "Resume" in body["fields_filled"]
         assert body["application_status"] == "Needs Review"
+        assert isinstance(body["review_id"], int)
 
         updated_app = client.get("/applications", headers=headers).json()[0]
         assert updated_app["status"] == "Needs Review"
+
+        reviews = client.get(f"/applications/{app_body['id']}/fill-reviews", headers=headers)
+        assert reviews.status_code == 200, reviews.text
+        review_body = reviews.json()
+        assert review_body[0]["id"] == body["review_id"]
+        assert review_body[0]["application_id"] == app_body["id"]
+        assert review_body[0]["fields_filled"] == body["fields_filled"]
+        assert "user_id" not in review_body[0]
+
+        _, other_headers = register_user(client, "fill-review-record-other")
+        denied = client.get(f"/applications/{app_body['id']}/fill-reviews", headers=other_headers)
+        assert denied.status_code == 404
 
 
 def test_lever_fill_review_endpoint_uses_supported_adapter(monkeypatch):
@@ -619,6 +632,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0001_user_scope_resume_preferences",) in rows
     assert ("0002_application_link_resolution",) in rows
     assert ("0003_application_answer_profile",) in rows
+    assert ("0004_application_fill_review",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

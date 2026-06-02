@@ -11,6 +11,7 @@ from app.models import (
     AgentRun,
     Application,
     ApplicationAnswerProfile,
+    ApplicationFillReview,
     AutoApplyAudit,
     JobPreference,
     PasswordResetToken,
@@ -32,6 +33,7 @@ from app.schemas import (
     ApplicationAnswerProfileRequest,
     ApplicationAnswerProfileResponse,
     ApplicationFillReviewResponse,
+    ApplicationFillReviewRecordResponse,
     ApplicationPackageRequest,
     ApplicationPackageResponse,
     ApplicationResponse,
@@ -963,10 +965,45 @@ async def fill_application_for_review(
         cover_letter=app.cover_letter,
     )
 
+    review_record = ApplicationFillReview(
+        user_id=user.id,
+        application_id=app.id,
+        ats_type=fill_result.ats_type,
+        application_url=fill_result.application_url,
+        status=fill_result.status,
+        message=fill_result.message,
+        fields_filled=fill_result.fields_filled,
+        fields_missing=fill_result.fields_missing,
+        blockers=fill_result.blockers,
+    )
     app.status = fill_result.application_status
+    session.add(review_record)
     session.add(app)
     session.commit()
-    return fill_result.model_dump()
+    session.refresh(review_record)
+
+    response = fill_result.model_dump()
+    response["review_id"] = review_record.id
+    return response
+
+@router.get("/applications/{app_id}/fill-reviews", response_model=List[ApplicationFillReviewRecordResponse])
+def get_application_fill_reviews(
+    app_id: int,
+    limit: int = 10,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    query = (
+        select(ApplicationFillReview)
+        .where(ApplicationFillReview.application_id == app.id, ApplicationFillReview.user_id == user.id)
+        .order_by(ApplicationFillReview.created_at.desc())
+        .limit(min(max(limit, 1), 25))
+    )
+    return session.exec(query).all()
 
 @router.post("/agent/prepare-application", response_model=ApplicationPackageResponse)
 async def prepare_application(

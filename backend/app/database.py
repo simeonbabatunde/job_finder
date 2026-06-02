@@ -97,10 +97,26 @@ def migrate_application_answer_profile(connection):
         )
     )
 
+def migrate_application_fill_review(connection):
+    """Ensure fill-review attempts are indexed for application history lookups."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "applicationfillreview" not in table_names:
+        return
+
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS "
+            "ix_applicationfillreview_application_created "
+            "ON applicationfillreview (application_id, created_at DESC)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
     ("0003_application_answer_profile", migrate_application_answer_profile),
+    ("0004_application_fill_review", migrate_application_fill_review),
 )
 
 def ensure_schema_migrations_table(connection):

@@ -183,6 +183,7 @@ Completed:
 - Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse and Lever applications.
 - Added `ApplicationFillReviewService` to fill standard Greenhouse/Lever fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
+- Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
 
 Tests/checks:
 

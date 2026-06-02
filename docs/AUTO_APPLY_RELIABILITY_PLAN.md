@@ -53,6 +53,8 @@ Acceptance criteria:
 Current implementation:
 
 - `POST /applications/{app_id}/fill-review` runs a safe review session for a signed-in user's saved application.
+- Each fill-review attempt is saved as an `ApplicationFillReview` record with filled fields, missing fields, blockers, status, and timestamp.
+- `GET /applications/{app_id}/fill-reviews` returns the signed-in user's saved review attempts for that application.
 - The first deterministic ATS adapters are Greenhouse and Lever.
 - The Greenhouse and Lever adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
 - The application is marked `Needs Review` after the fill-review attempt.
