@@ -109,6 +109,7 @@ The first Influence Chart-style UI pass is now in place:
 - Main shell/header lives in `src/components/AppHeader.tsx`.
 - Dashboard, setup workflow, run agent panel, application history table, application package modal, auth modal, and admin settings have been restyled.
 - `/applications` now opens a full application history view.
+- Application history rows show link readiness, can resolve supported aggregator links, and open the resolved employer URL when available.
 
 ## Remaining Frontend Implementation Plan
 

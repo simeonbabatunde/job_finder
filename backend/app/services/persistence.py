@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 from app.database import engine
 from app.models import Application
+from app.services.application_link_resolver import ApplicationLinkResolver
 from typing import Dict, Any
 import re
 
@@ -29,6 +30,7 @@ class PersistenceService:
         if not job_url:
             print("Warning: No job_url provided. Skipping persistence.")
             return
+        link_resolution = ApplicationLinkResolver.classify_url(job_url)
 
         job_title_raw = job_data.get("title", "")
         company_raw = job_data.get("company", "")
@@ -66,6 +68,12 @@ class PersistenceService:
                         existing_app.explanation = job_data["explanation"]
                     if job_data.get("cover_letter"):
                         existing_app.cover_letter = job_data["cover_letter"]
+                    existing_app.source_url = existing_app.source_url or link_resolution.original_url
+                    existing_app.resolved_url = link_resolution.resolved_url
+                    existing_app.source_type = link_resolution.source_type
+                    existing_app.ats_type = link_resolution.ats_type
+                    existing_app.resolution_status = link_resolution.resolution_status
+                    existing_app.resolution_notes = link_resolution.notes
                     # Update status only when moving to a more advanced stage
                     status_order = [
                         "Identified", "Analyzed", "Analysis Failed",
@@ -85,6 +93,12 @@ class PersistenceService:
                         job_title=job_title_raw,
                         company=company_raw,
                         job_url=job_url,
+                        source_url=link_resolution.original_url,
+                        resolved_url=link_resolution.resolved_url,
+                        source_type=link_resolution.source_type,
+                        ats_type=link_resolution.ats_type,
+                        resolution_status=link_resolution.resolution_status,
+                        resolution_notes=link_resolution.notes,
                         status=status,
                         fit_score=job_data.get("fit_score", 0.0),
                         explanation=job_data.get("explanation"),

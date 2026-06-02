@@ -98,7 +98,7 @@ const tabs: { key: Tab; label: string; Icon: LucideIcon; requiresPkg?: boolean }
     { key: 'cover_letter', label: 'Cover letter', Icon: FileText },
     { key: 'summary', label: 'Summary', Icon: AlignLeft, requiresPkg: true },
     { key: 'talking_points', label: 'Talking points', Icon: Sparkles, requiresPkg: true },
-    { key: 'qa', label: 'Q&A', Icon: MessageSquareText, requiresPkg: true },
+    { key: 'qa', label: 'Application Q&A', Icon: MessageSquareText, requiresPkg: true },
     { key: 'interview', label: 'Interview', Icon: Target, requiresPkg: true },
     { key: 'company', label: 'Company', Icon: Building2, requiresPkg: true },
 ];
@@ -275,7 +275,7 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                     <div className="min-w-0">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-                                Application package
+                                Generated application kit
                             </p>
                             <StatusChip tone={toneForStatus(currentStatus)}>
                                 {currentStatus}{savingStatus ? '...' : ''}
@@ -294,7 +294,7 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--line)] bg-[var(--page)] px-5 py-3">
                     <Button onClick={generate} disabled={loading}>
                         {loading ? <LoaderCircle className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                        {pkg ? 'Regenerate' : 'Generate package'}
+                        {pkg ? 'Regenerate kit' : 'Generate application kit'}
                     </Button>
 
                     {coverLetter && (
@@ -360,9 +360,9 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                     {!pkg && !coverLetter && !loading && (
                         <div className="flex min-h-60 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--page)] p-8 text-center">
                             <HelpCircle size={36} className="mb-3 text-[var(--accent)]" />
-                            <p className="text-lg font-semibold text-[var(--ink)]">Ready to prepare this application?</p>
+                            <p className="text-lg font-semibold text-[var(--ink)]">Turn this match into application-ready materials</p>
                             <p className="mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-                                Generate a tailored cover letter, resume summary, interview prep, and company research for this role.
+                                Generate a cover letter, tailored summary, application Q&A, interview prep, and company brief built from your resume and this role.
                             </p>
                         </div>
                     )}
@@ -370,8 +370,8 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                     {loading && (
                         <div className="flex min-h-60 flex-col items-center justify-center text-center">
                             <LoaderCircle size={36} className="mb-3 animate-spin text-[var(--accent)]" />
-                            <p className="text-sm font-semibold text-[var(--ink)]">Generating your package</p>
-                            <p className="mt-1 text-xs text-[var(--muted)]">This may take a short moment.</p>
+                            <p className="text-sm font-semibold text-[var(--ink)]">Packaging this application</p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">Matching your resume, preferences, and job details.</p>
                         </div>
                     )}
 

@@ -155,8 +155,8 @@ export const ResumeFeedback: React.FC<{ hasResume: boolean }> = ({ hasResume }) 
                 <div className="mt-3 overflow-hidden rounded-lg border border-[var(--line)] bg-white">
                     <div className="flex items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--page)] px-4 py-3">
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">AI resume analysis</p>
-                            <p className="mt-1 text-sm text-[var(--muted)]">Focused fixes for stronger matching and ATS readability.</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">AI resume matching analysis</p>
+                            <p className="mt-1 text-sm text-[var(--muted)]">Focused fixes to improve match quality and ATS readability.</p>
                         </div>
                         <IconButton label="Collapse resume analysis" variant="ghost" size="sm" onClick={() => setOpen(false)}>
                             <X size={17} />

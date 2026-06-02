@@ -81,7 +81,7 @@ export const ProfileSettings = () => {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Profile settings</p>
                     <h3 className="mt-1 text-xl font-semibold text-[var(--ink)]">Personal profile details</h3>
                     <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
-                        These details are used to fill applications and prepare materials.
+                        These details help the assistant fill applications and personalize generated materials.
                     </p>
                 </div>
 

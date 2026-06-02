@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Optional
+from typing import List, NotRequired, Optional, TypedDict
 from app.models import Resume, JobPreference, Profile
 
 class Job(TypedDict):
@@ -10,6 +10,7 @@ class Job(TypedDict):
     source: str # "api", "mock", "linkedin_scrape"
     fit_score: Optional[float]
     cover_letter: Optional[str]
+    application_url: NotRequired[str]
 
 class AgentState(TypedDict):
     resume: str

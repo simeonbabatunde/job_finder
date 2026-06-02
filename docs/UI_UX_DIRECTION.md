@@ -24,6 +24,7 @@ Relevant files reviewed:
 Job Finder should feel like a career operations console, not a marketing landing page.
 
 - Put the usable product on the first screen.
+- Frame the product as a smart job search assistant that matches roles to the user's resume and preferences, then packages the application materials.
 - Favor clear navigation, compact sections, tables, forms, and status surfaces.
 - Use a quiet color system with one confident accent.
 - Make the resume, profile, preferences, run state, and application pipeline easy to scan.
@@ -95,7 +96,7 @@ The first screen should show the actual workflow:
 
 - Top overview strip: resume, profile, preference, and quota readiness.
 - Main setup panel: Resume, Preferences, and Profile in one compact workflow with divider-separated sections.
-- Right action rail: agent run controls with auto-submit toggle, quota or plan state.
+- Right action rail: search assistant controls with auto-submit toggle, quota or plan state.
 - Right recent matches panel with compact job rows; the full table lives on the Applications page.
 - Full application pipeline lives on the Applications page.
 
@@ -115,9 +116,9 @@ Resume, Profile, and Preferences should share field styling:
 
 The run control should look operational:
 
-- Header: "Run search".
+- Header: "Match and package jobs".
 - Metrics: minimum match, date range, selected boards, auto-submit state.
-- Primary action: "Run agent".
+- Primary action: "Start matching".
 - Secondary actions: "Preview matches", "Refresh history" where supported.
 - Auto-submit must be visually separated and copy should make the risk clear.
 

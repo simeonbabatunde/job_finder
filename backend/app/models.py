@@ -38,6 +38,12 @@ class Application(SQLModel, table=True):
     job_title: str
     company: str
     job_url: str
+    source_url: Optional[str] = Field(default=None)
+    resolved_url: Optional[str] = Field(default=None)
+    source_type: Optional[str] = Field(default=None)
+    ats_type: Optional[str] = Field(default=None)
+    resolution_status: str = Field(default="unresolved")
+    resolution_notes: Optional[str] = Field(default=None)
     status: str = Field(default="Applied") # Applied, Rejected, Interview, Submitted
     fit_score: float
     explanation: Optional[str] = Field(default=None)

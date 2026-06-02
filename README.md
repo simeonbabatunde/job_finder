@@ -1,8 +1,6 @@
 # Job Finder
 
-Job Finder is an AI-assisted job search and application workspace. The product goal is to let a user upload a resume, save their job preferences and profile, discover matching roles, generate application materials, track application status, and optionally use a browser agent to fill or submit applications.
-
-This project currently uses the name "Job Hunter" in parts of the UI and API. Keep that naming consistent until a final brand decision is made.
+Job Finder is a smart job search assistant that helps remove the repetitive parts of job hunting. A user uploads a resume, sets preferences and profile details, then the assistant searches for aligned roles, scores fit, tracks the pipeline, and packages application materials for each match.
 
 ## Current Stack
 
@@ -22,9 +20,9 @@ The current app already supports the main workflow:
 2. Upload a resume.
 3. Fill a personal profile for application forms and cover letters.
 4. Set job preferences and target companies.
-5. Run the agent to search, analyze, and optionally auto-submit.
-6. Review matched jobs and application status.
-7. Prepare a cover letter, tailored summary, Q&A answers, interview prep, and company brief for a selected job.
+5. Run the search assistant to search, score, and optionally auto-submit.
+6. Review best-fit jobs and application status.
+7. Generate a cover letter, tailored summary, Q&A answers, interview prep, and company brief for a selected job.
 
 ## Design Direction
 

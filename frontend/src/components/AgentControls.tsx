@@ -40,12 +40,12 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             });
             const run = await response.json();
             if (!response.ok) {
-                setStatus(`Error: ${run.detail || 'Failed to read agent run status'}`);
+                setStatus(`Error: ${run.detail || 'Failed to read search status'}`);
                 return;
             }
 
             if (run.status === 'failed') {
-                setStatus(`Error: ${run.error || 'Agent run failed'}`);
+                setStatus(`Error: ${run.error || 'Search run failed'}`);
                 return;
             }
 
@@ -53,22 +53,22 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 const prefix = wasFileSelected ? 'Resume uploaded. ' : '';
                 const msg = shouldAutoApply
                     ? `Auto-submit completed for ${run.applications_count} jobs.`
-                    : `Discovered and analyzed ${run.applications_count} jobs.`;
+                    : `Matched and prepared ${run.applications_count} jobs for review.`;
                 setStatus(`${prefix}${msg}`);
                 onComplete();
                 return;
             }
 
-            setStatus(run.status === 'queued' ? 'Agent queued...' : 'Agent working...');
+            setStatus(run.status === 'queued' ? 'Search assistant queued...' : 'Finding best-fit jobs...');
         }
 
-        setStatus('Agent is still running. Check application history again shortly.');
+        setStatus('Search is still running. Check application history again shortly.');
         onComplete();
     };
 
     const startAgent = async () => {
         if (!isLoggedIn) {
-            setStatus('Please sign in or create an account to launch the agent.');
+            setStatus('Please sign in or create an account to launch the search assistant.');
             onAuthRequired();
             return;
         }
@@ -108,17 +108,17 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 if (typeof data.quota_remaining === 'number') {
                     setQuotaRemaining(data.quota_remaining);
                 }
-                setStatus('Agent queued...');
+                setStatus('Search assistant queued...');
                 if (data.agent_run_id) {
                     await pollAgentRun(data.agent_run_id, shouldAutoApply, Boolean(wasFileSelected));
                 } else {
                     onComplete();
                 }
             } else {
-                setStatus(`Error: ${data.detail || 'Failed to run agent'}`);
+                setStatus(`Error: ${data.detail || 'Failed to run search'}`);
             }
         } catch (error) {
-            console.error('Error running agent:', error);
+            console.error('Error running search assistant:', error);
             setStatus('Failed to connect to backend.');
         } finally {
             setIsRunning(false);
@@ -132,7 +132,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             <div className="flex flex-col gap-3">
                 <div>
                     <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <StatusChip tone="accent">Search and score</StatusChip>
+                        <StatusChip tone="accent">Match roles</StatusChip>
                         <StatusChip tone={autoApply ? 'warning' : 'neutral'}>
                             {canAutoApply && autoApply ? 'Auto-submit on' : 'Prepare only'}
                         </StatusChip>
@@ -143,7 +143,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                         )}
                     </div>
                     <p className="text-sm leading-6 text-[var(--muted)]">
-                        The agent saves your setup, searches configured boards, scores matches, and prepares application materials.
+                        The assistant compares open roles with your resume and preferences, saves the strongest matches, and packages materials for review.
                     </p>
                 </div>
 
@@ -161,19 +161,19 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                     <span>
                         <span className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
                             <ShieldAlert size={16} className="text-[var(--warning)]" />
-                            Auto-submit applications
+                            Auto-submit matched applications
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">
                             {canAutoApply
-                                ? 'Leave this off to prepare matches and packages without submitting forms.'
-                                : 'Pro plan required. Free accounts can prepare matches and packages.'}
+                                ? 'Leave this off to review best-fit jobs and generated materials before submitting.'
+                                : 'Pro plan required. Free accounts can match jobs and prepare packages for review.'}
                         </span>
                     </span>
                 </label>
 
                 <Button onClick={startAgent} disabled={isRunning} size="lg" className="w-full">
                     {isRunning ? <LoaderCircle className="animate-spin" size={18} /> : <Play size={18} />}
-                    {isRunning ? 'Agent working' : 'Run agent'}
+                    {isRunning ? 'Matching jobs' : 'Start matching'}
                 </Button>
             </div>
 

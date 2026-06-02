@@ -157,7 +157,7 @@ export const UserProfile = forwardRef<UserProfileHandle, UserProfileProps>((prop
                         <StatusChip tone={profileComplete ? 'success' : 'warning'}>{pct}%</StatusChip>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                        Required contact fields improve cover letters and browser form filling.
+                        Required contact fields help the assistant write accurate materials and fill application forms.
                     </p>
                     <ProgressBar value={pct} className="mt-2 bg-white/70" />
                 </div>

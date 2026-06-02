@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArchiveX, ArrowDownUp, Box, ExternalLink, RefreshCw, Trash2 } from 'lucide-react';
-import { getAuthHeaders, API_URL } from '../api/client';
+import { ArchiveX, ArrowDownUp, Box, ExternalLink, Link2, RefreshCw, Trash2 } from 'lucide-react';
+import { getAuthHeaders, API_URL, resolveApplicationLink } from '../api/client';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -12,6 +12,12 @@ interface Application {
     fit_score: number;
     created_at: string;
     job_url: string;
+    source_url?: string | null;
+    resolved_url?: string | null;
+    source_type?: string | null;
+    ats_type?: string | null;
+    resolution_status?: string | null;
+    resolution_notes?: string | null;
     explanation?: string;
     cover_letter?: string;
 }
@@ -37,10 +43,48 @@ function scoreTone(score: number): 'neutral' | 'accent' | 'success' | 'warning' 
     return 'neutral';
 }
 
+function formatSourceLabel(value?: string | null) {
+    if (!value) return '';
+    return value
+        .split('_')
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
+
+function resolutionTone(status?: string | null): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
+    if (status === 'resolved') return 'success';
+    if (status === 'needs_resolution') return 'warning';
+    if (status === 'login_required' || status === 'captcha') return 'warning';
+    if (status === 'manual_review' || status === 'unsupported') return 'danger';
+    return 'neutral';
+}
+
+function resolutionLabel(app: Application) {
+    if (app.ats_type) return `ATS: ${formatSourceLabel(app.ats_type)}`;
+    if (app.resolution_status === 'resolved') {
+        return app.source_type === 'company_site' ? 'Company page' : 'Link ready';
+    }
+    if (app.resolution_status === 'needs_resolution') {
+        return `${formatSourceLabel(app.source_type) || 'Source'} link`;
+    }
+    if (app.resolution_status === 'login_required') return 'Login needed';
+    if (app.resolution_status === 'captcha') return 'Captcha';
+    if (app.resolution_status === 'manual_review') return 'Review link';
+    if (app.resolution_status === 'unsupported') return 'Unsupported';
+    return 'Check link';
+}
+
+function canResolveLink(app: Application) {
+    return Boolean(app.job_url) && app.resolution_status !== 'resolved';
+}
+
 export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage = false, compact = false }) => {
     const [applications, setApplications] = useState<Application[]>([]);
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
+    const [resolvingId, setResolvingId] = useState<number | null>(null);
+    const [linkError, setLinkError] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -121,6 +165,20 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         );
     };
 
+    const handleResolveLink = async (appId: number) => {
+        setResolvingId(appId);
+        setLinkError(null);
+        try {
+            const updatedApp = await resolveApplicationLink(appId) as Application;
+            setApplications(prev => prev.map(app => app.id === appId ? updatedApp : app));
+            setSelectedApp(prev => prev?.id === appId ? updatedApp : prev);
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to resolve application link');
+        } finally {
+            setResolvingId(null);
+        }
+    };
+
     return (
         <div className="mt-5 min-w-0">
             {selectedApp && (
@@ -134,7 +192,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h3 className="text-lg font-semibold text-[var(--ink)]">
-                        {fullPage ? 'All applications' : 'Recent matches'}
+                        {fullPage ? 'Application pipeline' : 'Latest best-fit matches'}
                     </h3>
                     <p className="text-sm text-[var(--muted)]">
                         {fullPage
@@ -165,6 +223,11 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                     )}
                 </div>
             </div>
+            {linkError && (
+                <p className="mb-3 rounded-md border border-[var(--danger-soft)] bg-[var(--danger-soft)] px-3 py-2 text-xs font-semibold text-[var(--danger)]">
+                    {linkError}
+                </p>
+            )}
 
             {loading ? (
                 <div className="flex justify-center rounded-lg border border-[var(--line)] bg-white py-10">
@@ -172,8 +235,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                 </div>
             ) : applications.length === 0 ? (
                 <EmptyState
-                    title="No matched jobs yet."
-                    detail="Run the agent after uploading a resume and setting preferences."
+                    title="No best-fit jobs yet."
+                    detail="Upload your resume, set preferences, then start matching to find roles that align with your background."
                 />
             ) : useCompactList ? (
                 <div className="space-y-2">
@@ -190,6 +253,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                             </div>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
+                                <StatusChip tone={resolutionTone(app.resolution_status)} title={app.resolution_notes || undefined}>
+                                    {resolutionLabel(app)}
+                                </StatusChip>
                                 <span className="text-xs text-[var(--muted)]">
                                     {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 </span>
@@ -203,9 +269,24 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                     <Box size={15} />
                                     Package
                                 </Button>
+                                {canResolveLink(app) && (
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => void handleResolveLink(app.id)}
+                                        disabled={resolvingId === app.id}
+                                    >
+                                        {resolvingId === app.id ? (
+                                            <RefreshCw size={14} className="animate-spin" />
+                                        ) : (
+                                            <Link2 size={14} />
+                                        )}
+                                        {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                    </Button>
+                                )}
                                 {app.job_url ? (
                                     <a
-                                        href={app.job_url}
+                                        href={app.resolved_url || app.job_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
@@ -224,7 +305,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                 </div>
             ) : (
                 <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-white">
-                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                         <thead className="bg-[var(--soft)] text-xs uppercase text-[var(--muted)]">
                             <tr>
                                 <th className="px-4 py-3">Role</th>
@@ -247,6 +328,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                         Date <ArrowDownUp size={13} />
                                     </button>
                                 </th>
+                                <th className="px-4 py-3">Link</th>
                                 <th className="px-4 py-3">Actions</th>
                             </tr>
                         </thead>
@@ -271,7 +353,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                         {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </td>
                                     <td className="px-4 py-4 align-middle">
-                                        <div className="flex items-center gap-2">
+                                        <StatusChip tone={resolutionTone(app.resolution_status)} title={app.resolution_notes || undefined}>
+                                            {resolutionLabel(app)}
+                                        </StatusChip>
+                                    </td>
+                                    <td className="px-4 py-4 align-middle">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <Button
                                                 variant="secondary"
                                                 size="sm"
@@ -280,9 +367,24 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                                 <Box size={15} />
                                                 Package
                                             </Button>
+                                            {canResolveLink(app) && (
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => void handleResolveLink(app.id)}
+                                                    disabled={resolvingId === app.id}
+                                                >
+                                                    {resolvingId === app.id ? (
+                                                        <RefreshCw size={14} className="animate-spin" />
+                                                    ) : (
+                                                        <Link2 size={14} />
+                                                    )}
+                                                    {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                                </Button>
+                                            )}
                                             {app.job_url ? (
                                                 <a
-                                                    href={app.job_url}
+                                                    href={app.resolved_url || app.job_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"

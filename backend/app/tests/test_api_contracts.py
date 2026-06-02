@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 from datetime import datetime, timedelta
@@ -11,8 +12,11 @@ from sqlalchemy import text
 from sqlmodel import Session
 
 from app.api import endpoints
+from app.agent.nodes import submit_application
 from app.database import engine, run_schema_migrations
 from app.models import Application, User
+from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
+from app.services.persistence import PersistenceService
 from main import app
 
 
@@ -91,6 +95,10 @@ class FakeAgentGraph:
                 }
             ] if state.get("auto_apply") else [],
         }
+
+
+class FakePrefs:
+    min_match_score = 70
 
 
 def test_bearer_auth_and_user_status_contract():
@@ -205,6 +213,162 @@ def test_application_history_query_contracts():
         assert [item["job_title"] for item in filtered_body] == ["Middle Role", "Recent Role"]
 
 
+def test_application_link_resolver_classifies_ats_and_aggregators():
+    greenhouse = ApplicationLinkResolver.classify_url("https://boards.greenhouse.io/acme/jobs/123")
+    assert greenhouse.source_type == "ats"
+    assert greenhouse.ats_type == "greenhouse"
+    assert greenhouse.resolution_status == "resolved"
+    assert greenhouse.resolved_url == "https://boards.greenhouse.io/acme/jobs/123"
+
+    linkedin = ApplicationLinkResolver.classify_url("https://www.linkedin.com/jobs/view/123")
+    assert linkedin.source_type == "linkedin"
+    assert linkedin.ats_type is None
+    assert linkedin.resolution_status == "needs_resolution"
+    assert linkedin.resolved_url is None
+
+    company_site = ApplicationLinkResolver.classify_url("https://careers.example.com/jobs/123")
+    assert company_site.source_type == "company_site"
+    assert company_site.resolution_status == "resolved"
+
+
+def test_persisted_applications_include_link_resolution_metadata():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "link-resolution")
+        user_id = auth["user"]["id"]
+
+        PersistenceService.save_job(
+            user_id,
+            {
+                "title": "External Role",
+                "company": "LinkedIn Source",
+                "url": "https://www.linkedin.com/jobs/view/999",
+                "fit_score": 0.88,
+            },
+            "Analyzed",
+        )
+
+        response = client.get("/applications", headers=headers)
+        assert response.status_code == 200, response.text
+        app_body = response.json()[0]
+        assert app_body["job_url"] == "https://www.linkedin.com/jobs/view/999"
+        assert app_body["source_url"] == "https://www.linkedin.com/jobs/view/999"
+        assert app_body["resolved_url"] is None
+        assert app_body["source_type"] == "linkedin"
+        assert app_body["ats_type"] is None
+        assert app_body["resolution_status"] == "needs_resolution"
+        assert "user_id" not in app_body
+
+
+def test_resolve_application_link_endpoint_updates_owned_application(monkeypatch):
+    async def fake_resolve_url(url: str, timeout_ms: int = 30000):
+        assert url == "https://www.linkedin.com/jobs/view/999"
+        return LinkResolutionResult(
+            original_url=url,
+            resolved_url="https://boards.greenhouse.io/acme/jobs/999",
+            source_type="linkedin",
+            ats_type="greenhouse",
+            resolution_status="resolved",
+            notes="Resolved in test.",
+        )
+
+    monkeypatch.setattr(endpoints.ApplicationLinkResolver, "resolve_url", staticmethod(fake_resolve_url))
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "resolve-link")
+        user_id = auth["user"]["id"]
+
+        PersistenceService.save_job(
+            user_id,
+            {
+                "title": "Resolved Role",
+                "company": "Acme",
+                "url": "https://www.linkedin.com/jobs/view/999",
+                "fit_score": 0.9,
+            },
+            "Analyzed",
+        )
+
+        app_body = client.get("/applications", headers=headers).json()[0]
+        response = client.post(f"/applications/{app_body['id']}/resolve-link", headers=headers)
+
+        assert response.status_code == 200, response.text
+        resolved = response.json()
+        assert resolved["source_url"] == "https://www.linkedin.com/jobs/view/999"
+        assert resolved["resolved_url"] == "https://boards.greenhouse.io/acme/jobs/999"
+        assert resolved["source_type"] == "linkedin"
+        assert resolved["ats_type"] == "greenhouse"
+        assert resolved["resolution_status"] == "resolved"
+        assert resolved["resolution_notes"] == "Resolved in test."
+
+        _, other_headers = register_user(client, "resolve-other")
+        denied = client.post(f"/applications/{app_body['id']}/resolve-link", headers=other_headers)
+        assert denied.status_code == 404
+
+
+def test_auto_apply_holds_unresolved_aggregator_links_for_review(monkeypatch):
+    saved_jobs = []
+
+    monkeypatch.setattr(
+        PersistenceService,
+        "save_job",
+        staticmethod(lambda user_id, job, status: saved_jobs.append((user_id, job, status))),
+    )
+
+    state = {
+        "preferences": FakePrefs(),
+        "found_jobs": [
+            {
+                "title": "Aggregator Role",
+                "company": "LinkedIn Source",
+                "url": "https://www.linkedin.com/jobs/view/123",
+                "fit_score": 0.9,
+            }
+        ],
+        "applications_submitted": [],
+        "logs": [],
+        "user_id": 42,
+        "auto_apply": True,
+        "auto_apply_audit": [],
+    }
+
+    result = asyncio.run(submit_application(state))
+
+    assert result["applications_submitted"] == []
+    assert result["application_status"] == "completed"
+    assert "held for review" in result["logs"][0]
+    assert result["auto_apply_audit"][0]["action"] == "resolve"
+    assert result["auto_apply_audit"][0]["status"] == "needs_resolution"
+    assert saved_jobs[0][2] == "Needs Review"
+
+
+def test_auto_apply_allows_direct_supported_ats_links(monkeypatch):
+    monkeypatch.setattr(PersistenceService, "save_job", staticmethod(lambda *args, **kwargs: None))
+
+    job_url = "https://boards.greenhouse.io/acme/jobs/123"
+    state = {
+        "preferences": FakePrefs(),
+        "found_jobs": [
+            {
+                "title": "ATS Role",
+                "company": "Acme",
+                "url": job_url,
+                "fit_score": 0.9,
+            }
+        ],
+        "applications_submitted": [],
+        "logs": [],
+        "user_id": 42,
+        "auto_apply": True,
+        "auto_apply_audit": [],
+    }
+
+    result = asyncio.run(submit_application(state))
+
+    assert result["applications_submitted"] == [job_url]
+    assert result["application_status"] == "applying"
+    assert state["found_jobs"][0]["application_url"] == job_url
+
+
 def test_schema_migrations_are_recorded_and_idempotent():
     with TestClient(app):
         run_schema_migrations()
@@ -214,6 +378,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
             ).all()
 
     assert ("0001_user_scope_resume_preferences",) in rows
+    assert ("0002_application_link_resolution",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

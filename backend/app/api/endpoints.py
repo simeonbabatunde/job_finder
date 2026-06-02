@@ -23,6 +23,7 @@ from typing import List, Optional
 from app.services.resume_parser import ResumeService
 from app.services.job_search import JobSearchService
 from app.services.email import send_reset_email
+from app.services.application_link_resolver import ApplicationLinkResolver
 from app.schemas import (
     AgentRunResponse,
     AgentRunRecordResponse,
@@ -681,6 +682,29 @@ def get_applications(
         query = query.limit(min(limit, 100))
 
     return session.exec(query).all()
+
+@router.post("/applications/{app_id}/resolve-link", response_model=ApplicationResponse)
+async def resolve_application_link(
+    app_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    resolution = await ApplicationLinkResolver.resolve_url(app.source_url or app.job_url)
+    app.source_url = resolution.original_url
+    app.resolved_url = resolution.resolved_url
+    app.source_type = resolution.source_type
+    app.ats_type = resolution.ats_type
+    app.resolution_status = resolution.resolution_status
+    app.resolution_notes = resolution.notes
+
+    session.add(app)
+    session.commit()
+    session.refresh(app)
+    return app
 
 @router.delete("/applications", response_model=MessageResponse)
 def clear_applications(user: User = Depends(get_current_user), session: Session = Depends(get_session)):

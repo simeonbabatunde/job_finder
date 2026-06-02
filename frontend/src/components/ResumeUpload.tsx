@@ -158,7 +158,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
                   <p className="truncate text-sm font-semibold text-[var(--ink)]">{existingFile}</p>
                   <StatusChip tone="success">Ready</StatusChip>
                 </div>
-                <p className="text-xs text-[var(--muted)]">Stored resume is available for the next run.</p>
+                <p className="text-xs text-[var(--muted)]">This resume anchors matching and generated materials.</p>
               </div>
             </div>
             <Button variant="secondary" size="sm" onClick={clearCurrentResume}>
@@ -172,8 +172,8 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
                 <UploadCloud size={22} />
               </span>
               <span>
-                <span className="block text-sm font-semibold text-[var(--ink)]">Upload resume</span>
-                <span className="mt-1 block text-xs text-[var(--muted)]">PDF, DOCX, or TXT. Drag and drop works here too.</span>
+                <span className="block text-sm font-semibold text-[var(--ink)]">Upload the resume to match against</span>
+                <span className="mt-1 block text-xs text-[var(--muted)]">PDF, DOCX, or TXT. The assistant uses it to score fit.</span>
               </span>
             </span>
             <span className="inline-flex min-h-10 items-center justify-center rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-white">

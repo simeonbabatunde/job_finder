@@ -32,7 +32,7 @@ export function AppHeader({ user, currentPath, onLogin, onLogout }: AppHeaderPro
                     </span>
                     <span>
                         <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-                            career operations
+                            job search assistant
                         </span>
                         <span className="mt-0.5 block text-xl font-semibold text-[var(--ink)]">
                             Job Finder

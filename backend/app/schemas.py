@@ -162,6 +162,12 @@ class ApplicationResponse(BaseModel):
     job_title: str
     company: str
     job_url: str
+    source_url: Optional[str] = None
+    resolved_url: Optional[str] = None
+    source_type: Optional[str] = None
+    ats_type: Optional[str] = None
+    resolution_status: str = "unresolved"
+    resolution_notes: Optional[str] = None
     status: str
     fit_score: float
     explanation: Optional[str] = None

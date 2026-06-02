@@ -85,7 +85,7 @@ export const AdminPanel: React.FC = () => {
                     <SectionHeader
                         eyebrow="Configuration"
                         title="Scraper settings"
-                        description="Choose job sources and result volume for agent searches."
+                        description="Choose job sources and result volume for assistant searches."
                         action={<Settings size={21} className="text-[var(--accent)]" />}
                     />
 

@@ -9,6 +9,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from app.services.job_search import JobSearchService
 from app.services.browser_apply import BrowserApplyService
 from app.services.persistence import PersistenceService
+from app.services.application_link_resolver import ApplicationLinkResolver
 
 async def parse_resume(state: AgentState):
     """
@@ -207,6 +208,7 @@ async def submit_application(state: AgentState):
     current_submitted = state.get("applications_submitted", [])
     new_submitted = []
     new_logs = []
+    audit_records = []
     
     for job in jobs:
         fit_score = job.get("fit_score", 0.0)
@@ -214,13 +216,36 @@ async def submit_application(state: AgentState):
         
         if pct_score >= min_score:
             if job["url"] not in current_submitted:
+                if state.get("auto_apply"):
+                    link_resolution = ApplicationLinkResolver.classify_url(job["url"])
+                    if link_resolution.resolution_status != "resolved" or not link_resolution.ats_type:
+                        review_message = (
+                            f"Auto-apply held for review: {link_resolution.notes}"
+                        )
+                        new_logs.append(f"{job['title']} at {job['company']}: {review_message}")
+                        PersistenceService.save_job(state.get("user_id"), job, "Needs Review")
+                        audit_records.append({
+                            "job_url": job.get("url"),
+                            "job_title": job.get("title"),
+                            "company": job.get("company"),
+                            "action": "resolve",
+                            "status": link_resolution.resolution_status,
+                            "message": review_message,
+                        })
+                        continue
+
+                    job["application_url"] = link_resolution.resolved_url or job["url"]
+
                 new_submitted.append(job["url"])
                 new_logs.append(f"Ready to apply to {job['title']} at {job['company']}")
     
+    submitted_urls = current_submitted + new_submitted
+
     return {
-        "applications_submitted": current_submitted + new_submitted,
-        "application_status": "applying" if state.get("auto_apply") else "completed",
-        "logs": state.get("logs", []) + new_logs
+        "applications_submitted": submitted_urls,
+        "application_status": "applying" if state.get("auto_apply") and submitted_urls else "completed",
+        "logs": state.get("logs", []) + new_logs,
+        "auto_apply_audit": state.get("auto_apply_audit", []) + audit_records,
     }
 
 async def apply_browser(state: AgentState):
@@ -250,10 +275,25 @@ async def apply_browser(state: AgentState):
     for job_url in submitted_urls:
         job = next((j for j in found_jobs if j["url"] == job_url), None)
         if not job: continue
+        application_url = job.get("application_url") or job["url"]
+        link_resolution = ApplicationLinkResolver.classify_url(application_url)
+        if link_resolution.resolution_status != "resolved" or not link_resolution.ats_type:
+            message = "Auto-apply skipped because the application URL is not a resolved supported ATS link."
+            new_logs.append(f"{job['title']} at {job['company']}: {message}")
+            PersistenceService.save_job(state.get("user_id"), job, "Needs Review")
+            audit_records.append({
+                "job_url": job.get("url", job_url),
+                "job_title": job.get("title"),
+                "company": job.get("company"),
+                "action": "submit",
+                "status": "needs_review",
+                "message": message,
+            })
+            continue
         
         print(f"Auto-Applying to {job['title']}...")
         result = await BrowserApplyService.apply_to_job(
-            job_url=job["url"],
+            job_url=application_url,
             profile=profile,
             resume_bytes=resume_bytes,
             resume_filename=resume_filename,

@@ -85,7 +85,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMo
     const title = mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Reset password';
     const subtitle = mode === 'forgot'
         ? 'Enter your email and we will send a reset link.'
-        : 'Access your resume setup, job preferences, and application pipeline.';
+        : 'Access your smart job search assistant, matched roles, and generated application materials.';
 
     return (
         <div className={onClose ? 'fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm' : 'flex min-h-screen items-center justify-center bg-[var(--page)] p-4'}>

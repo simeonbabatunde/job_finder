@@ -23,7 +23,7 @@ Key files:
 - `src/components/ResumeFeedback.tsx`: AI resume review panel.
 - `src/components/UserProfile.tsx`: application profile fields and completeness banner.
 - `src/components/JobPreferences.tsx`: target roles, location, experience, job type, target companies, match score, recency.
-- `src/components/AgentControls.tsx`: validates resume/preferences, uploads and saves silently, runs the agent.
+- `src/components/AgentControls.tsx`: validates resume/preferences, uploads and saves silently, starts the search workflow.
 - `src/components/AgentDashboard.tsx`: application table, sorting, inline "view all", clear history, package modal trigger.
 - `src/components/ApplicationPackageModal.tsx`: cover letter, summary, talking points, Q&A, interview prep, company brief, PDF download, status updates.
 - `src/components/Login.tsx`: login, register, and forgot password modal.
@@ -82,6 +82,7 @@ Issues to address:
 - Daily free/pro run quotas are enforced server-side.
 - Agent runs are queued in background tasks and persist logs, selected application counts, and found job counts.
 - Auto-submit is gated to pro/admin users and writes audit records; stronger confirmation boundaries are still needed before production.
+- Auto-apply reliability, ATS adapters, hard stop rules, answer vault design, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 ## Milestone 0: Repository Hygiene and Documentation
@@ -100,6 +101,7 @@ Deliverables:
 - `docs/HANDOFF.md`.
 - `docs/IMPLEMENTATION_PLAN.md`.
 - `docs/UI_UX_DIRECTION.md`.
+- `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - Root `.gitignore`.
 - `.env.example` covering frontend, backend, and Docker Compose values.
 
@@ -111,6 +113,7 @@ Acceptance criteria:
 Implementation notes:
 
 - Added root `.gitignore` and `.env.example`.
+- Added `docs/AUTO_APPLY_RELIABILITY_PLAN.md` for the reliability path before production auto-submit.
 - Decide later whether to keep the displayed brand as "Job Hunter" or rename all UI copy to "Job Finder". The current shell uses "Job Finder".
 
 ## Milestone 1: Design System Foundation
@@ -190,7 +193,7 @@ Status: In progress
 
 Goal:
 
-Make resume, profile, preferences, agent run, and recent applications feel like one operational workflow.
+Make resume, profile, preferences, search runs, and recent applications feel like one operational workflow.
 
 Deliverables:
 
@@ -199,19 +202,19 @@ Deliverables:
 - Resume section using shared upload and status styles.
 - Profile section using shared fields and completion chip.
 - Preferences section with compact controls.
-- Right-rail agent run panel with clear auto-submit state and risk language.
+- Right-rail search assistant panel with clear auto-submit state and risk language.
 - Right-rail recent applications list limited to 5 rows, with the full table kept on the Applications page.
 
 Acceptance criteria:
 
 - A signed-in user can understand readiness at a glance.
 - Resume/Profile/Preferences have visible completion states.
-- The "Run agent" action saves the required setup data as it does today.
+- The "Start matching" action saves the required setup data as it does today.
 - Recent applications are visible without dominating the page.
 
 Implementation notes:
 
-- Dashboard shell, compact overview strip, consolidated setup workflow, right-rail run-agent panel, and compact recent matches were restyled in the UI pass.
+- Dashboard shell, compact overview strip, consolidated setup workflow, right-rail search assistant panel, and compact recent matches were restyled in the UI pass.
 
 Implementation notes:
 
@@ -256,6 +259,9 @@ Implementation notes:
 
 - Backend now supports `/applications` query parameters for `limit`, `sort`, `direction`, and `status`.
 - Dashboard requests the recent limited view; the full `/applications` view requests the complete history.
+- Application rows now include link-resolution metadata so aggregator links can be resolved before future fill/submit workflows.
+- Dashboard shows a link readiness chip and can call `POST /applications/{app_id}/resolve-link` to update a saved record with the resolved employer URL.
+- The auto-apply path now requires a resolved supported ATS link; unresolved aggregator/company/unknown links are marked for review instead of browser automation.
 
 ## Milestone 5: Application Package UX
 
@@ -312,7 +318,7 @@ Acceptance criteria:
 
 - Users cannot access each other's resumes, preferences, applications, or profiles.
 - Quotas are enforced server-side.
-- UI displays remaining quota before running the agent.
+- UI displays remaining quota before starting a search.
 
 Implementation notes:
 

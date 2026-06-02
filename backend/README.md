@@ -124,6 +124,7 @@ Applications:
 - `GET /applications?limit=5&sort=date&direction=desc`
 - `DELETE /applications`
 - `PATCH /applications/{app_id}/status`
+- `POST /applications/{app_id}/resolve-link`
 - `POST /agent/prepare-application`
 - `GET /applications/{app_id}/cover-letter.pdf`
 

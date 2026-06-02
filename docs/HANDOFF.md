@@ -5,8 +5,8 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 ## Product Snapshot
 
 - Product: Job Finder
-- Current UI label in code: Job Hunter / Job Hunter AI
-- Product promise: an AI career operations workspace that finds, scores, prepares, tracks, and optionally applies to matching jobs.
+- Current UI label in code: Job Finder
+- Product promise: a smart career operations workspace that finds, scores, prepares, tracks, and optionally applies to matching jobs.
 - Core audience: job seekers who want a repeatable application workflow with AI-assisted resume matching, tailored application materials, and application tracking.
 - Reference UI direction: use the same calm, dense, research-dashboard language as the Influence Chart project.
 
@@ -65,6 +65,7 @@ The app should feel like a calm career operations dashboard:
 - no emoji-led controls
 
 Full direction is in `docs/UI_UX_DIRECTION.md`.
+Auto-apply reliability, answer vault design, work authorization, and voluntary self-ID handling are in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 
 ## Current Code Risks
 
@@ -113,6 +114,7 @@ Full direction is in `docs/UI_UX_DIRECTION.md`.
 - Should auth be custom JWT/session auth, Supabase Auth, Clerk, or another provider?
 - Should auto-submit ever submit without a final human confirmation per job?
 - Should long-running agent work move to a worker/queue before staging?
+- Should sensitive voluntary self-identification answers be stored at all, or should the product always default to decline/self-review?
 
 ## Latest Handoff Entry
 
@@ -126,6 +128,7 @@ Completed:
 - Added `docs/UI_UX_DIRECTION.md`.
 - Added `docs/IMPLEMENTATION_PLAN.md`.
 - Added `docs/HANDOFF.md`.
+- Added `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - Rewrote `frontend/README.md`.
 - Rewrote `backend/README.md`.
 - Removed a plaintext OpenRouter key from the backend README rewrite. Rotate the key if it was real.
@@ -136,9 +139,10 @@ Completed:
 - Removed Vite template styling from `frontend/src/App.css`.
 - Added shared UI primitives in `frontend/src/components/ui.tsx`.
 - Added `frontend/src/components/AppHeader.tsx`.
-- Reworked `frontend/src/App.tsx` into a product dashboard shell with a compact overview strip, consolidated setup workflow, run agent panel, recent matches, and full `/applications` route.
+- Reworked `frontend/src/App.tsx` into a product dashboard shell with a compact overview strip, consolidated setup workflow, search assistant panel, recent matches, and full `/applications` route.
 - Restyled `ResumeUpload`, `JobPreferences`, `UserProfile`, `AgentControls`, `AgentDashboard`, `ApplicationPackageModal`, `Login`, and `AdminPanel`.
 - Added a full generated-package Markdown download from `ApplicationPackageModal`, alongside the existing cover-letter PDF download.
+- Refined key app copy to frame Job Finder as a smart job search assistant that matches roles to the user's resume/preferences and packages application materials.
 - Added typed frontend API payloads for user status, profile, preferences, resume status, and auth user shape.
 - Moved `cn` into `frontend/src/lib/cn.ts` so Fast Refresh no longer warns about non-component exports from the UI component module.
 - Removed remaining explicit `any` lint violations in the touched frontend flow.
@@ -169,14 +173,19 @@ Completed:
 - Added daily free/pro agent-run quota enforcement with `FREE_DAILY_AGENT_RUN_LIMIT` and `PRO_DAILY_AGENT_RUN_LIMIT`.
 - Gated auto-submit to pro/admin users and surfaced quota status through `/user/status`.
 - Updated the Run Agent panel to show remaining run quota, disable auto-submit for free users, and poll run status.
+- Added application link-resolution metadata, migration support, and `ApplicationLinkResolver` classification for ATS, aggregator, company, and unknown links.
+- Added `POST /applications/{app_id}/resolve-link` with conservative Playwright resolution for aggregator links.
+- Updated the dashboard application cards/table to show link readiness, resolve unresolved links, and open the resolved employer URL when available.
+- Guarded the auto-apply node so unresolved aggregator/company/unknown links are held for review and only resolved supported ATS links can proceed to browser automation.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 12 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
-- `git diff --check` passed for the files touched in this implementation pass.
+- `git diff --check` passed.
+- `docker compose config` rendered successfully.
 - `npm audit --json` in `frontend` reports 0 vulnerabilities after `npm audit fix`.
 
 Next concrete step:

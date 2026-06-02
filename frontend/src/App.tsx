@@ -107,7 +107,7 @@ function App() {
     {
       label: 'Resume',
       ready: !!resumeData?.filename,
-      detail: resumeData?.filename || 'Upload PDF, DOCX, or TXT',
+      detail: resumeData?.filename || 'Matching signal needed',
       icon: FileText,
     },
     {
@@ -121,7 +121,7 @@ function App() {
       ready: preferencesReady,
       detail: prefsData
         ? `${prefsData.role?.[0] || 'Role'} / ${prefsData.location?.[0] || 'Market'}`
-        : 'Role and market needed',
+        : 'Matching targets needed',
       icon: SlidersHorizontal,
     },
     {
@@ -178,8 +178,8 @@ function App() {
       <PageShell>
         <SectionHeader
           eyebrow="Pipeline"
-          title="Application History"
-          description="Review every matched role, update status, and prepare application materials."
+          title="Application pipeline"
+          description="Track every best-fit role, manage status, and open the generated materials for each application."
         />
         <div className="mt-5">
           <AgentDashboard key={refreshHistory} fullPage />
@@ -195,8 +195,8 @@ function App() {
           <div>
             <SectionHeader
               eyebrow="Dashboard"
-              title="Job search workspace"
-              description="Keep the core inputs current, then run one focused search pass."
+              title="Smart job search assistant"
+              description="Use your resume and preferences to find aligned roles, score fit, and package application materials automatically."
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {user ? (
@@ -245,13 +245,13 @@ function App() {
           <SectionHeader
             eyebrow="Setup"
             title="Workspace setup"
-            description="Resume, targeting, and application details stay together so the workflow is easier to scan."
+            description="Give the assistant the resume, targets, and profile details it needs to match roles and write accurate materials."
           />
 
           <div className="mt-4 divide-y divide-[var(--line)] border-t border-[var(--line)]">
             <section className="py-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-semibold text-[var(--ink)]">Resume</h3>
+                <h3 className="text-base font-semibold text-[var(--ink)]">Resume signal</h3>
                 <StatusChip tone={resumeData?.filename ? 'success' : 'neutral'}>
                   {resumeData?.filename ? 'Ready' : 'Upload needed'}
                 </StatusChip>
@@ -262,7 +262,7 @@ function App() {
 
             <section className="py-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-semibold text-[var(--ink)]">Preferences</h3>
+                <h3 className="text-base font-semibold text-[var(--ink)]">Matching preferences</h3>
                 <StatusChip tone={preferencesReady ? 'success' : 'neutral'}>
                   {preferencesReady ? 'Ready' : 'Targets needed'}
                 </StatusChip>
@@ -272,7 +272,7 @@ function App() {
 
             <section className="pt-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-semibold text-[var(--ink)]">Application details</h3>
+                <h3 className="text-base font-semibold text-[var(--ink)]">Candidate profile</h3>
                 <StatusChip tone={profileComplete ? 'success' : 'warning'}>
                   {profileComplete ? 'Complete' : 'Incomplete'}
                 </StatusChip>
@@ -286,8 +286,8 @@ function App() {
           <Panel className="min-w-0 p-4">
             <SectionHeader
               eyebrow="Action"
-              title="Run agent"
-              description="Queue a search and poll the run status."
+              title="Match and package jobs"
+              description="Launch the assistant to search, score, and prepare application kits."
               action={<Play size={19} className="text-[var(--accent)]" />}
             />
             <div className="mt-4">
@@ -310,8 +310,8 @@ function App() {
           <Panel className="min-w-0 overflow-hidden p-4">
             <SectionHeader
               eyebrow="Recent"
-              title="Matched jobs"
-              description="Latest five matches from completed runs."
+              title="Best-fit jobs"
+              description="Latest roles scored against your resume and preferences."
             />
             <AgentDashboard key={refreshHistory} limit={5} compact />
           </Panel>

@@ -43,8 +43,48 @@ def migrate_user_scope_resume_preferences(connection):
                 )
             )
 
+def migrate_application_link_resolution(connection):
+    """Add source/resolved URL metadata for auto-apply link resolution."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "application" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("application")}
+    column_defs = {
+        "source_url": "VARCHAR",
+        "resolved_url": "VARCHAR",
+        "source_type": "VARCHAR",
+        "ats_type": "VARCHAR",
+        "resolution_status": "VARCHAR DEFAULT 'unresolved'",
+        "resolution_notes": "VARCHAR",
+    }
+    for column_name, column_def in column_defs.items():
+        if column_name not in columns:
+            connection.execute(text(f"ALTER TABLE application ADD COLUMN {column_name} {column_def}"))
+
+    connection.execute(
+        text(
+            """
+            UPDATE application
+            SET source_url = job_url
+            WHERE source_url IS NULL
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE application
+            SET resolution_status = 'unresolved'
+            WHERE resolution_status IS NULL
+            """
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
+    ("0002_application_link_resolution", migrate_application_link_resolution),
 )
 
 def ensure_schema_migrations_table(connection):
