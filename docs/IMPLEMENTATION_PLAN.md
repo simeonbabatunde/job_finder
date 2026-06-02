@@ -82,7 +82,8 @@ Issues to address:
 - Daily free/pro run quotas are enforced server-side.
 - Agent runs are queued in background tasks and persist logs, selected application counts, and found job counts.
 - Auto-submit is gated to pro/admin users and writes audit records; stronger confirmation boundaries are still needed before production.
-- Auto-apply reliability, ATS adapters, hard stop rules, answer vault design, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
+- Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
+- The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 ## Milestone 0: Repository Hygiene and Documentation

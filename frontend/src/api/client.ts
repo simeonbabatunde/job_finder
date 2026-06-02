@@ -28,6 +28,26 @@ export interface ProfilePayload {
     expected_salary?: string;
 }
 
+export interface ApplicationAnswerProfilePayload {
+    id?: number;
+    work_authorized_us: string;
+    requires_sponsorship_now: string;
+    requires_sponsorship_future: string;
+    willing_to_relocate: string;
+    remote_preference: string;
+    earliest_start_date?: string;
+    notice_period?: string;
+    desired_salary?: string;
+    work_authorization_notes?: string;
+    consent_to_use_answers: boolean;
+    gender: string;
+    race_ethnicity: string;
+    veteran_status: string;
+    disability_status: string;
+    consent_to_use_demographics: boolean;
+    updated_at?: string;
+}
+
 export interface RegisterProfile {
     first_name: string;
     last_name: string;
@@ -51,6 +71,7 @@ export interface UserStatusResponse {
     resume?: ResumeStatus | null;
     preferences?: JobPreferencesPayload | null;
     profile?: ProfilePayload | null;
+    application_profile?: ApplicationAnswerProfilePayload | null;
     quota?: AgentQuotaStatus | null;
 }
 
@@ -116,6 +137,31 @@ export async function saveProfile(profileData: ProfilePayload) {
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to save profile'));
+    }
+    return response.json();
+}
+
+export async function getApplicationProfile(): Promise<ApplicationAnswerProfilePayload | null> {
+    const response = await fetch(`${API_URL}/application-profile`, {
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch application answers'));
+    }
+    return response.json();
+}
+
+export async function saveApplicationProfile(profileData: ApplicationAnswerProfilePayload) {
+    const response = await fetch(`${API_URL}/application-profile`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+        },
+        body: JSON.stringify(profileData),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to save application answers'));
     }
     return response.json();
 }

@@ -108,6 +108,8 @@ Resume, profile, and preferences:
 - `POST /upload-resume`
 - `GET /profile`
 - `POST /profile`
+- `GET /application-profile`
+- `POST /application-profile`
 - `POST /preferences`
 - `POST /agent/resume-feedback`
 

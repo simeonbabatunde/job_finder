@@ -3,12 +3,20 @@ import type { ReactNode } from 'react';
 import { CheckCircle2, Circle, FileText, Play, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { clearAuthSession, getUserStatus, hasAuthSession } from './api/client';
-import type { AgentQuotaStatus, AppUser, JobPreferencesPayload, ProfilePayload, ResumeStatus } from './api/client';
+import type {
+  AgentQuotaStatus,
+  AppUser,
+  ApplicationAnswerProfilePayload,
+  JobPreferencesPayload,
+  ProfilePayload,
+  ResumeStatus,
+} from './api/client';
 import { AppHeader } from './components/AppHeader';
 import { ResumeUpload } from './components/ResumeUpload';
 import type { ResumeUploadHandle } from './components/ResumeUpload';
 import { ResumeFeedback } from './components/ResumeFeedback';
 import { UserProfile } from './components/UserProfile';
+import { ApplicationAnswers } from './components/ApplicationAnswers';
 import { JobPreferences } from './components/JobPreferences';
 import type { JobPreferencesHandle } from './components/JobPreferences';
 import { AgentControls } from './components/AgentControls';
@@ -35,6 +43,7 @@ function App() {
   const [resumeData, setResumeData] = useState<ResumeStatus | null>(null);
   const [prefsData, setPrefsData] = useState<JobPreferencesPayload | null>(null);
   const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
+  const [applicationProfileData, setApplicationProfileData] = useState<ApplicationAnswerProfilePayload | null>(null);
   const [quotaData, setQuotaData] = useState<AgentQuotaStatus | null>(null);
 
   const resumeRef = useRef<ResumeUploadHandle>(null);
@@ -50,6 +59,7 @@ function App() {
           setResumeData(data.resume ?? null);
           setPrefsData(data.preferences ?? null);
           setProfileData(data.profile ?? null);
+          setApplicationProfileData(data.application_profile ?? null);
           setQuotaData(data.quota ?? null);
         }
       } catch (err) {
@@ -81,6 +91,7 @@ function App() {
     setResumeData(null);
     setPrefsData(null);
     setProfileData(null);
+    setApplicationProfileData(null);
     setQuotaData(null);
   };
 
@@ -278,6 +289,12 @@ function App() {
                 </StatusChip>
               </div>
               <UserProfile initialData={profileData} userEmail={user?.email} />
+              <div className="mt-4 border-t border-[var(--line)] pt-4">
+                <ApplicationAnswers
+                  initialData={applicationProfileData}
+                  onSaved={setApplicationProfileData}
+                />
+              </div>
             </section>
           </div>
         </Panel>

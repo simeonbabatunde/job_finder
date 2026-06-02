@@ -284,6 +284,17 @@ These are useful for reliable filling and should be included before auto-submit:
 
 Do not store I-9 documents, SSN, passport numbers, driver's license numbers, or other government ID numbers for this product stage.
 
+Current implementation:
+
+- `ApplicationAnswerProfile` stores common application answers separately from the main candidate profile.
+- `GET /application-profile` returns the signed-in user's saved answers.
+- `POST /application-profile` upserts the signed-in user's saved answers.
+- `/user/status` includes `application_profile` so the dashboard can preload saved answers.
+- The dashboard includes an `Application answers` section under Candidate Profile.
+- `consent_to_use_answers` must be enabled before future fill-for-review logic can use the stored common answers.
+- Sensitive self-identification answers are reset to `prefer_not_to_answer` unless `consent_to_use_demographics` is explicitly enabled.
+- Government ID numbers and I-9 documents remain out of scope.
+
 ### Work Authorization
 
 Yes, the app should collect work authorization answers if auto-submit is planned. Many applications ask whether the applicant is authorized to work in a country and whether sponsorship is needed now or in the future.

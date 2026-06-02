@@ -89,6 +89,26 @@ class Profile(SQLModel, table=True):
     expected_salary: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class ApplicationAnswerProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", unique=True, index=True)
+    work_authorized_us: str = Field(default="unspecified")
+    requires_sponsorship_now: str = Field(default="unspecified")
+    requires_sponsorship_future: str = Field(default="unspecified")
+    willing_to_relocate: str = Field(default="unspecified")
+    remote_preference: str = Field(default="unspecified")
+    earliest_start_date: Optional[str] = Field(default=None)
+    notice_period: Optional[str] = Field(default=None)
+    desired_salary: Optional[str] = Field(default=None)
+    work_authorization_notes: Optional[str] = Field(default=None)
+    consent_to_use_answers: bool = Field(default=False)
+    gender: str = Field(default="prefer_not_to_answer")
+    race_ethnicity: str = Field(default="prefer_not_to_answer")
+    veteran_status: str = Field(default="prefer_not_to_answer")
+    disability_status: str = Field(default="prefer_not_to_answer")
+    consent_to_use_demographics: bool = Field(default=False)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 class ScraperConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     site_names: List[str] = Field(default=["linkedin", "indeed", "glassdoor"], sa_column=Column(JSON))

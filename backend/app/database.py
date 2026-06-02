@@ -82,9 +82,25 @@ def migrate_application_link_resolution(connection):
         )
     )
 
+def migrate_application_answer_profile(connection):
+    """Ensure application answer vault tables have the expected user index."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "applicationanswerprofile" not in table_names:
+        return
+
+    connection.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "ix_applicationanswerprofile_user_unique "
+            "ON applicationanswerprofile (user_id)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
+    ("0003_application_answer_profile", migrate_application_answer_profile),
 )
 
 def ensure_schema_migrations_table(connection):

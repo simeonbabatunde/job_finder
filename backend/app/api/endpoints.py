@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from app.models import (
     AgentRun,
     Application,
+    ApplicationAnswerProfile,
     AutoApplyAudit,
     JobPreference,
     PasswordResetToken,
@@ -27,6 +28,8 @@ from app.services.application_link_resolver import ApplicationLinkResolver
 from app.schemas import (
     AgentRunResponse,
     AgentRunRecordResponse,
+    ApplicationAnswerProfileRequest,
+    ApplicationAnswerProfileResponse,
     ApplicationPackageRequest,
     ApplicationPackageResponse,
     ApplicationResponse,
@@ -255,6 +258,15 @@ def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAud
         "completed_at": run.completed_at,
         "auto_apply_audit": audit_records or [],
     }
+
+def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest) -> dict:
+    data = payload.model_dump()
+    if not data.get("consent_to_use_demographics"):
+        data["gender"] = "prefer_not_to_answer"
+        data["race_ethnicity"] = "prefer_not_to_answer"
+        data["veteran_status"] = "prefer_not_to_answer"
+        data["disability_status"] = "prefer_not_to_answer"
+    return data
 
 async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
     with Session(engine) as session:
@@ -580,6 +592,33 @@ def update_profile(profile_data: ProfileRequest, user: User = Depends(get_curren
     session.commit()
     return {"message": "Profile updated successfully"}
 
+@router.get("/application-profile", response_model=Optional[ApplicationAnswerProfileResponse])
+def get_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    return session.exec(select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)).first()
+
+@router.post("/application-profile", response_model=ApplicationAnswerProfileResponse)
+def update_application_profile(
+    profile_data: ApplicationAnswerProfileRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    payload = sanitize_application_answer_payload(profile_data)
+    existing_profile = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+    if existing_profile:
+        for key, value in payload.items():
+            setattr(existing_profile, key, value)
+        existing_profile.updated_at = datetime.utcnow()
+        answer_profile = existing_profile
+    else:
+        answer_profile = ApplicationAnswerProfile(**payload, user_id=user.id)
+
+    session.add(answer_profile)
+    session.commit()
+    session.refresh(answer_profile)
+    return answer_profile
+
 @router.post("/agent/run", response_model=AgentRunResponse)
 async def run_agent(
     background_tasks: BackgroundTasks,
@@ -758,6 +797,9 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
     resume = get_latest_resume(session, user.id)
     prefs = get_latest_preferences(session, user.id)
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
+    application_profile = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
 
     return {
         "user": user,
@@ -788,6 +830,7 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
             "years_experience": profile.years_experience,
             "expected_salary": profile.expected_salary,
         } if profile else None,
+        "application_profile": application_profile,
         "quota": get_agent_quota_status(session, user)
     }
 

@@ -4,6 +4,7 @@ import { CheckCircle2, LoaderCircle, Save } from 'lucide-react';
 import { getAuthHeaders, API_URL, saveProfile } from '../api/client';
 import type { ProfilePayload } from '../api/client';
 import { Button, Panel, TextField } from './ui';
+import { ApplicationAnswers } from './ApplicationAnswers';
 
 const EMPTY_PROFILE: ProfilePayload = {
     first_name: '',
@@ -125,6 +126,9 @@ export const ProfileSettings = () => {
                     </Button>
                 </div>
             </form>
+            <div className="mt-5 border-t border-[var(--line)] pt-5">
+                <ApplicationAnswers />
+            </div>
         </Panel>
     );
 };

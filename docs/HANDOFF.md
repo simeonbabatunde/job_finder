@@ -177,12 +177,15 @@ Completed:
 - Added `POST /applications/{app_id}/resolve-link` with conservative Playwright resolution for aggregator links.
 - Updated the dashboard application cards/table to show link readiness, resolve unresolved links, and open the resolved employer URL when available.
 - Guarded the auto-apply node so unresolved aggregator/company/unknown links are held for review and only resolved supported ATS links can proceed to browser automation.
+- Added `ApplicationAnswerProfile`, the `GET/POST /application-profile` answer vault API, and `/user/status` preload support.
+- Added the dashboard `Application answers` section for work authorization, sponsorship, relocation/work-setting preferences, compensation/start timing, and optional self-identification answers.
+- Added backend consent handling so sensitive self-ID values are saved as `prefer_not_to_answer` unless demographic storage consent is enabled.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 12 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 14 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.

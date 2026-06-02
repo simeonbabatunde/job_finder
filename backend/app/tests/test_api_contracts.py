@@ -369,6 +369,77 @@ def test_auto_apply_allows_direct_supported_ats_links(monkeypatch):
     assert state["found_jobs"][0]["application_url"] == job_url
 
 
+def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answers():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "answer-profile")
+
+        empty_response = client.get("/application-profile", headers=headers)
+        assert empty_response.status_code == 200, empty_response.text
+        assert empty_response.json() is None
+
+        payload = {
+            "work_authorized_us": "yes",
+            "requires_sponsorship_now": "no",
+            "requires_sponsorship_future": "no",
+            "willing_to_relocate": "no",
+            "remote_preference": "remote",
+            "earliest_start_date": "2026-07-01",
+            "notice_period": "2 weeks",
+            "desired_salary": "$140k",
+            "work_authorization_notes": "US citizen",
+            "consent_to_use_answers": True,
+            "gender": "woman",
+            "race_ethnicity": "black_or_african_american",
+            "veteran_status": "not_a_veteran",
+            "disability_status": "no",
+            "consent_to_use_demographics": False,
+        }
+        save_response = client.post("/application-profile", json=payload, headers=headers)
+        assert save_response.status_code == 200, save_response.text
+        saved = save_response.json()
+        assert saved["work_authorized_us"] == "yes"
+        assert saved["consent_to_use_answers"] is True
+        assert saved["gender"] == "prefer_not_to_answer"
+        assert saved["race_ethnicity"] == "prefer_not_to_answer"
+        assert saved["veteran_status"] == "prefer_not_to_answer"
+        assert saved["disability_status"] == "prefer_not_to_answer"
+        assert "user_id" not in saved
+
+        status_response = client.get("/user/status", headers=headers)
+        assert status_response.status_code == 200, status_response.text
+        assert status_response.json()["application_profile"]["work_authorized_us"] == "yes"
+
+        _, other_headers = register_user(client, "answer-profile-other")
+        other_response = client.get("/application-profile", headers=other_headers)
+        assert other_response.status_code == 200, other_response.text
+        assert other_response.json() is None
+
+
+def test_application_answer_profile_stores_demographics_with_explicit_consent():
+    with TestClient(app) as client:
+        _, headers = register_user(client, "answer-profile-consent")
+
+        response = client.post(
+            "/application-profile",
+            json={
+                "work_authorized_us": "prefer_not_to_answer",
+                "consent_to_use_answers": False,
+                "gender": "non_binary",
+                "race_ethnicity": "prefer_not_to_answer",
+                "veteran_status": "not_a_veteran",
+                "disability_status": "prefer_not_to_answer",
+                "consent_to_use_demographics": True,
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["gender"] == "non_binary"
+        assert body["veteran_status"] == "not_a_veteran"
+        assert body["consent_to_use_demographics"] is True
+
+
 def test_schema_migrations_are_recorded_and_idempotent():
     with TestClient(app):
         run_schema_migrations()
@@ -379,6 +450,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
 
     assert ("0001_user_scope_resume_preferences",) in rows
     assert ("0002_application_link_resolution",) in rows
+    assert ("0003_application_answer_profile",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

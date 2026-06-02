@@ -130,6 +130,31 @@ class ProfileResponse(ProfileRequest):
     updated_at: Optional[datetime] = None
 
 
+class ApplicationAnswerProfileRequest(BaseModel):
+    work_authorized_us: str = "unspecified"
+    requires_sponsorship_now: str = "unspecified"
+    requires_sponsorship_future: str = "unspecified"
+    willing_to_relocate: str = "unspecified"
+    remote_preference: str = "unspecified"
+    earliest_start_date: Optional[str] = None
+    notice_period: Optional[str] = None
+    desired_salary: Optional[str] = None
+    work_authorization_notes: Optional[str] = None
+    consent_to_use_answers: bool = False
+    gender: str = "prefer_not_to_answer"
+    race_ethnicity: str = "prefer_not_to_answer"
+    veteran_status: str = "prefer_not_to_answer"
+    disability_status: str = "prefer_not_to_answer"
+    consent_to_use_demographics: bool = False
+
+
+class ApplicationAnswerProfileResponse(ApplicationAnswerProfileRequest):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = None
+    updated_at: Optional[datetime] = None
+
+
 class AgentQuotaResponse(BaseModel):
     agent_runs_used_today: int
     agent_run_limit: int
@@ -142,6 +167,7 @@ class UserStatusResponse(BaseModel):
     resume: Optional[ResumeStatusResponse] = None
     preferences: Optional[JobPreferenceRequest] = None
     profile: Optional[ProfileRequest] = None
+    application_profile: Optional[ApplicationAnswerProfileResponse] = None
     quota: Optional[AgentQuotaResponse] = None
 
 
