@@ -86,6 +86,7 @@ Issues to address:
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
 - The first fill-for-review adapters are implemented for resolved Greenhouse and Lever links via `POST /applications/{app_id}/fill-review`.
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
+- Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 ## Milestone 0: Repository Hygiene and Documentation

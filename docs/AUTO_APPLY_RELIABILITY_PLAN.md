@@ -42,7 +42,7 @@ Deliverables:
 - Stop before final submit.
 - Save filled-field summary, missing-field summary, and blocker reason.
 - Return an ephemeral screenshot preview for the current review session.
-- Add persisted screenshots and traces before production auto-submit.
+- Persist authenticated screenshots and traces before production auto-submit.
 - Mark the application as `Needs Review`.
 
 Acceptance criteria:
@@ -61,7 +61,7 @@ Current implementation:
 - The Greenhouse and Lever adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
 - The application is marked `Needs Review` after the fill-review attempt.
 - The dashboard shows `Fill review` for resolved Greenhouse and Lever applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
-- Screenshot persistence and trace persistence remain future work.
+- Fill-review screenshots and Playwright traces are saved as local authenticated artifacts; saved review history can preview screenshots and download traces.
 
 ### Phase 2: Application Link Resolution
 

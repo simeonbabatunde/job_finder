@@ -232,6 +232,8 @@ class ApplicationFillReviewResponse(BaseModel):
     message: str
     application_status: str = "Needs Review"
     screenshot_base64: Optional[str] = None
+    screenshot_url: Optional[str] = None
+    trace_url: Optional[str] = None
 
 
 class ApplicationFillReviewRecordResponse(BaseModel):
@@ -246,6 +248,8 @@ class ApplicationFillReviewRecordResponse(BaseModel):
     fields_filled: List[str] = Field(default_factory=list)
     fields_missing: List[str] = Field(default_factory=list)
     blockers: List[str] = Field(default_factory=list)
+    screenshot_url: Optional[str] = None
+    trace_url: Optional[str] = None
     created_at: datetime
 
 

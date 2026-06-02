@@ -1,3 +1,4 @@
+import base64
 import asyncio
 import os
 import tempfile
@@ -6,6 +7,7 @@ from uuid import uuid4
 
 os.environ["AUTH_SECRET_KEY"] = "test-secret"
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/job_finder_test.db"
+os.environ["FILL_REVIEW_ARTIFACT_DIR"] = tempfile.mkdtemp()
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -322,6 +324,8 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
             fields_missing=[],
             blockers=[],
             message="Prepared in test.",
+            screenshot_base64=base64.b64encode(b"fake-png").decode("ascii"),
+            trace_base64=base64.b64encode(b"fake-zip").decode("ascii"),
         )
 
     monkeypatch.setattr(
@@ -371,6 +375,8 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert "Resume" in body["fields_filled"]
         assert body["application_status"] == "Needs Review"
         assert isinstance(body["review_id"], int)
+        assert body["screenshot_url"] == f"/applications/{app_body['id']}/fill-reviews/{body['review_id']}/screenshot"
+        assert body["trace_url"] == f"/applications/{app_body['id']}/fill-reviews/{body['review_id']}/trace"
 
         updated_app = client.get("/applications", headers=headers).json()[0]
         assert updated_app["status"] == "Needs Review"
@@ -381,17 +387,33 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert review_body[0]["id"] == body["review_id"]
         assert review_body[0]["application_id"] == app_body["id"]
         assert review_body[0]["fields_filled"] == body["fields_filled"]
+        assert review_body[0]["screenshot_url"] == body["screenshot_url"]
+        assert review_body[0]["trace_url"] == body["trace_url"]
         assert "user_id" not in review_body[0]
+
+        screenshot = client.get(body["screenshot_url"], headers=headers)
+        assert screenshot.status_code == 200, screenshot.text
+        assert screenshot.content == b"fake-png"
+
+        trace = client.get(body["trace_url"], headers=headers)
+        assert trace.status_code == 200, trace.text
+        assert trace.content == b"fake-zip"
 
         _, other_headers = register_user(client, "fill-review-record-other")
         denied = client.get(f"/applications/{app_body['id']}/fill-reviews", headers=other_headers)
         assert denied.status_code == 404
+        denied_screenshot = client.get(body["screenshot_url"], headers=other_headers)
+        assert denied_screenshot.status_code == 404
+        denied_trace = client.get(body["trace_url"], headers=other_headers)
+        assert denied_trace.status_code == 404
         denied_clear = client.delete(f"/applications/{app_body['id']}/fill-reviews", headers=other_headers)
         assert denied_clear.status_code == 404
 
         clear_response = client.delete(f"/applications/{app_body['id']}/fill-reviews", headers=headers)
         assert clear_response.status_code == 200, clear_response.text
         assert client.get(f"/applications/{app_body['id']}/fill-reviews", headers=headers).json() == []
+        assert client.get(body["screenshot_url"], headers=headers).status_code == 404
+        assert client.get(body["trace_url"], headers=headers).status_code == 404
 
 
 def test_lever_fill_review_endpoint_uses_supported_adapter(monkeypatch):
@@ -703,6 +725,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0002_application_link_resolution",) in rows
     assert ("0003_application_answer_profile",) in rows
     assert ("0004_application_fill_review",) in rows
+    assert ("0005_application_fill_review_artifacts",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

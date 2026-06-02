@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 import base64
 import hmac
 import io
@@ -27,6 +27,7 @@ from app.services.job_search import JobSearchService
 from app.services.email import send_reset_email
 from app.services.application_link_resolver import ApplicationLinkResolver
 from app.services.application_fill_review import ApplicationFillReviewService
+from app.services.fill_review_artifacts import FillReviewArtifactStore
 from app.schemas import (
     AgentRunResponse,
     AgentRunRecordResponse,
@@ -261,6 +262,37 @@ def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAud
         "started_at": run.started_at,
         "completed_at": run.completed_at,
         "auto_apply_audit": audit_records or [],
+    }
+
+def fill_review_artifact_url(app_id: int, review_id: Optional[int], kind: str, path: Optional[str]):
+    if not review_id or not path:
+        return None
+    return f"/applications/{app_id}/fill-reviews/{review_id}/{kind}"
+
+def serialize_fill_review_record(record: ApplicationFillReview):
+    return {
+        "id": record.id,
+        "application_id": record.application_id,
+        "ats_type": record.ats_type,
+        "application_url": record.application_url,
+        "status": record.status,
+        "message": record.message,
+        "fields_filled": record.fields_filled,
+        "fields_missing": record.fields_missing,
+        "blockers": record.blockers,
+        "screenshot_url": fill_review_artifact_url(
+            record.application_id,
+            record.id,
+            "screenshot",
+            record.screenshot_path,
+        ),
+        "trace_url": fill_review_artifact_url(
+            record.application_id,
+            record.id,
+            "trace",
+            record.trace_path,
+        ),
+        "created_at": record.created_at,
     }
 
 def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest) -> dict:
@@ -992,8 +1024,41 @@ async def fill_application_for_review(
     session.commit()
     session.refresh(review_record)
 
+    review_record.screenshot_path = FillReviewArtifactStore.save_base64(
+        user_id=user.id,
+        application_id=app.id,
+        review_id=review_record.id,
+        kind="screenshot",
+        payload_base64=fill_result.screenshot_base64,
+        extension="png",
+    )
+    review_record.trace_path = FillReviewArtifactStore.save_base64(
+        user_id=user.id,
+        application_id=app.id,
+        review_id=review_record.id,
+        kind="trace",
+        payload_base64=fill_result.trace_base64,
+        extension="zip",
+    )
+    session.add(review_record)
+    session.commit()
+    session.refresh(review_record)
+
     response = fill_result.model_dump()
     response["review_id"] = review_record.id
+    response["screenshot_url"] = fill_review_artifact_url(
+        app.id,
+        review_record.id,
+        "screenshot",
+        review_record.screenshot_path,
+    )
+    response["trace_url"] = fill_review_artifact_url(
+        app.id,
+        review_record.id,
+        "trace",
+        review_record.trace_path,
+    )
+    response.pop("trace_base64", None)
     return response
 
 @router.get("/applications/{app_id}/fill-reviews", response_model=List[ApplicationFillReviewRecordResponse])
@@ -1013,7 +1078,59 @@ def get_application_fill_reviews(
         .order_by(ApplicationFillReview.created_at.desc())
         .limit(min(max(limit, 1), 25))
     )
-    return session.exec(query).all()
+    return [serialize_fill_review_record(record) for record in session.exec(query).all()]
+
+@router.get("/applications/{app_id}/fill-reviews/{review_id}/screenshot")
+def get_application_fill_review_screenshot(
+    app_id: int,
+    review_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    review = session.get(ApplicationFillReview, review_id)
+    if (
+        not app
+        or app.user_id != user.id
+        or not review
+        or review.user_id != user.id
+        or review.application_id != app.id
+    ):
+        raise HTTPException(status_code=404, detail="Fill-review screenshot not found")
+    if not FillReviewArtifactStore.is_readable(review.screenshot_path):
+        raise HTTPException(status_code=404, detail="Fill-review screenshot not found")
+
+    return FileResponse(
+        review.screenshot_path,
+        media_type="image/png",
+        filename=f"fill-review-{review.id}-screenshot.png",
+    )
+
+@router.get("/applications/{app_id}/fill-reviews/{review_id}/trace")
+def get_application_fill_review_trace(
+    app_id: int,
+    review_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    review = session.get(ApplicationFillReview, review_id)
+    if (
+        not app
+        or app.user_id != user.id
+        or not review
+        or review.user_id != user.id
+        or review.application_id != app.id
+    ):
+        raise HTTPException(status_code=404, detail="Fill-review trace not found")
+    if not FillReviewArtifactStore.is_readable(review.trace_path):
+        raise HTTPException(status_code=404, detail="Fill-review trace not found")
+
+    return FileResponse(
+        review.trace_path,
+        media_type="application/zip",
+        filename=f"fill-review-{review.id}-trace.zip",
+    )
 
 @router.delete("/applications/{app_id}/fill-reviews", response_model=MessageResponse)
 def clear_application_fill_reviews(
@@ -1030,6 +1147,8 @@ def clear_application_fill_reviews(
         .where(ApplicationFillReview.application_id == app.id, ApplicationFillReview.user_id == user.id)
     ).all()
     for review in reviews:
+        FillReviewArtifactStore.delete(review.screenshot_path)
+        FillReviewArtifactStore.delete(review.trace_path)
         session.delete(review)
     session.commit()
     return {"message": f"Cleared {len(reviews)} fill-review record{'' if len(reviews) == 1 else 's'}"}

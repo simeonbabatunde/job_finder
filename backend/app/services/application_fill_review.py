@@ -18,6 +18,7 @@ class FillReviewResult:
     message: str = ""
     application_status: str = "Needs Review"
     screenshot_base64: Optional[str] = None
+    trace_base64: Optional[str] = None
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -90,7 +91,15 @@ class ApplicationFillReviewService:
                         "Chrome/119.0.0.0 Safari/537.36"
                     )
                 )
+                trace_started = False
+                try:
+                    await context.tracing.start(screenshots=True, snapshots=True, sources=False)
+                    trace_started = True
+                except Exception:
+                    pass
+
                 page = await context.new_page()
+                fill_result: Optional[FillReviewResult] = None
 
                 try:
                     await page.goto(application_url, wait_until="domcontentloaded", timeout=timeout_ms)
@@ -100,7 +109,7 @@ class ApplicationFillReviewService:
                         pass
 
                     if ats_type == "greenhouse":
-                        return await cls._fill_greenhouse_page(
+                        fill_result = await cls._fill_greenhouse_page(
                             page=page,
                             application_url=application_url,
                             profile=profile,
@@ -109,18 +118,29 @@ class ApplicationFillReviewService:
                             answer_profile=answer_profile,
                             cover_letter=cover_letter,
                         )
-
-                    return await cls._fill_lever_page(
-                        page=page,
+                    else:
+                        fill_result = await cls._fill_lever_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
+                except Exception as exc:
+                    fill_result = FillReviewResult(
+                        status="failed",
+                        ats_type=ats_type,
                         application_url=application_url,
-                        profile=profile,
-                        resume_bytes=resume_bytes,
-                        resume_filename=resume_filename,
-                        answer_profile=answer_profile,
-                        cover_letter=cover_letter,
+                        blockers=[str(exc)],
+                        message="Fill-for-review could not complete.",
                     )
                 finally:
+                    if fill_result and trace_started:
+                        fill_result.trace_base64 = await cls._capture_trace_base64(context)
                     await browser.close()
+                return fill_result
         except Exception as exc:
             return FillReviewResult(
                 status="failed",
@@ -457,3 +477,22 @@ class ApplicationFillReviewService:
             return base64.b64encode(screenshot).decode("ascii")
         except Exception:
             return None
+
+    @staticmethod
+    async def _capture_trace_base64(context) -> Optional[str]:
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            trace_path = tmp.name
+
+        try:
+            await context.tracing.stop(path=trace_path)
+            with open(trace_path, "rb") as trace_file:
+                return base64.b64encode(trace_file.read()).decode("ascii")
+        except Exception:
+            try:
+                await context.tracing.stop()
+            except Exception:
+                pass
+            return None
+        finally:
+            if os.path.exists(trace_path):
+                os.unlink(trace_path)

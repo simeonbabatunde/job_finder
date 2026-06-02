@@ -59,6 +59,8 @@ export interface ApplicationFillReviewResult {
     message: string;
     application_status: string;
     screenshot_base64?: string | null;
+    screenshot_url?: string | null;
+    trace_url?: string | null;
 }
 
 export interface ApplicationFillReviewRecord {
@@ -71,6 +73,8 @@ export interface ApplicationFillReviewRecord {
     fields_filled: string[];
     fields_missing: string[];
     blockers: string[];
+    screenshot_url?: string | null;
+    trace_url?: string | null;
     created_at: string;
 }
 
@@ -451,4 +455,15 @@ export async function clearApplicationFillReviews(appId: number) {
         throw new Error(await getResponseDetail(response, 'Failed to clear fill-review history'));
     }
     return response.json();
+}
+
+export async function fetchFillReviewArtifact(path: string): Promise<Blob> {
+    const url = path.startsWith('http') ? path : `${API_URL}${path}`;
+    const response = await fetch(url, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch fill-review artifact'));
+    }
+    return response.blob();
 }

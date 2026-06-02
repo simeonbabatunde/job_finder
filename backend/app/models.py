@@ -85,6 +85,8 @@ class ApplicationFillReview(SQLModel, table=True):
     fields_filled: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     fields_missing: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     blockers: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    screenshot_path: Optional[str] = Field(default=None)
+    trace_path: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 class Profile(SQLModel, table=True):

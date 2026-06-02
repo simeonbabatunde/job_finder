@@ -187,13 +187,14 @@ Completed:
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
 - Updated the fill-review modal to show recent saved review attempts after a run.
 - Added `DELETE /applications/{app_id}/fill-reviews` and a modal clear action for saved fill-review attempts.
-- Added ephemeral screenshot preview support in fill-review responses and the review modal. Screenshot/trace persistence is still future work.
+- Added ephemeral screenshot preview support in fill-review responses and the review modal.
+- Added persisted fill-review screenshot and Playwright trace artifacts, authenticated artifact endpoints, migration support, and dashboard actions to preview saved screenshots or download traces.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 17 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 18 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
@@ -201,4 +202,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Add persisted screenshot/trace storage for fill-review attempts, then move in-process background agent execution to a durable worker/queue before expanding final auto-submit behavior.
+- Move in-process background agent execution to a durable worker/queue, then add explicit final-submit confirmation and allow/deny rules before expanding true auto-submit behavior.

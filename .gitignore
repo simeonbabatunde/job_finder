@@ -37,3 +37,4 @@ pnpm-debug.log*
 # Playwright and test artifacts
 test-results/
 playwright-report/
+backend/storage/

@@ -112,11 +112,26 @@ def migrate_application_fill_review(connection):
         )
     )
 
+def migrate_application_fill_review_artifacts(connection):
+    """Add local artifact references for fill-review screenshots and traces."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "applicationfillreview" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("applicationfillreview")}
+    for column_name in ("screenshot_path", "trace_path"):
+        if column_name not in columns:
+            connection.execute(
+                text(f"ALTER TABLE applicationfillreview ADD COLUMN {column_name} VARCHAR")
+            )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
     ("0003_application_answer_profile", migrate_application_answer_profile),
     ("0004_application_fill_review", migrate_application_fill_review),
+    ("0005_application_fill_review_artifacts", migrate_application_fill_review_artifacts),
 )
 
 def ensure_schema_migrations_table(connection):

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArchiveX, ArrowDownUp, Box, ClipboardCheck, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArchiveX, ArrowDownUp, Box, Camera, ClipboardCheck, Download, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
 import {
     clearApplicationFillReviews,
+    fetchFillReviewArtifact,
     fillApplicationForReview,
     getApplicationFillReviews,
     getAuthHeaders,
@@ -103,6 +104,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         result: ApplicationFillReviewResult;
         history: ApplicationFillReviewRecord[];
     } | null>(null);
+    const [artifactPreviewUrl, setArtifactPreviewUrl] = useState<string | null>(null);
+    const [artifactLoadingId, setArtifactLoadingId] = useState<number | null>(null);
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -136,6 +139,14 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     useEffect(() => {
         void fetchApplications();
     }, [fetchApplications]);
+
+    useEffect(() => {
+        return () => {
+            if (artifactPreviewUrl) {
+                URL.revokeObjectURL(artifactPreviewUrl);
+            }
+        };
+    }, [artifactPreviewUrl]);
 
     const clearApplications = async () => {
         if (!confirm('Clear all application history? This cannot be undone.')) return;
@@ -200,6 +211,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const handleFillReview = async (app: Application) => {
         setFillingId(app.id);
         setLinkError(null);
+        setArtifactPreviewUrl(null);
         try {
             const result = await fillApplicationForReview(app.id);
             const history = await getApplicationFillReviews(app.id).catch(() => []);
@@ -221,10 +233,59 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         try {
             await clearApplicationFillReviews(fillReview.app.id);
             setFillReview(prev => prev ? { ...prev, history: [] } : prev);
+            setArtifactPreviewUrl(null);
         } catch (error) {
             setLinkError(error instanceof Error ? error.message : 'Failed to clear fill-review history');
         }
     };
+
+    const closeFillReview = () => {
+        setFillReview(null);
+        setArtifactPreviewUrl(null);
+    };
+
+    const handleViewFillReviewScreenshot = async (record: ApplicationFillReviewRecord) => {
+        if (!record.screenshot_url) return;
+
+        setArtifactLoadingId(record.id);
+        setLinkError(null);
+        try {
+            const blob = await fetchFillReviewArtifact(record.screenshot_url);
+            setArtifactPreviewUrl(URL.createObjectURL(blob));
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to load saved screenshot');
+        } finally {
+            setArtifactLoadingId(null);
+        }
+    };
+
+    const handleDownloadFillReviewTrace = async (record: ApplicationFillReviewRecord) => {
+        if (!record.trace_url) return;
+
+        setArtifactLoadingId(record.id);
+        setLinkError(null);
+        try {
+            const blob = await fetchFillReviewArtifact(record.trace_url);
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `fill-review-${record.id}-trace.zip`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to download trace');
+        } finally {
+            setArtifactLoadingId(null);
+        }
+    };
+
+    const fillReviewPreviewSrc = fillReview
+        ? artifactPreviewUrl || (fillReview.result.screenshot_base64
+            ? `data:image/png;base64,${fillReview.result.screenshot_base64}`
+            : null)
+        : null;
 
     return (
         <div className="mt-5 min-w-0">
@@ -239,7 +300,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setFillReview(null)}
+                                onClick={closeFillReview}
                                 className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--soft)] hover:text-[var(--ink)]"
                                 aria-label="Close fill review"
                             >
@@ -276,12 +337,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                 </ul>
                             </div>
                         </div>
-                        {fillReview.result.screenshot_base64 && (
+                        {fillReviewPreviewSrc && (
                             <div className="border-t border-[var(--line)] px-5 py-4">
                                 <h4 className="mb-2 text-sm font-semibold text-[var(--ink)]">Prepared form preview</h4>
                                 <div className="max-h-[360px] overflow-auto rounded-md border border-[var(--line)] bg-[var(--page)]">
                                     <img
-                                        src={`data:image/png;base64,${fillReview.result.screenshot_base64}`}
+                                        src={fillReviewPreviewSrc}
                                         alt="Prepared application form preview"
                                         className="w-full"
                                     />
@@ -318,13 +379,39 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                             <p className="mt-1 text-xs text-[var(--muted)]">
                                                 {record.fields_filled.length} filled / {record.fields_missing.length + record.blockers.length} needs review
                                             </p>
+                                            {(record.screenshot_url || record.trace_url) && (
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {record.screenshot_url && (
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            disabled={artifactLoadingId === record.id}
+                                                            onClick={() => void handleViewFillReviewScreenshot(record)}
+                                                        >
+                                                            <Camera size={14} />
+                                                            Screenshot
+                                                        </Button>
+                                                    )}
+                                                    {record.trace_url && (
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            disabled={artifactLoadingId === record.id}
+                                                            onClick={() => void handleDownloadFillReviewTrace(record)}
+                                                        >
+                                                            <Download size={14} />
+                                                            Trace
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
                         <div className="flex flex-col gap-2 border-t border-[var(--line)] p-5 sm:flex-row sm:justify-end">
-                            <Button variant="secondary" onClick={() => setFillReview(null)}>
+                            <Button variant="secondary" onClick={closeFillReview}>
                                 Close
                             </Button>
                             <a
