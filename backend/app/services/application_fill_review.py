@@ -22,6 +22,8 @@ class FillReviewResult:
 
 
 class ApplicationFillReviewService:
+    SUPPORTED_ATS = {"greenhouse", "lever"}
+
     @classmethod
     async def fill_application_for_review(
         cls,
@@ -34,7 +36,7 @@ class ApplicationFillReviewService:
         cover_letter: Optional[str] = None,
         timeout_ms: int = 60000,
     ) -> FillReviewResult:
-        if ats_type != "greenhouse":
+        if ats_type not in cls.SUPPORTED_ATS:
             return FillReviewResult(
                 status="unsupported",
                 ats_type=ats_type,
@@ -95,7 +97,18 @@ class ApplicationFillReviewService:
                     except PlaywrightTimeoutError:
                         pass
 
-                    return await cls._fill_greenhouse_page(
+                    if ats_type == "greenhouse":
+                        return await cls._fill_greenhouse_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
+
+                    return await cls._fill_lever_page(
                         page=page,
                         application_url=application_url,
                         profile=profile,
@@ -181,6 +194,102 @@ class ApplicationFillReviewService:
             blockers=blockers,
             message="Greenhouse form prepared for human review. Nothing was submitted.",
         )
+
+    @classmethod
+    async def _fill_lever_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        fields_filled: list[str] = []
+        fields_missing: list[str] = []
+        blockers: list[str] = []
+
+        if not await cls._open_lever_apply_form(page):
+            blockers.append("Could not find the Lever apply form on this page.")
+
+        full_name = f"{profile.first_name} {profile.last_name}".strip()
+        contact_fields = [
+            ("Name", ["input[name='name']", "#name", "input[id*='name' i]"], full_name),
+            ("Email", ["input[name='email']", "#email", "input[type='email']"], profile.email),
+            ("Phone", ["input[name='phone']", "#phone", "input[type='tel']"], profile.phone),
+            ("LinkedIn", ["input[name='urls[LinkedIn]']", "input[name*='linkedin' i]"], profile.linkedin_url),
+            (
+                "Website",
+                ["input[name='urls[Portfolio]']", "input[name*='portfolio' i]", "input[name*='website' i]", "input[name*='github' i]"],
+                profile.portfolio_url or profile.github_url,
+            ),
+        ]
+
+        for label, selectors, value in contact_fields:
+            if not value:
+                fields_missing.append(label)
+                continue
+            if await cls._fill_first_available(page, selectors, value):
+                fields_filled.append(label)
+            elif label in ("Name", "Email"):
+                fields_missing.append(label)
+
+        if cover_letter:
+            if await cls._fill_first_available(
+                page,
+                ["textarea[name='comments']", "textarea[name*='cover' i]", "textarea"],
+                cover_letter,
+            ):
+                fields_filled.append("Cover letter")
+
+        if await cls._upload_resume(page, resume_bytes, resume_filename):
+            fields_filled.append("Resume")
+        else:
+            fields_missing.append("Resume upload")
+
+        if answer_profile:
+            await cls._fill_answer_profile_fields(page, answer_profile, fields_filled, fields_missing)
+        else:
+            blockers.append("Application answer consent is off or no answer profile is saved; work authorization answers were not filled.")
+
+        required_missing = await cls._detect_required_missing_fields(page)
+        for item in required_missing:
+            if item not in fields_missing:
+                fields_missing.append(item)
+
+        status = "ready_for_review" if not blockers else "needs_review"
+        return FillReviewResult(
+            status=status,
+            ats_type="lever",
+            application_url=page.url or application_url,
+            fields_filled=fields_filled,
+            fields_missing=fields_missing,
+            blockers=blockers,
+            message="Lever form prepared for human review. Nothing was submitted.",
+        )
+
+    @staticmethod
+    async def _open_lever_apply_form(page) -> bool:
+        try:
+            if "/apply" in page.url:
+                return True
+
+            apply_link = page.locator("a[href*='/apply']").first()
+            if await apply_link.count() > 0:
+                await apply_link.click(timeout=3000)
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                return True
+
+            apply_button = page.get_by_role("button", name="Apply").first()
+            if await apply_button.count() > 0:
+                await apply_button.click(timeout=3000)
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                return True
+
+            return await page.locator("input[name='name'], input[name='email'], input[type='file']").first().count() > 0
+        except Exception:
+            return False
 
     @staticmethod
     async def _fill_first_available(page, selectors: list[str], value: str) -> bool:

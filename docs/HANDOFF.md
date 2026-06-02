@@ -180,15 +180,15 @@ Completed:
 - Added `ApplicationAnswerProfile`, the `GET/POST /application-profile` answer vault API, and `/user/status` preload support.
 - Added the dashboard `Application answers` section for work authorization, sponsorship, relocation/work-setting preferences, compensation/start timing, and optional self-identification answers.
 - Added backend consent handling so sensitive self-ID values are saved as `prefer_not_to_answer` unless demographic storage consent is enabled.
-- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse applications.
-- Added `ApplicationFillReviewService` to fill standard Greenhouse fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
+- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse and Lever applications.
+- Added `ApplicationFillReviewService` to fill standard Greenhouse/Lever fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 16 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 17 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.

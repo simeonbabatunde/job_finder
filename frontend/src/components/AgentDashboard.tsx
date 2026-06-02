@@ -86,7 +86,7 @@ function canResolveLink(app: Application) {
 }
 
 function canFillReview(app: Application) {
-    return app.resolution_status === 'resolved' && app.ats_type === 'greenhouse';
+    return app.resolution_status === 'resolved' && (app.ats_type === 'greenhouse' || app.ats_type === 'lever');
 }
 
 export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage = false, compact = false }) => {

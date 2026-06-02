@@ -374,7 +374,58 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert updated_app["status"] == "Needs Review"
 
 
-def test_fill_review_requires_resolved_greenhouse_link():
+def test_lever_fill_review_endpoint_uses_supported_adapter(monkeypatch):
+    async def fake_fill_application_for_review(**kwargs):
+        assert kwargs["application_url"] == "https://jobs.lever.co/acme/123"
+        assert kwargs["ats_type"] == "lever"
+        return FillReviewResult(
+            status="ready_for_review",
+            ats_type="lever",
+            application_url=kwargs["application_url"],
+            fields_filled=["Name", "Email", "Resume"],
+            fields_missing=["Work authorization"],
+            blockers=[],
+            message="Lever prepared in test.",
+        )
+
+    monkeypatch.setattr(
+        endpoints.ApplicationFillReviewService,
+        "fill_application_for_review",
+        staticmethod(fake_fill_application_for_review),
+    )
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "lever-fill-review")
+        user_id = auth["user"]["id"]
+        prepare_agent_setup(client, headers)
+
+        with Session(engine) as session:
+            session.add(
+                Application(
+                    user_id=user_id,
+                    job_title="Lever Role",
+                    company="Acme",
+                    job_url="https://jobs.lever.co/acme/123",
+                    resolved_url="https://jobs.lever.co/acme/123",
+                    source_type="ats",
+                    ats_type="lever",
+                    resolution_status="resolved",
+                    status="Analyzed",
+                    fit_score=0.92,
+                )
+            )
+            session.commit()
+
+        app_body = client.get("/applications", headers=headers).json()[0]
+        response = client.post(f"/applications/{app_body['id']}/fill-review", headers=headers)
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["ats_type"] == "lever"
+        assert body["fields_filled"] == ["Name", "Email", "Resume"]
+
+
+def test_fill_review_requires_resolved_supported_ats_link():
     with TestClient(app) as client:
         auth, headers = register_user(client, "fill-review-guard")
         user_id = auth["user"]["id"]
@@ -396,12 +447,12 @@ def test_fill_review_requires_resolved_greenhouse_link():
             session.add(
                 Application(
                     user_id=user_id,
-                    job_title="Lever Role",
+                    job_title="Ashby Role",
                     company="Beta",
-                    job_url="https://jobs.lever.co/beta/123",
-                    resolved_url="https://jobs.lever.co/beta/123",
+                    job_url="https://jobs.ashbyhq.com/beta/123",
+                    resolved_url="https://jobs.ashbyhq.com/beta/123",
                     source_type="ats",
-                    ats_type="lever",
+                    ats_type="ashby",
                     resolution_status="resolved",
                     status="Analyzed",
                     fit_score=0.9,
@@ -411,15 +462,15 @@ def test_fill_review_requires_resolved_greenhouse_link():
 
         apps = client.get("/applications?sort=role&direction=asc", headers=headers).json()
         linkedin_app = next(item for item in apps if item["job_title"] == "LinkedIn Role")
-        lever_app = next(item for item in apps if item["job_title"] == "Lever Role")
+        ashby_app = next(item for item in apps if item["job_title"] == "Ashby Role")
 
         unresolved = client.post(f"/applications/{linkedin_app['id']}/fill-review", headers=headers)
         assert unresolved.status_code == 400
         assert "Resolve" in unresolved.json()["detail"]
 
-        unsupported = client.post(f"/applications/{lever_app['id']}/fill-review", headers=headers)
+        unsupported = client.post(f"/applications/{ashby_app['id']}/fill-review", headers=headers)
         assert unsupported.status_code == 400
-        assert "Greenhouse" in unsupported.json()["detail"]
+        assert "Greenhouse and Lever" in unsupported.json()["detail"]
 
 
 def test_auto_apply_holds_unresolved_aggregator_links_for_review(monkeypatch):

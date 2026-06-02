@@ -939,8 +939,8 @@ async def fill_application_for_review(
     ats_type = app.ats_type or link_resolution.ats_type
     if app.resolution_status != "resolved" or not application_url:
         raise HTTPException(status_code=400, detail="Resolve this application link before fill-for-review")
-    if ats_type != "greenhouse":
-        raise HTTPException(status_code=400, detail="Fill-for-review currently supports Greenhouse links only")
+    if ats_type not in ApplicationFillReviewService.SUPPORTED_ATS:
+        raise HTTPException(status_code=400, detail="Fill-for-review currently supports Greenhouse and Lever links only")
 
     resume = get_latest_resume(session, user.id)
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()

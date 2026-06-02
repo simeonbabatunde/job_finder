@@ -84,7 +84,7 @@ Issues to address:
 - Auto-submit is gated to pro/admin users and writes audit records; stronger confirmation boundaries are still needed before production.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
-- The first fill-for-review adapter is implemented for resolved Greenhouse links via `POST /applications/{app_id}/fill-review`.
+- The first fill-for-review adapters are implemented for resolved Greenhouse and Lever links via `POST /applications/{app_id}/fill-review`.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 ## Milestone 0: Repository Hygiene and Documentation

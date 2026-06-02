@@ -53,10 +53,10 @@ Acceptance criteria:
 Current implementation:
 
 - `POST /applications/{app_id}/fill-review` runs a safe review session for a signed-in user's saved application.
-- The first deterministic ATS adapter is Greenhouse.
-- The Greenhouse adapter fills standard contact fields, uploads the saved resume, uses consented application-answer fields where possible, and never clicks submit.
+- The first deterministic ATS adapters are Greenhouse and Lever.
+- The Greenhouse and Lever adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
 - The application is marked `Needs Review` after the fill-review attempt.
-- The dashboard shows `Fill review` for resolved Greenhouse applications and returns filled fields, missing fields, blockers, and the application URL.
+- The dashboard shows `Fill review` for resolved Greenhouse and Lever applications and returns filled fields, missing fields, blockers, and the application URL.
 - Screenshot and trace persistence remain future work.
 
 ### Phase 2: Application Link Resolution
@@ -145,7 +145,7 @@ Replace generic form guessing with board-specific adapters.
 Initial adapters:
 
 - Greenhouse. Initial fill-for-review adapter implemented.
-- Lever
+- Lever. Initial fill-for-review adapter implemented.
 - Ashby
 - SmartRecruiters
 
