@@ -39,6 +39,7 @@ from app.schemas import (
     ApplicationFillReviewRecordResponse,
     ApplicationPackageRequest,
     ApplicationPackageResponse,
+    ApplicationSubmitConfirmationResponse,
     ApplicationSubmitReadinessResponse,
     ApplicationSubmitSettingsRequest,
     ApplicationSubmitSettingsResponse,
@@ -501,7 +502,7 @@ def evaluate_submit_readiness(
 ):
     blockers: list[str] = []
     warnings: list[str] = [
-        "This check does not submit the application. Final submit remains unavailable until a human-confirmation endpoint is implemented."
+        "This check does not submit the application. Use final confirmation to inspect the submit control; automated clicking remains disabled."
     ]
     checks: list[str] = []
     application_url = app.resolved_url or app.job_url
@@ -592,6 +593,70 @@ def evaluate_submit_readiness(
         ),
         "blockers": blockers,
         "warnings": warnings,
+        "checks": checks,
+        "evaluated_at": datetime.utcnow(),
+    }
+
+def unavailable_submit_control(blockers: Optional[list[str]] = None):
+    return {
+        "status": "unavailable",
+        "detected": False,
+        "confidence": 0.0,
+        "label": None,
+        "selector": None,
+        "button_type": None,
+        "current_url": None,
+        "evidence": [],
+        "blockers": blockers or [],
+        "warnings": [],
+    }
+
+def serialize_submit_control_detection(detection):
+    data = detection.model_dump() if hasattr(detection, "model_dump") else dict(detection or {})
+    return {
+        "status": data.get("status", "unavailable"),
+        "detected": bool(data.get("detected", False)),
+        "confidence": float(data.get("confidence", 0.0) or 0.0),
+        "label": data.get("label"),
+        "selector": data.get("selector"),
+        "button_type": data.get("button_type"),
+        "current_url": data.get("current_url"),
+        "evidence": data.get("evidence") or [],
+        "blockers": data.get("blockers") or [],
+        "warnings": data.get("warnings") or [],
+    }
+
+def build_submit_confirmation_response(app: Application, readiness: dict, submit_control: dict):
+    blockers = list(readiness.get("blockers") or [])
+    warnings = list(readiness.get("warnings") or [])
+    checks = list(readiness.get("checks") or [])
+
+    if readiness.get("ready"):
+        blockers.extend(submit_control.get("blockers") or [])
+        warnings.extend(submit_control.get("warnings") or [])
+        if submit_control.get("detected") and submit_control.get("confidence", 0.0) >= 0.85:
+            checks.append("Final submit control was detected with high confidence.")
+        elif submit_control.get("detected"):
+            blockers.append("Final submit control confidence is below the 85% threshold.")
+        elif not submit_control.get("blockers"):
+            blockers.append("Final submit control was not detected.")
+
+    warnings.append("No automated final click was performed.")
+    ready = readiness.get("ready") and len(blockers) == 0
+    return {
+        "application_id": app.id,
+        "ready": ready,
+        "can_submit": False,
+        "status": "ready_for_human_confirmation" if ready else "blocked",
+        "message": (
+            "This application is ready for a human final confirmation. Automated final submit is still disabled."
+            if ready
+            else "This application is not ready for final confirmation yet."
+        ),
+        "readiness": readiness,
+        "submit_control": submit_control,
+        "blockers": blockers,
+        "warnings": list(dict.fromkeys(warnings)),
         "checks": checks,
         "evaluated_at": datetime.utcnow(),
     }
@@ -1441,6 +1506,53 @@ def check_application_submit_readiness(
         latest_review=latest_review,
         submits_today_count=submits_today_count,
     )
+
+@router.post("/applications/{app_id}/submit-confirmation", response_model=ApplicationSubmitConfirmationResponse)
+async def create_application_submit_confirmation(
+    app_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    settings = get_or_create_submit_settings(session, user.id)
+    answer_profile = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+    latest_review = get_latest_fill_review(session, user.id, app.id)
+    readiness = evaluate_submit_readiness(
+        app=app,
+        user=user,
+        settings=settings,
+        answer_profile=answer_profile,
+        latest_review=latest_review,
+        submits_today_count=get_submits_today_count(session, user.id),
+    )
+
+    submit_control = unavailable_submit_control(["Resolve readiness blockers before final submit control detection."])
+    if readiness["ready"]:
+        detection = await ApplicationFillReviewService.detect_final_submit_control(
+            application_url=app.resolved_url or app.job_url,
+            ats_type=app.ats_type or "",
+        )
+        submit_control = serialize_submit_control_detection(detection)
+
+    response = build_submit_confirmation_response(app, readiness, submit_control)
+    session.add(
+        AutoApplyAudit(
+            user_id=user.id,
+            job_url=app.resolved_url or app.job_url,
+            job_title=app.job_title,
+            company=app.company,
+            action="submit_confirmation",
+            status="ready" if response["ready"] else "blocked",
+            message=response["message"],
+        )
+    )
+    session.commit()
+    return response
 
 @router.get("/applications/{app_id}/fill-reviews", response_model=List[ApplicationFillReviewRecordResponse])
 def get_application_fill_reviews(

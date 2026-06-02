@@ -295,6 +295,33 @@ class ApplicationSubmitReadinessResponse(BaseModel):
     evaluated_at: datetime
 
 
+class SubmitControlDetectionResponse(BaseModel):
+    status: str
+    detected: bool = False
+    confidence: float = 0.0
+    label: Optional[str] = None
+    selector: Optional[str] = None
+    button_type: Optional[str] = None
+    current_url: Optional[str] = None
+    evidence: List[str] = Field(default_factory=list)
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ApplicationSubmitConfirmationResponse(BaseModel):
+    application_id: int
+    ready: bool
+    can_submit: bool = False
+    status: str
+    message: str
+    readiness: ApplicationSubmitReadinessResponse
+    submit_control: SubmitControlDetectionResponse
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    checks: List[str] = Field(default_factory=list)
+    evaluated_at: datetime
+
+
 class AutoApplyAuditResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

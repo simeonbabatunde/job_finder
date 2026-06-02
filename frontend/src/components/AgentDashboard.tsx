@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArchiveX, ArrowDownUp, Box, Camera, ClipboardCheck, Download, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArchiveX, ArrowDownUp, Box, Camera, ClipboardCheck, Download, ExternalLink, Link2, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import {
     checkApplicationSubmitReadiness,
     clearApplicationFillReviews,
+    createApplicationSubmitConfirmation,
     fetchFillReviewArtifact,
     fillApplicationForReview,
     getApplicationFillReviews,
@@ -10,7 +11,7 @@ import {
     API_URL,
     resolveApplicationLink,
 } from '../api/client';
-import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitReadiness } from '../api/client';
+import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitConfirmation, ApplicationSubmitReadiness } from '../api/client';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -110,6 +111,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const [artifactLoadingId, setArtifactLoadingId] = useState<number | null>(null);
     const [submitReadiness, setSubmitReadiness] = useState<ApplicationSubmitReadiness | null>(null);
     const [submitReadinessLoading, setSubmitReadinessLoading] = useState(false);
+    const [submitConfirmation, setSubmitConfirmation] = useState<ApplicationSubmitConfirmation | null>(null);
+    const [submitConfirmationLoading, setSubmitConfirmationLoading] = useState(false);
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -217,6 +220,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         setLinkError(null);
         setArtifactPreviewUrl(null);
         setSubmitReadiness(null);
+        setSubmitConfirmation(null);
         try {
             const result = await fillApplicationForReview(app.id);
             const history = await getApplicationFillReviews(app.id).catch(() => []);
@@ -248,6 +252,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         setFillReview(null);
         setArtifactPreviewUrl(null);
         setSubmitReadiness(null);
+        setSubmitConfirmation(null);
     };
 
     const handleCheckSubmitReadiness = async () => {
@@ -255,6 +260,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
 
         setSubmitReadinessLoading(true);
         setLinkError(null);
+        setSubmitConfirmation(null);
         try {
             const result = await checkApplicationSubmitReadiness(fillReview.app.id);
             setSubmitReadiness(result);
@@ -262,6 +268,22 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
             setLinkError(error instanceof Error ? error.message : 'Failed to check final-submit readiness');
         } finally {
             setSubmitReadinessLoading(false);
+        }
+    };
+
+    const handleCreateSubmitConfirmation = async () => {
+        if (!fillReview) return;
+
+        setSubmitConfirmationLoading(true);
+        setLinkError(null);
+        try {
+            const result = await createApplicationSubmitConfirmation(fillReview.app.id);
+            setSubmitConfirmation(result);
+            setSubmitReadiness(result.readiness);
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to prepare final confirmation');
+        } finally {
+            setSubmitConfirmationLoading(false);
         }
     };
 
@@ -406,6 +428,62 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                 )}
                             </div>
                         )}
+                        {submitConfirmation && (
+                            <div className="border-t border-[var(--line)] px-5 py-4">
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-[var(--ink)]">Final confirmation</h4>
+                                    <StatusChip tone={submitConfirmation.ready ? 'success' : 'warning'}>
+                                        {submitConfirmation.status.replaceAll('_', ' ')}
+                                    </StatusChip>
+                                </div>
+                                <p className="text-sm leading-6 text-[var(--muted)]">{submitConfirmation.message}</p>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                    <div className="rounded-md border border-[var(--line)] bg-[var(--page)] px-3 py-2">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Control</p>
+                                        <p className="mt-1 truncate text-sm font-semibold text-[var(--ink)]">
+                                            {submitConfirmation.submit_control.label || 'Not detected'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-md border border-[var(--line)] bg-[var(--page)] px-3 py-2">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Confidence</p>
+                                        <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                                            {(submitConfirmation.submit_control.confidence * 100).toFixed(0)}%
+                                        </p>
+                                    </div>
+                                    <div className="rounded-md border border-[var(--line)] bg-[var(--page)] px-3 py-2">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Selector</p>
+                                        <p className="mt-1 truncate text-sm font-semibold text-[var(--ink)]">
+                                            {submitConfirmation.submit_control.selector || 'Unavailable'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {submitConfirmation.blockers.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--warning)]">Blockers</p>
+                                        <ul className="space-y-1 text-sm">
+                                            {submitConfirmation.blockers.map(item => (
+                                                <li key={item} className="rounded-md bg-[var(--warning-soft)] px-2 py-1 text-[var(--warning)]">{item}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {submitConfirmation.checks.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--positive)]">Passed checks</p>
+                                        <ul className="space-y-1 text-sm">
+                                            {submitConfirmation.checks.map(item => (
+                                                <li key={item} className="rounded-md bg-[var(--positive-soft)] px-2 py-1 text-[var(--positive)]">{item}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {submitConfirmation.warnings.length > 0 && (
+                                    <p className="mt-3 rounded-md bg-[var(--soft)] px-3 py-2 text-xs font-semibold leading-5 text-[var(--muted)]">
+                                        {submitConfirmation.warnings[0]}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         {fillReview.history.length > 0 && (
                             <div className="border-t border-[var(--line)] px-5 py-4">
                                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -472,6 +550,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                 {submitReadinessLoading ? <RefreshCw className="animate-spin" size={16} /> : <ClipboardCheck size={16} />}
                                 Check final readiness
                             </Button>
+                            {submitReadiness?.ready && (
+                                <Button variant="secondary" disabled={submitConfirmationLoading} onClick={() => void handleCreateSubmitConfirmation()}>
+                                    {submitConfirmationLoading ? <RefreshCw className="animate-spin" size={16} /> : <ShieldCheck size={16} />}
+                                    {submitConfirmationLoading ? 'Inspecting' : 'Inspect final step'}
+                                </Button>
+                            )}
                             <Button variant="secondary" onClick={closeFillReview}>
                                 Close
                             </Button>

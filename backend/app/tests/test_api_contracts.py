@@ -3,6 +3,7 @@ import asyncio
 import os
 import tempfile
 from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 os.environ["AUTH_SECRET_KEY"] = "test-secret"
@@ -11,14 +12,14 @@ os.environ["FILL_REVIEW_ARTIFACT_DIR"] = tempfile.mkdtemp()
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.api import endpoints
 from app.agent import nodes
 from app.agent.nodes import apply_browser, submit_application
 from app.database import engine, run_schema_migrations
-from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, Profile, User
-from app.services.application_fill_review import FillReviewResult
+from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, AutoApplyAudit, Profile, User
+from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.persistence import PersistenceService
 from main import app
@@ -103,6 +104,9 @@ class FakeAgentGraph:
 
 class FakePrefs:
     min_match_score = 70
+
+
+SUBMIT_DETECTION_FIXTURES = Path(__file__).parent / "fixtures" / "submit_detection"
 
 
 def test_bearer_auth_and_user_status_contract():
@@ -585,6 +589,40 @@ def test_fill_review_requires_resolved_supported_ats_link():
         assert "Greenhouse, Lever, Ashby, and SmartRecruiters" in unsupported.json()["detail"]
 
 
+def test_submit_control_detection_uses_html_fixtures():
+    ready_html = (SUBMIT_DETECTION_FIXTURES / "greenhouse_ready.html").read_text()
+    ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        ready_html,
+        ats_type="greenhouse",
+        current_url="https://boards.greenhouse.io/acme/jobs/123",
+    )
+    assert ready.status == "detected"
+    assert ready.detected is True
+    assert ready.confidence >= 0.85
+    assert ready.selector == "#submit_application"
+    assert ready.label == "Submit Application"
+
+    ambiguous_html = (SUBMIT_DETECTION_FIXTURES / "ambiguous_submit.html").read_text()
+    ambiguous = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        ambiguous_html,
+        ats_type="lever",
+        current_url="https://jobs.lever.co/acme/123/apply",
+    )
+    assert ambiguous.status == "ambiguous"
+    assert ambiguous.detected is False
+    assert "Multiple possible final submit controls" in ambiguous.blockers[0]
+
+    captcha_html = (SUBMIT_DETECTION_FIXTURES / "captcha_blocked.html").read_text()
+    blocked = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        captcha_html,
+        ats_type="greenhouse",
+        current_url="https://boards.greenhouse.io/acme/jobs/123",
+    )
+    assert blocked.status == "blocked"
+    assert blocked.detected is False
+    assert "captcha" in blocked.blockers[0]
+
+
 def test_auto_apply_holds_unresolved_aggregator_links_for_review(monkeypatch):
     saved_jobs = []
 
@@ -877,6 +915,115 @@ def test_submission_settings_and_readiness_contract():
         reset_response = client.delete("/submission-settings", headers=headers)
         assert reset_response.status_code == 200, reset_response.text
         assert reset_response.json()["true_submit_enabled"] is False
+
+
+def test_submit_confirmation_endpoint_detects_final_control_without_clicking(monkeypatch):
+    async def fake_detect_final_submit_control(**kwargs):
+        assert kwargs["application_url"] == "https://boards.greenhouse.io/acme/jobs/456"
+        assert kwargs["ats_type"] == "greenhouse"
+        return SubmitControlDetection(
+            status="detected",
+            detected=True,
+            confidence=0.93,
+            label="Submit Application",
+            selector="#submit_application",
+            button_type="submit",
+            current_url=kwargs["application_url"],
+            evidence=["fixture-backed high confidence control"],
+        )
+
+    monkeypatch.setattr(
+        endpoints.ApplicationFillReviewService,
+        "detect_final_submit_control",
+        staticmethod(fake_detect_final_submit_control),
+    )
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "submit-confirmation")
+        user_id = auth["user"]["id"]
+        prepare_agent_setup(client, headers)
+
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            user.subscription_tier = "pro"
+            session.add(user)
+            session.add(
+                ApplicationAnswerProfile(
+                    user_id=user_id,
+                    work_authorized_us="yes",
+                    requires_sponsorship_now="no",
+                    requires_sponsorship_future="no",
+                    consent_to_use_answers=True,
+                )
+            )
+            saved_app = Application(
+                user_id=user_id,
+                job_title="Senior Platform Engineer",
+                company="Acme",
+                job_url="https://boards.greenhouse.io/acme/jobs/456",
+                resolved_url="https://boards.greenhouse.io/acme/jobs/456",
+                source_type="ats",
+                ats_type="greenhouse",
+                resolution_status="resolved",
+                status="Needs Review",
+                fit_score=0.94,
+            )
+            session.add(saved_app)
+            session.commit()
+            session.refresh(saved_app)
+            app_id = saved_app.id
+            session.add(
+                ApplicationFillReview(
+                    user_id=user_id,
+                    application_id=app_id,
+                    ats_type="greenhouse",
+                    application_url=saved_app.resolved_url,
+                    status="ready_for_review",
+                    message="Prepared in test.",
+                    fields_filled=["First name", "Last name", "Email", "Resume"],
+                    fields_missing=[],
+                    blockers=[],
+                )
+            )
+            session.commit()
+
+        settings_response = client.post(
+            "/submission-settings",
+            headers=headers,
+            json={
+                "true_submit_enabled": True,
+                "require_human_confirmation": True,
+                "min_fit_score": 85,
+                "max_submits_per_day": 3,
+                "allowed_companies": ["Acme"],
+                "denied_companies": [],
+                "allowed_domains": ["greenhouse.io"],
+                "denied_domains": [],
+                "allowed_job_title_keywords": ["Platform"],
+                "consent_to_submit": True,
+            },
+        )
+        assert settings_response.status_code == 200, settings_response.text
+
+        confirmation = client.post(f"/applications/{app_id}/submit-confirmation", headers=headers)
+        assert confirmation.status_code == 200, confirmation.text
+        body = confirmation.json()
+        assert body["ready"] is True
+        assert body["can_submit"] is False
+        assert body["status"] == "ready_for_human_confirmation"
+        assert body["submit_control"]["selector"] == "#submit_application"
+        assert body["submit_control"]["confidence"] == 0.93
+        assert "Final submit control was detected with high confidence." in body["checks"]
+        assert "No automated final click was performed." in body["warnings"]
+
+        with Session(engine) as session:
+            audit = session.exec(
+                select(AutoApplyAudit)
+                .where(AutoApplyAudit.user_id == user_id)
+                .order_by(AutoApplyAudit.created_at.desc())
+            ).first()
+        assert audit.action == "submit_confirmation"
+        assert audit.status == "ready"
 
 
 def test_schema_migrations_are_recorded_and_idempotent():

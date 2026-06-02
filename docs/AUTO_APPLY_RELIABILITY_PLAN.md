@@ -63,6 +63,7 @@ Current implementation:
 - The dashboard shows `Fill review` for resolved supported ATS applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
 - Fill-review screenshots and Playwright traces are saved as local authenticated artifacts; saved review history can preview screenshots and download traces.
 - User-scoped submission guardrails and `POST /applications/{app_id}/submit-readiness` evaluate whether a prepared application could move to a future final-confirm step without clicking submit.
+- `POST /applications/{app_id}/submit-confirmation` runs the readiness gate, detects the final submit control with deterministic heuristics, records an audit event, and still does not click submit.
 
 ### Phase 2: Application Link Resolution
 
@@ -411,6 +412,10 @@ Create local fixture pages for:
 - Form with voluntary self-ID questions.
 - Form with captcha placeholder.
 - Form with final submit confirmation.
+
+Current fixture coverage:
+
+- Static HTML fixtures cover a clean Greenhouse-style final submit control, ambiguous submit controls, and captcha-blocked pages for the deterministic submit-control detector.
 
 ### Integration Tests
 

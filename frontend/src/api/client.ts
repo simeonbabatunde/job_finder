@@ -106,6 +106,33 @@ export interface ApplicationSubmitReadiness {
     evaluated_at: string;
 }
 
+export interface SubmitControlDetection {
+    status: string;
+    detected: boolean;
+    confidence: number;
+    label?: string | null;
+    selector?: string | null;
+    button_type?: string | null;
+    current_url?: string | null;
+    evidence: string[];
+    blockers: string[];
+    warnings: string[];
+}
+
+export interface ApplicationSubmitConfirmation {
+    application_id: number;
+    ready: boolean;
+    can_submit: boolean;
+    status: string;
+    message: string;
+    readiness: ApplicationSubmitReadiness;
+    submit_control: SubmitControlDetection;
+    blockers: string[];
+    warnings: string[];
+    checks: string[];
+    evaluated_at: string;
+}
+
 export interface RegisterProfile {
     first_name: string;
     last_name: string;
@@ -539,6 +566,17 @@ export async function checkApplicationSubmitReadiness(appId: number): Promise<Ap
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to check final-submit readiness'));
+    }
+    return response.json();
+}
+
+export async function createApplicationSubmitConfirmation(appId: number): Promise<ApplicationSubmitConfirmation> {
+    const response = await fetch(`${API_URL}/applications/${appId}/submit-confirmation`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to prepare final confirmation'));
     }
     return response.json();
 }
