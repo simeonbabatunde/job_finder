@@ -187,6 +187,7 @@ Completed:
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
 - Updated the fill-review modal to show recent saved review attempts after a run.
 - Added `DELETE /applications/{app_id}/fill-reviews` and a modal clear action for saved fill-review attempts.
+- Added ephemeral screenshot preview support in fill-review responses and the review modal. Screenshot/trace persistence is still future work.
 
 Tests/checks:
 
@@ -200,4 +201,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Move in-process background agent execution to a durable worker/queue for multi-process deployments, then add stronger browser auto-submit confirmation and allow/deny rules.
+- Add persisted screenshot/trace storage for fill-review attempts, then move in-process background agent execution to a durable worker/queue before expanding final auto-submit behavior.

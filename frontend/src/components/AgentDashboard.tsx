@@ -276,6 +276,18 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                 </ul>
                             </div>
                         </div>
+                        {fillReview.result.screenshot_base64 && (
+                            <div className="border-t border-[var(--line)] px-5 py-4">
+                                <h4 className="mb-2 text-sm font-semibold text-[var(--ink)]">Prepared form preview</h4>
+                                <div className="max-h-[360px] overflow-auto rounded-md border border-[var(--line)] bg-[var(--page)]">
+                                    <img
+                                        src={`data:image/png;base64,${fillReview.result.screenshot_base64}`}
+                                        alt="Prepared application form preview"
+                                        className="w-full"
+                                    />
+                                </div>
+                            </div>
+                        )}
                         {fillReview.history.length > 0 && (
                             <div className="border-t border-[var(--line)] px-5 py-4">
                                 <div className="mb-2 flex items-center justify-between gap-2">

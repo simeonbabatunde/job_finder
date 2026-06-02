@@ -1,3 +1,4 @@
+import base64
 import os
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -16,6 +17,7 @@ class FillReviewResult:
     blockers: list[str] = field(default_factory=list)
     message: str = ""
     application_status: str = "Needs Review"
+    screenshot_base64: Optional[str] = None
 
     def model_dump(self) -> dict:
         return asdict(self)
@@ -185,6 +187,7 @@ class ApplicationFillReviewService:
                 fields_missing.append(item)
 
         status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
         return FillReviewResult(
             status=status,
             ats_type="greenhouse",
@@ -193,6 +196,7 @@ class ApplicationFillReviewService:
             fields_missing=fields_missing,
             blockers=blockers,
             message="Greenhouse form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
         )
 
     @classmethod
@@ -259,6 +263,7 @@ class ApplicationFillReviewService:
                 fields_missing.append(item)
 
         status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
         return FillReviewResult(
             status=status,
             ats_type="lever",
@@ -267,6 +272,7 @@ class ApplicationFillReviewService:
             fields_missing=fields_missing,
             blockers=blockers,
             message="Lever form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
         )
 
     @staticmethod
@@ -443,3 +449,11 @@ class ApplicationFillReviewService:
                     .slice(0, 20);
             }"""
         )
+
+    @staticmethod
+    async def _capture_screenshot_base64(page) -> Optional[str]:
+        try:
+            screenshot = await page.screenshot(full_page=True, type="png", timeout=5000)
+            return base64.b64encode(screenshot).decode("ascii")
+        except Exception:
+            return None

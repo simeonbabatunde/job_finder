@@ -58,6 +58,7 @@ export interface ApplicationFillReviewResult {
     blockers: string[];
     message: string;
     application_status: string;
+    screenshot_base64?: string | null;
 }
 
 export interface ApplicationFillReviewRecord {

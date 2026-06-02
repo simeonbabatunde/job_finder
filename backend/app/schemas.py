@@ -231,6 +231,7 @@ class ApplicationFillReviewResponse(BaseModel):
     blockers: List[str] = Field(default_factory=list)
     message: str
     application_status: str = "Needs Review"
+    screenshot_base64: Optional[str] = None
 
 
 class ApplicationFillReviewRecordResponse(BaseModel):
