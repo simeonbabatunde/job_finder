@@ -595,6 +595,11 @@ def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answe
         assert other_response.status_code == 200, other_response.text
         assert other_response.json() is None
 
+        delete_response = client.delete("/application-profile", headers=headers)
+        assert delete_response.status_code == 200, delete_response.text
+        assert client.get("/application-profile", headers=headers).json() is None
+        assert client.get("/user/status", headers=headers).json()["application_profile"] is None
+
 
 def test_application_answer_profile_stores_demographics_with_explicit_consent():
     with TestClient(app) as client:

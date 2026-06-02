@@ -301,8 +301,10 @@ Current implementation:
 - `ApplicationAnswerProfile` stores common application answers separately from the main candidate profile.
 - `GET /application-profile` returns the signed-in user's saved answers.
 - `POST /application-profile` upserts the signed-in user's saved answers.
+- `DELETE /application-profile` resets the signed-in user's saved answers.
 - `/user/status` includes `application_profile` so the dashboard can preload saved answers.
 - The dashboard includes an `Application answers` section under Candidate Profile.
+- The `Application answers` section includes a reset action for clearing saved answers and optional self-identification values.
 - `consent_to_use_answers` must be enabled before future fill-for-review logic can use the stored common answers.
 - Sensitive self-identification answers are reset to `prefer_not_to_answer` unless `consent_to_use_demographics` is explicitly enabled.
 - Government ID numbers and I-9 documents remain out of scope.

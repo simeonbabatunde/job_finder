@@ -623,6 +623,16 @@ def update_application_profile(
     session.refresh(answer_profile)
     return answer_profile
 
+@router.delete("/application-profile", response_model=MessageResponse)
+def delete_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    answer_profile = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+    if answer_profile:
+        session.delete(answer_profile)
+        session.commit()
+    return {"message": "Application answers reset successfully"}
+
 @router.post("/agent/run", response_model=AgentRunResponse)
 async def run_agent(
     background_tasks: BackgroundTasks,

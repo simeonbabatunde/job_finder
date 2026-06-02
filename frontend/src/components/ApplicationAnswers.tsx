@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Save, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import type { ApplicationAnswerProfilePayload } from '../api/client';
 import {
+    deleteApplicationProfile,
     getApplicationProfile,
     getErrorMessage,
     hasAuthSession,
@@ -179,6 +180,28 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
         }
     };
 
+    const handleReset = async () => {
+        if (!hasAuthSession()) {
+            setStatus({ type: 'error', message: 'Sign in to reset application answers.' });
+            return;
+        }
+        if (!confirm('Reset all saved application answers? This clears optional self-identification answers too.')) return;
+
+        setSaving(true);
+        setStatus(null);
+        try {
+            await deleteApplicationProfile();
+            const emptyAnswers = buildAnswers(null);
+            setAnswers(emptyAnswers);
+            setStatus({ type: 'success', message: 'Application answers reset.' });
+            onSaved?.(emptyAnswers);
+        } catch (error) {
+            setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to reset application answers') });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const renderSelect = (
         label: string,
         name: keyof ApplicationAnswerProfilePayload,
@@ -317,10 +340,16 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
                         {status.message}
                     </p>
                 )}
-                <Button type="submit" disabled={saving} className="sm:ml-auto">
-                    {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}
-                    {saving ? 'Saving' : 'Save application answers'}
-                </Button>
+                <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row">
+                    <Button type="button" variant="danger" onClick={handleReset} disabled={saving}>
+                        <Trash2 size={16} />
+                        Reset answers
+                    </Button>
+                    <Button type="submit" disabled={saving}>
+                        {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}
+                        {saving ? 'Saving' : 'Save application answers'}
+                    </Button>
+                </div>
             </div>
         </form>
     );

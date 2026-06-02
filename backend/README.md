@@ -110,6 +110,7 @@ Resume, profile, and preferences:
 - `POST /profile`
 - `GET /application-profile`
 - `POST /application-profile`
+- `DELETE /application-profile`
 - `POST /preferences`
 - `POST /agent/resume-feedback`
 

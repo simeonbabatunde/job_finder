@@ -191,6 +191,17 @@ export async function saveApplicationProfile(profileData: ApplicationAnswerProfi
     return response.json();
 }
 
+export async function deleteApplicationProfile() {
+    const response = await fetch(`${API_URL}/application-profile`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to reset application answers'));
+    }
+    return response.json();
+}
+
 export async function getResumeFeedback() {
     const response = await fetch(`${API_URL}/agent/resume-feedback`, {
         method: 'POST',
