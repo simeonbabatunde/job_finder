@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArchiveX, ArrowDownUp, Box, ClipboardCheck, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
 import {
+    clearApplicationFillReviews,
     fillApplicationForReview,
     getApplicationFillReviews,
     getAuthHeaders,
@@ -213,6 +214,18 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         }
     };
 
+    const handleClearFillHistory = async () => {
+        if (!fillReview) return;
+        if (!confirm('Clear saved fill-review attempts for this application?')) return;
+
+        try {
+            await clearApplicationFillReviews(fillReview.app.id);
+            setFillReview(prev => prev ? { ...prev, history: [] } : prev);
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to clear fill-review history');
+        }
+    };
+
     return (
         <div className="mt-5 min-w-0">
             {fillReview && (
@@ -267,7 +280,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                             <div className="border-t border-[var(--line)] px-5 py-4">
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                     <h4 className="text-sm font-semibold text-[var(--ink)]">Saved review attempts</h4>
-                                    <StatusChip tone="neutral">{fillReview.history.length}</StatusChip>
+                                    <div className="flex items-center gap-2">
+                                        <StatusChip tone="neutral">{fillReview.history.length}</StatusChip>
+                                        <Button variant="danger" size="sm" onClick={() => void handleClearFillHistory()}>
+                                            Clear
+                                        </Button>
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     {fillReview.history.slice(0, 5).map(record => (

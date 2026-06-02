@@ -1015,6 +1015,25 @@ def get_application_fill_reviews(
     )
     return session.exec(query).all()
 
+@router.delete("/applications/{app_id}/fill-reviews", response_model=MessageResponse)
+def clear_application_fill_reviews(
+    app_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    reviews = session.exec(
+        select(ApplicationFillReview)
+        .where(ApplicationFillReview.application_id == app.id, ApplicationFillReview.user_id == user.id)
+    ).all()
+    for review in reviews:
+        session.delete(review)
+    session.commit()
+    return {"message": f"Cleared {len(reviews)} fill-review record{'' if len(reviews) == 1 else 's'}"}
+
 @router.post("/agent/prepare-application", response_model=ApplicationPackageResponse)
 async def prepare_application(
     job_data: ApplicationPackageRequest,

@@ -385,6 +385,12 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         _, other_headers = register_user(client, "fill-review-record-other")
         denied = client.get(f"/applications/{app_body['id']}/fill-reviews", headers=other_headers)
         assert denied.status_code == 404
+        denied_clear = client.delete(f"/applications/{app_body['id']}/fill-reviews", headers=other_headers)
+        assert denied_clear.status_code == 404
+
+        clear_response = client.delete(f"/applications/{app_body['id']}/fill-reviews", headers=headers)
+        assert clear_response.status_code == 200, clear_response.text
+        assert client.get(f"/applications/{app_body['id']}/fill-reviews", headers=headers).json() == []
 
 
 def test_lever_fill_review_endpoint_uses_supported_adapter(monkeypatch):

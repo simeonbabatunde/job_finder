@@ -440,3 +440,14 @@ export async function getApplicationFillReviews(appId: number): Promise<Applicat
     }
     return response.json();
 }
+
+export async function clearApplicationFillReviews(appId: number) {
+    const response = await fetch(`${API_URL}/applications/${appId}/fill-reviews`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to clear fill-review history'));
+    }
+    return response.json();
+}

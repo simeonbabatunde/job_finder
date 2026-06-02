@@ -130,6 +130,7 @@ Applications:
 - `POST /applications/{app_id}/resolve-link`
 - `POST /applications/{app_id}/fill-review`
 - `GET /applications/{app_id}/fill-reviews`
+- `DELETE /applications/{app_id}/fill-reviews`
 - `POST /agent/prepare-application`
 - `GET /applications/{app_id}/cover-letter.pdf`
 

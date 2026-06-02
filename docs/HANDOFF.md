@@ -186,6 +186,7 @@ Completed:
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
 - Updated the fill-review modal to show recent saved review attempts after a run.
+- Added `DELETE /applications/{app_id}/fill-reviews` and a modal clear action for saved fill-review attempts.
 
 Tests/checks:
 
