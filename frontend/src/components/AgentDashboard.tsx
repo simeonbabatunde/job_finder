@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArchiveX, ArrowDownUp, Box, ClipboardCheck, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
 import {
     fillApplicationForReview,
+    getApplicationFillReviews,
     getAuthHeaders,
     API_URL,
     resolveApplicationLink,
 } from '../api/client';
-import type { ApplicationFillReviewResult } from '../api/client';
+import type { ApplicationFillReviewRecord, ApplicationFillReviewResult } from '../api/client';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -96,7 +97,11 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const [resolvingId, setResolvingId] = useState<number | null>(null);
     const [fillingId, setFillingId] = useState<number | null>(null);
     const [linkError, setLinkError] = useState<string | null>(null);
-    const [fillReview, setFillReview] = useState<{ app: Application; result: ApplicationFillReviewResult } | null>(null);
+    const [fillReview, setFillReview] = useState<{
+        app: Application;
+        result: ApplicationFillReviewResult;
+        history: ApplicationFillReviewRecord[];
+    } | null>(null);
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -196,10 +201,11 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         setLinkError(null);
         try {
             const result = await fillApplicationForReview(app.id);
+            const history = await getApplicationFillReviews(app.id).catch(() => []);
             const updatedApp = { ...app, status: result.application_status };
             setApplications(prev => prev.map(item => item.id === app.id ? updatedApp : item));
             setSelectedApp(prev => prev?.id === app.id ? updatedApp : prev);
-            setFillReview({ app: updatedApp, result });
+            setFillReview({ app: updatedApp, result, history });
         } catch (error) {
             setLinkError(error instanceof Error ? error.message : 'Failed to prepare fill review');
         } finally {
@@ -257,6 +263,36 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                 </ul>
                             </div>
                         </div>
+                        {fillReview.history.length > 0 && (
+                            <div className="border-t border-[var(--line)] px-5 py-4">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-[var(--ink)]">Saved review attempts</h4>
+                                    <StatusChip tone="neutral">{fillReview.history.length}</StatusChip>
+                                </div>
+                                <div className="space-y-2">
+                                    {fillReview.history.slice(0, 5).map(record => (
+                                        <div key={record.id} className="rounded-md border border-[var(--line)] bg-[var(--page)] px-3 py-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <p className="text-sm font-semibold text-[var(--ink)]">
+                                                    {new Date(record.created_at).toLocaleString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        hour: 'numeric',
+                                                        minute: '2-digit',
+                                                    })}
+                                                </p>
+                                                <StatusChip tone={record.blockers.length ? 'warning' : 'success'}>
+                                                    {record.status.replaceAll('_', ' ')}
+                                                </StatusChip>
+                                            </div>
+                                            <p className="mt-1 text-xs text-[var(--muted)]">
+                                                {record.fields_filled.length} filled / {record.fields_missing.length + record.blockers.length} needs review
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         <div className="flex flex-col gap-2 border-t border-[var(--line)] p-5 sm:flex-row sm:justify-end">
                             <Button variant="secondary" onClick={() => setFillReview(null)}>
                                 Close

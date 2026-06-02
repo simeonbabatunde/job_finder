@@ -111,6 +111,7 @@ The first Influence Chart-style UI pass is now in place:
 - `/applications` now opens a full application history view.
 - Application history rows show link readiness, can resolve supported aggregator links, and open the resolved employer URL when available.
 - Resolved Greenhouse and Lever rows show `Fill review` and return a structured review summary without submitting.
+- The fill-review modal shows recent saved review attempts for the selected application.
 - Candidate Profile now includes `Application answers` for common application questions and optional self-identification fields.
 
 ## Remaining Frontend Implementation Plan

@@ -184,6 +184,7 @@ Completed:
 - Added `ApplicationFillReviewService` to fill standard Greenhouse/Lever fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
+- Updated the fill-review modal to show recent saved review attempts after a run.
 
 Tests/checks:
 
