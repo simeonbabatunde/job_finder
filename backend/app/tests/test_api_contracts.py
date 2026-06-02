@@ -12,9 +12,10 @@ from sqlalchemy import text
 from sqlmodel import Session
 
 from app.api import endpoints
-from app.agent.nodes import submit_application
+from app.agent import nodes
+from app.agent.nodes import apply_browser, submit_application
 from app.database import engine, run_schema_migrations
-from app.models import Application, ApplicationAnswerProfile, User
+from app.models import Application, ApplicationAnswerProfile, Profile, User
 from app.services.application_fill_review import FillReviewResult
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.persistence import PersistenceService
@@ -556,6 +557,64 @@ def test_auto_apply_allows_direct_supported_ats_links(monkeypatch):
     assert state["found_jobs"][0]["application_url"] == job_url
 
 
+def test_browser_fill_review_never_clicks_final_submit(monkeypatch):
+    captured = {}
+    saved_jobs = []
+
+    async def fake_apply_to_job(**kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "success",
+            "message": "Prepared for review",
+        }
+
+    monkeypatch.setattr(nodes.BrowserApplyService, "apply_to_job", staticmethod(fake_apply_to_job))
+    monkeypatch.setattr(
+        PersistenceService,
+        "save_job",
+        staticmethod(lambda user_id, job, status: saved_jobs.append((user_id, job, status))),
+    )
+
+    job_url = "https://boards.greenhouse.io/acme/jobs/123"
+    state = {
+        "auto_apply": True,
+        "profile": Profile(
+            user_id=42,
+            first_name="Test",
+            last_name="User",
+            email="test@example.test",
+            phone="555-0100",
+            location="Remote",
+        ),
+        "applications_submitted": [job_url],
+        "found_jobs": [
+            {
+                "title": "ATS Role",
+                "company": "Acme",
+                "url": job_url,
+                "application_url": job_url,
+                "fit_score": 0.9,
+                "cover_letter": "Hello",
+            }
+        ],
+        "resume_bytes": b"resume",
+        "resume_filename": "resume.pdf",
+        "logs": [],
+        "user_id": 42,
+        "auto_apply_audit": [],
+    }
+
+    result = asyncio.run(apply_browser(state))
+
+    assert captured["job_url"] == job_url
+    assert captured["submit"] is False
+    assert saved_jobs == [(42, state["found_jobs"][0], "Needs Review")]
+    assert result["application_status"] == "completed"
+    assert result["auto_apply_audit"][0]["action"] == "fill_review"
+    assert result["auto_apply_audit"][0]["status"] == "success"
+    assert "Prepared ATS Role at Acme for review" in result["logs"]
+
+
 def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answers():
     with TestClient(app) as client:
         auth, headers = register_user(client, "answer-profile")
@@ -697,7 +756,7 @@ def test_free_agent_run_quota_is_enforced(monkeypatch):
         assert "Daily agent run limit reached" in blocked.json()["detail"]
 
 
-def test_auto_apply_requires_pro_plan(monkeypatch):
+def test_browser_fill_review_requires_pro_plan(monkeypatch):
     monkeypatch.setattr(endpoints, "agent_graph", FakeAgentGraph())
 
     with TestClient(app) as client:
@@ -706,4 +765,4 @@ def test_auto_apply_requires_pro_plan(monkeypatch):
 
         response = client.post("/agent/run?auto_apply=true", headers=headers)
         assert response.status_code == 403
-        assert response.json()["detail"] == "Auto-submit requires a pro plan."
+        assert response.json()["detail"] == "Browser fill-for-review requires a pro plan."

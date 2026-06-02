@@ -196,7 +196,7 @@ async def analyze_fit(state: AgentState):
 
 async def submit_application(state: AgentState):
     """
-    Submits applications for jobs that meet the minimum score.
+    Selects matching jobs and prepares supported applications for review.
     """
     jobs = state.get("found_jobs", [])
     if not jobs:
@@ -220,7 +220,7 @@ async def submit_application(state: AgentState):
                     link_resolution = ApplicationLinkResolver.classify_url(job["url"])
                     if link_resolution.resolution_status != "resolved" or not link_resolution.ats_type:
                         review_message = (
-                            f"Auto-apply held for review: {link_resolution.notes}"
+                            f"Fill-for-review held for review: {link_resolution.notes}"
                         )
                         new_logs.append(f"{job['title']} at {job['company']}: {review_message}")
                         PersistenceService.save_job(state.get("user_id"), job, "Needs Review")
@@ -250,7 +250,7 @@ async def submit_application(state: AgentState):
 
 async def apply_browser(state: AgentState):
     """
-    Autonomous browser application node.
+    Browser fill-for-review node. This never clicks final submit.
     """
     if not state.get("auto_apply"):
         return {"application_status": "completed"}
@@ -278,43 +278,42 @@ async def apply_browser(state: AgentState):
         application_url = job.get("application_url") or job["url"]
         link_resolution = ApplicationLinkResolver.classify_url(application_url)
         if link_resolution.resolution_status != "resolved" or not link_resolution.ats_type:
-            message = "Auto-apply skipped because the application URL is not a resolved supported ATS link."
+            message = "Fill-for-review skipped because the application URL is not a resolved supported ATS link."
             new_logs.append(f"{job['title']} at {job['company']}: {message}")
             PersistenceService.save_job(state.get("user_id"), job, "Needs Review")
             audit_records.append({
                 "job_url": job.get("url", job_url),
                 "job_title": job.get("title"),
                 "company": job.get("company"),
-                "action": "submit",
+                "action": "fill_review",
                 "status": "needs_review",
                 "message": message,
             })
             continue
         
-        print(f"Auto-Applying to {job['title']}...")
+        print(f"Preparing {job['title']} for review...")
         result = await BrowserApplyService.apply_to_job(
             job_url=application_url,
             profile=profile,
             resume_bytes=resume_bytes,
             resume_filename=resume_filename,
             cover_letter=job.get("cover_letter"),
-            submit=state.get("auto_apply", False)
+            submit=False
         )
         
         if result["status"] == "success":
-            new_logs.append(f"Successfully auto-filled {job['title']} at {job['company']}")
+            new_logs.append(f"Prepared {job['title']} at {job['company']} for review")
             applied_successfully.append(job_url)
             
-            # Persist successful application
-            PersistenceService.save_job(state.get("user_id"), job, "Submitted")
+            PersistenceService.save_job(state.get("user_id"), job, "Needs Review")
         else:
-            new_logs.append(f"Auto-apply failed for {job['title']}: {result['message']}")
+            new_logs.append(f"Fill-for-review failed for {job['title']}: {result['message']}")
 
         audit_records.append({
             "job_url": job.get("url", job_url),
             "job_title": job.get("title"),
             "company": job.get("company"),
-            "action": "submit",
+            "action": "fill_review",
             "status": result.get("status", "failed"),
             "message": result.get("message"),
         })

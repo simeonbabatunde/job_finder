@@ -76,7 +76,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Database startup uses `create_all` plus a lightweight versioned `schema_migrations` runner. Alembic is still a future production upgrade.
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
-- Auto-submit is gated to pro/admin users and writes audit records; stronger confirmation rules are still needed before production.
+- Browser fill-for-review is gated to pro/admin users; true auto-submit remains future work until stronger final confirmation rules exist.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
 ## Session Start Checklist
@@ -112,7 +112,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 
 - Should the user-facing brand be "Job Finder", "Job Hunter", or another name?
 - Should auth be custom JWT/session auth, Supabase Auth, Clerk, or another provider?
-- Should auto-submit ever submit without a final human confirmation per job?
+- Should true auto-submit ever submit without a final human confirmation per job?
 - Should long-running agent work move to a worker/queue before staging?
 - Should sensitive voluntary self-identification answers be stored at all, or should the product always default to decline/self-review?
 
@@ -166,13 +166,13 @@ Completed:
 - Updated application history responses to omit persistence-only `user_id`.
 - Replaced the one-off startup compatibility patch with a lightweight `schema_migrations` runner in `backend/app/database.py`.
 - Repaired `backend/.venv` with Python 3.14 and installed backend dependencies plus `pytest`.
-- Added `backend/app/tests/test_api_contracts.py` covering bearer auth, user-scoped resume/preferences, migration recording, application sorting/filtering/limit behavior, persisted agent runs, quota enforcement, and pro/admin auto-submit gating.
+- Added `backend/app/tests/test_api_contracts.py` covering bearer auth, user-scoped resume/preferences, migration recording, application sorting/filtering/limit behavior, persisted agent runs, quota enforcement, and pro/admin browser fill-for-review gating.
 - Added `AgentRun` and `AutoApplyAudit` persistence models.
 - Added agent run history endpoints: `GET /agent/runs` and `GET /agent/runs/{run_id}`.
 - Changed `POST /agent/run` to queue background work and return an `agent_run_id`.
 - Added daily free/pro agent-run quota enforcement with `FREE_DAILY_AGENT_RUN_LIMIT` and `PRO_DAILY_AGENT_RUN_LIMIT`.
-- Gated auto-submit to pro/admin users and surfaced quota status through `/user/status`.
-- Updated the Run Agent panel to show remaining run quota, disable auto-submit for free users, and poll run status.
+- Gated browser fill-for-review to pro/admin users and surfaced quota status through `/user/status`.
+- Updated the Run Agent panel to show remaining run quota, disable browser fill-for-review for free users, and poll run status.
 - Added application link-resolution metadata, migration support, and `ApplicationLinkResolver` classification for ATS, aggregator, company, and unknown links.
 - Added `POST /applications/{app_id}/resolve-link` with conservative Playwright resolution for aggregator links.
 - Updated the dashboard application cards/table to show link readiness, resolve unresolved links, and open the resolved employer URL when available.

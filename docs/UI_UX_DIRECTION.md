@@ -96,7 +96,7 @@ The first screen should show the actual workflow:
 
 - Top overview strip: resume, profile, preference, and quota readiness.
 - Main setup panel: Resume, Preferences, and Profile in one compact workflow with divider-separated sections.
-- Right action rail: search assistant controls with auto-submit toggle, quota or plan state.
+- Right action rail: search assistant controls with fill-for-review toggle, quota or plan state.
 - Right recent matches panel with compact job rows; the full table lives on the Applications page.
 - Full application pipeline lives on the Applications page.
 
@@ -117,10 +117,10 @@ Resume, Profile, and Preferences should share field styling:
 The run control should look operational:
 
 - Header: "Match and package jobs".
-- Metrics: minimum match, date range, selected boards, auto-submit state.
+- Metrics: minimum match, date range, selected boards, fill-for-review state.
 - Primary action: "Start matching".
 - Secondary actions: "Preview matches", "Refresh history" where supported.
-- Auto-submit must be visually separated and copy should make the risk clear.
+- Fill-for-review must be visually separated, and true auto-submit should stay out of the primary UI until final-submit confirmation exists.
 
 ### Application History
 

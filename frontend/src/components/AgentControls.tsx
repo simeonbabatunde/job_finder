@@ -52,7 +52,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             if (run.status !== 'queued' && run.status !== 'running') {
                 const prefix = wasFileSelected ? 'Resume uploaded. ' : '';
                 const msg = shouldAutoApply
-                    ? `Auto-submit completed for ${run.applications_count} jobs.`
+                    ? `Fill-for-review prepared ${run.applications_count} jobs.`
                     : `Matched and prepared ${run.applications_count} jobs for review.`;
                 setStatus(`${prefix}${msg}`);
                 onComplete();
@@ -134,7 +134,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                         <StatusChip tone="accent">Match roles</StatusChip>
                         <StatusChip tone={autoApply ? 'warning' : 'neutral'}>
-                            {canAutoApply && autoApply ? 'Auto-submit on' : 'Prepare only'}
+                            {canAutoApply && autoApply ? 'Fill review on' : 'Prepare only'}
                         </StatusChip>
                         {quota && (
                             <StatusChip tone={quotaRemaining === 0 ? 'danger' : 'neutral'}>
@@ -161,11 +161,11 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                     <span>
                         <span className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
                             <ShieldAlert size={16} className="text-[var(--warning)]" />
-                            Auto-submit matched applications
+                            Fill supported applications for review
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">
                             {canAutoApply
-                                ? 'Leave this off to review best-fit jobs and generated materials before submitting.'
+                                ? 'When enabled, supported ATS forms can be prepared for review, but final submit still stays off.'
                                 : 'Pro plan required. Free accounts can match jobs and prepare packages for review.'}
                         </span>
                     </span>

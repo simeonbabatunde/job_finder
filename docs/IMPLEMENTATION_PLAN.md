@@ -81,7 +81,7 @@ Issues to address:
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
 - Agent runs are queued in background tasks and persist logs, selected application counts, and found job counts.
-- Auto-submit is gated to pro/admin users and writes audit records; stronger confirmation boundaries are still needed before production.
+- Browser fill-for-review is gated to pro/admin users; true auto-submit still needs stronger confirmation boundaries before production.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
 - The first fill-for-review adapters are implemented for resolved Greenhouse and Lever links via `POST /applications/{app_id}/fill-review`.
@@ -205,7 +205,7 @@ Deliverables:
 - Resume section using shared upload and status styles.
 - Profile section using shared fields and completion chip.
 - Preferences section with compact controls.
-- Right-rail search assistant panel with clear auto-submit state and risk language.
+- Right-rail search assistant panel with clear fill-for-review state and risk language.
 - Right-rail recent applications list limited to 5 rows, with the full table kept on the Applications page.
 
 Acceptance criteria:
@@ -313,8 +313,8 @@ Deliverables:
 - Subscription model with enforced quotas.
 - Free/pro plan behavior:
   - Free: daily agent-run limit.
-  - Pro: larger daily agent-run limit and auto-submit access.
-  - Auto-submit: gated server-side to pro/admin users.
+  - Pro: larger daily agent-run limit and browser fill-for-review access.
+  - True auto-submit: keep gated server-side and blocked behind future confirmation controls.
 - Account settings page.
 
 Acceptance criteria:
@@ -413,6 +413,6 @@ Acceptance criteria:
 
 1. Harden auth secrets, token rotation, and server-side session invalidation.
 2. Move in-process background agent execution to a durable worker/queue for multi-process deployments.
-3. Add stronger browser auto-submit confirmation and allow/deny rules.
+3. Add stronger final-submit confirmation and allow/deny rules before enabling true auto-submit.
 4. Expand pytest coverage for package generation, admin access, and external-service failure paths.
 5. Move schema management to Alembic if the app needs a larger production migration workflow.

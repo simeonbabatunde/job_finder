@@ -649,7 +649,7 @@ async def run_agent(
     if auto_apply and not can_auto_apply(user):
         raise HTTPException(
             status_code=403,
-            detail="Auto-submit requires a pro plan.",
+            detail="Browser fill-for-review requires a pro plan.",
         )
 
     quota_limit, quota_remaining_before_run = ensure_agent_quota(session, user)
