@@ -78,6 +78,34 @@ export interface ApplicationFillReviewRecord {
     created_at: string;
 }
 
+export interface ApplicationSubmitSettingsPayload {
+    id?: number;
+    true_submit_enabled: boolean;
+    require_human_confirmation: boolean;
+    min_fit_score: number;
+    max_submits_per_day: number;
+    allowed_companies: string[];
+    denied_companies: string[];
+    allowed_domains: string[];
+    denied_domains: string[];
+    allowed_job_title_keywords: string[];
+    consent_to_submit?: boolean;
+    consented_at?: string | null;
+    updated_at?: string | null;
+}
+
+export interface ApplicationSubmitReadiness {
+    application_id: number;
+    ready: boolean;
+    can_submit: boolean;
+    status: string;
+    message: string;
+    blockers: string[];
+    warnings: string[];
+    checks: string[];
+    evaluated_at: string;
+}
+
 export interface RegisterProfile {
     first_name: string;
     last_name: string;
@@ -464,6 +492,53 @@ export async function clearApplicationFillReviews(appId: number) {
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to clear fill-review history'));
+    }
+    return response.json();
+}
+
+export async function getSubmissionSettings(): Promise<ApplicationSubmitSettingsPayload> {
+    const response = await fetch(`${API_URL}/submission-settings`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch submission settings'));
+    }
+    return response.json();
+}
+
+export async function saveSubmissionSettings(settings: ApplicationSubmitSettingsPayload): Promise<ApplicationSubmitSettingsPayload> {
+    const response = await fetch(`${API_URL}/submission-settings`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+        },
+        body: JSON.stringify(settings),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to save submission settings'));
+    }
+    return response.json();
+}
+
+export async function resetSubmissionSettings(): Promise<ApplicationSubmitSettingsPayload> {
+    const response = await fetch(`${API_URL}/submission-settings`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to reset submission settings'));
+    }
+    return response.json();
+}
+
+export async function checkApplicationSubmitReadiness(appId: number): Promise<ApplicationSubmitReadiness> {
+    const response = await fetch(`${API_URL}/applications/${appId}/submit-readiness`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to check final-submit readiness'));
     }
     return response.json();
 }

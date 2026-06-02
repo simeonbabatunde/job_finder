@@ -126,6 +126,9 @@ Resume, profile, and preferences:
 - `GET /application-profile`
 - `POST /application-profile`
 - `DELETE /application-profile`
+- `GET /submission-settings`
+- `POST /submission-settings`
+- `DELETE /submission-settings`
 - `POST /preferences`
 - `POST /agent/resume-feedback`
 
@@ -144,6 +147,7 @@ Applications:
 - `PATCH /applications/{app_id}/status`
 - `POST /applications/{app_id}/resolve-link`
 - `POST /applications/{app_id}/fill-review`
+- `POST /applications/{app_id}/submit-readiness`
 - `GET /applications/{app_id}/fill-reviews`
 - `DELETE /applications/{app_id}/fill-reviews`
 - `POST /agent/prepare-application`

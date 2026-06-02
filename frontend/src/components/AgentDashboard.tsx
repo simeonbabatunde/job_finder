@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArchiveX, ArrowDownUp, Box, Camera, ClipboardCheck, Download, ExternalLink, Link2, RefreshCw, Trash2, X } from 'lucide-react';
 import {
+    checkApplicationSubmitReadiness,
     clearApplicationFillReviews,
     fetchFillReviewArtifact,
     fillApplicationForReview,
@@ -9,7 +10,7 @@ import {
     API_URL,
     resolveApplicationLink,
 } from '../api/client';
-import type { ApplicationFillReviewRecord, ApplicationFillReviewResult } from '../api/client';
+import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitReadiness } from '../api/client';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -107,6 +108,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     } | null>(null);
     const [artifactPreviewUrl, setArtifactPreviewUrl] = useState<string | null>(null);
     const [artifactLoadingId, setArtifactLoadingId] = useState<number | null>(null);
+    const [submitReadiness, setSubmitReadiness] = useState<ApplicationSubmitReadiness | null>(null);
+    const [submitReadinessLoading, setSubmitReadinessLoading] = useState(false);
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -213,6 +216,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         setFillingId(app.id);
         setLinkError(null);
         setArtifactPreviewUrl(null);
+        setSubmitReadiness(null);
         try {
             const result = await fillApplicationForReview(app.id);
             const history = await getApplicationFillReviews(app.id).catch(() => []);
@@ -243,6 +247,22 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const closeFillReview = () => {
         setFillReview(null);
         setArtifactPreviewUrl(null);
+        setSubmitReadiness(null);
+    };
+
+    const handleCheckSubmitReadiness = async () => {
+        if (!fillReview) return;
+
+        setSubmitReadinessLoading(true);
+        setLinkError(null);
+        try {
+            const result = await checkApplicationSubmitReadiness(fillReview.app.id);
+            setSubmitReadiness(result);
+        } catch (error) {
+            setLinkError(error instanceof Error ? error.message : 'Failed to check final-submit readiness');
+        } finally {
+            setSubmitReadinessLoading(false);
+        }
     };
 
     const handleViewFillReviewScreenshot = async (record: ApplicationFillReviewRecord) => {
@@ -350,6 +370,42 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                 </div>
                             </div>
                         )}
+                        {submitReadiness && (
+                            <div className="border-t border-[var(--line)] px-5 py-4">
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-[var(--ink)]">Final-submit readiness</h4>
+                                    <StatusChip tone={submitReadiness.ready ? 'success' : 'warning'}>
+                                        {submitReadiness.status.replaceAll('_', ' ')}
+                                    </StatusChip>
+                                </div>
+                                <p className="text-sm leading-6 text-[var(--muted)]">{submitReadiness.message}</p>
+                                {submitReadiness.blockers.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--warning)]">Blockers</p>
+                                        <ul className="space-y-1 text-sm">
+                                            {submitReadiness.blockers.map(item => (
+                                                <li key={item} className="rounded-md bg-[var(--warning-soft)] px-2 py-1 text-[var(--warning)]">{item}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {submitReadiness.checks.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--positive)]">Passed checks</p>
+                                        <ul className="space-y-1 text-sm">
+                                            {submitReadiness.checks.map(item => (
+                                                <li key={item} className="rounded-md bg-[var(--positive-soft)] px-2 py-1 text-[var(--positive)]">{item}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {submitReadiness.warnings.length > 0 && (
+                                    <p className="mt-3 rounded-md bg-[var(--soft)] px-3 py-2 text-xs font-semibold leading-5 text-[var(--muted)]">
+                                        {submitReadiness.warnings[0]}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         {fillReview.history.length > 0 && (
                             <div className="border-t border-[var(--line)] px-5 py-4">
                                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -412,6 +468,10 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                             </div>
                         )}
                         <div className="flex flex-col gap-2 border-t border-[var(--line)] p-5 sm:flex-row sm:justify-end">
+                            <Button variant="secondary" disabled={submitReadinessLoading} onClick={() => void handleCheckSubmitReadiness()}>
+                                {submitReadinessLoading ? <RefreshCw className="animate-spin" size={16} /> : <ClipboardCheck size={16} />}
+                                Check final readiness
+                            </Button>
                             <Button variant="secondary" onClick={closeFillReview}>
                                 Close
                             </Button>

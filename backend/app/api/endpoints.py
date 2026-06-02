@@ -12,6 +12,7 @@ from app.models import (
     Application,
     ApplicationAnswerProfile,
     ApplicationFillReview,
+    ApplicationSubmitSettings,
     AuthSession,
     AutoApplyAudit,
     JobPreference,
@@ -38,6 +39,9 @@ from app.schemas import (
     ApplicationFillReviewRecordResponse,
     ApplicationPackageRequest,
     ApplicationPackageResponse,
+    ApplicationSubmitReadinessResponse,
+    ApplicationSubmitSettingsRequest,
+    ApplicationSubmitSettingsResponse,
     ApplicationResponse,
     ApplicationStatusRequest,
     ApplicationStatusResponse,
@@ -68,7 +72,7 @@ from langchain_core.output_parsers import JsonOutputParser
 import bcrypt
 import hashlib
 import requests
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode, quote, urlparse
 from app.oauth_config import (
     get_google_oauth_url, 
     get_linkedin_oauth_url,
@@ -388,6 +392,208 @@ def serialize_fill_review_record(record: ApplicationFillReview):
             record.trace_path,
         ),
         "created_at": record.created_at,
+    }
+
+def normalize_policy_list(values: Optional[list[str]]) -> list[str]:
+    if not values:
+        return []
+    normalized = []
+    for value in values:
+        item = str(value or "").strip()
+        if item:
+            normalized.append(item)
+    return normalized[:50]
+
+def serialize_submit_settings(settings: ApplicationSubmitSettings):
+    return {
+        "id": settings.id,
+        "true_submit_enabled": settings.true_submit_enabled,
+        "require_human_confirmation": settings.require_human_confirmation,
+        "min_fit_score": settings.min_fit_score,
+        "max_submits_per_day": settings.max_submits_per_day,
+        "allowed_companies": settings.allowed_companies or [],
+        "denied_companies": settings.denied_companies or [],
+        "allowed_domains": settings.allowed_domains or [],
+        "denied_domains": settings.denied_domains or [],
+        "allowed_job_title_keywords": settings.allowed_job_title_keywords or [],
+        "consented_at": settings.consented_at,
+        "updated_at": settings.updated_at,
+    }
+
+def get_or_create_submit_settings(session: Session, user_id: int):
+    settings = session.exec(
+        select(ApplicationSubmitSettings).where(ApplicationSubmitSettings.user_id == user_id)
+    ).first()
+    if settings:
+        return settings
+
+    settings = ApplicationSubmitSettings(user_id=user_id)
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
+
+def update_submit_settings_from_payload(
+    session: Session,
+    settings: ApplicationSubmitSettings,
+    payload: ApplicationSubmitSettingsRequest,
+):
+    settings.true_submit_enabled = payload.true_submit_enabled and payload.consent_to_submit
+    settings.require_human_confirmation = payload.require_human_confirmation
+    settings.min_fit_score = min(max(payload.min_fit_score, 0), 100)
+    settings.max_submits_per_day = min(max(payload.max_submits_per_day, 0), 50)
+    settings.allowed_companies = normalize_policy_list(payload.allowed_companies)
+    settings.denied_companies = normalize_policy_list(payload.denied_companies)
+    settings.allowed_domains = normalize_policy_list(payload.allowed_domains)
+    settings.denied_domains = normalize_policy_list(payload.denied_domains)
+    settings.allowed_job_title_keywords = normalize_policy_list(payload.allowed_job_title_keywords)
+    settings.consented_at = datetime.utcnow() if settings.true_submit_enabled else None
+    settings.updated_at = datetime.utcnow()
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
+
+def domain_matches(hostname: str, patterns: list[str]) -> bool:
+    normalized_host = hostname.lower().removeprefix("www.")
+    for pattern in patterns:
+        normalized_pattern = pattern.lower().removeprefix("www.")
+        if normalized_host == normalized_pattern or normalized_host.endswith(f".{normalized_pattern}"):
+            return True
+    return False
+
+def get_latest_fill_review(session: Session, user_id: int, application_id: int):
+    return session.exec(
+        select(ApplicationFillReview)
+        .where(ApplicationFillReview.user_id == user_id, ApplicationFillReview.application_id == application_id)
+        .order_by(ApplicationFillReview.created_at.desc())
+    ).first()
+
+def get_submits_today_count(session: Session, user_id: int):
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    submit_audits = session.exec(
+        select(AutoApplyAudit).where(
+            AutoApplyAudit.user_id == user_id,
+            AutoApplyAudit.action == "submit",
+            AutoApplyAudit.status.in_(["submitted", "success", "succeeded", "completed"]),
+            AutoApplyAudit.created_at >= today_start,
+        )
+    ).all()
+    if submit_audits:
+        return len(submit_audits)
+
+    return len(session.exec(
+        select(Application).where(
+            Application.user_id == user_id,
+            Application.status == "Submitted",
+            Application.created_at >= today_start,
+        )
+    ).all())
+
+def evaluate_submit_readiness(
+    *,
+    app: Application,
+    user: User,
+    settings: ApplicationSubmitSettings,
+    answer_profile: Optional[ApplicationAnswerProfile],
+    latest_review: Optional[ApplicationFillReview],
+    submits_today_count: int,
+):
+    blockers: list[str] = []
+    warnings: list[str] = [
+        "This check does not submit the application. Final submit remains unavailable until a human-confirmation endpoint is implemented."
+    ]
+    checks: list[str] = []
+    application_url = app.resolved_url or app.job_url
+    hostname = (urlparse(application_url or "").hostname or "").lower().removeprefix("www.")
+
+    if not can_auto_apply(user):
+        blockers.append("Pro plan or admin access is required for final-submit workflows.")
+    else:
+        checks.append("Plan allows advanced submission workflows.")
+
+    if not settings.true_submit_enabled:
+        blockers.append("True submit mode is off in submission settings.")
+    else:
+        checks.append("True submit mode has explicit user consent.")
+
+    if settings.require_human_confirmation:
+        checks.append("Per-application human confirmation is required.")
+
+    if app.resolution_status != "resolved":
+        blockers.append("Resolve this application link before final-submit review.")
+    elif app.ats_type not in ApplicationFillReviewService.SUPPORTED_ATS:
+        blockers.append("This ATS is not supported for deterministic final-submit review.")
+    else:
+        checks.append(f"{app.ats_type} is a supported deterministic ATS adapter.")
+
+    if int((app.fit_score or 0) * 100) < settings.min_fit_score:
+        blockers.append(f"Fit score is below the submit threshold of {settings.min_fit_score}%.")
+    else:
+        checks.append("Fit score meets the submit threshold.")
+
+    company = (app.company or "").lower()
+    if any(item.lower() in company for item in settings.denied_companies or []):
+        blockers.append("Company matches the denylist.")
+    if settings.allowed_companies and not any(item.lower() in company for item in settings.allowed_companies):
+        blockers.append("Company is not on the allowlist.")
+    if hostname and domain_matches(hostname, settings.denied_domains or []):
+        blockers.append("Application domain matches the denylist.")
+    if settings.allowed_domains and not domain_matches(hostname, settings.allowed_domains):
+        blockers.append("Application domain is not on the allowlist.")
+
+    title = (app.job_title or "").lower()
+    if settings.allowed_job_title_keywords and not any(keyword.lower() in title for keyword in settings.allowed_job_title_keywords):
+        blockers.append("Job title does not match the allowed title keywords.")
+
+    if settings.max_submits_per_day <= submits_today_count:
+        blockers.append("Daily final-submit limit has been reached.")
+    else:
+        checks.append("Daily final-submit limit has room.")
+
+    if not answer_profile or not answer_profile.consent_to_use_answers:
+        blockers.append("Application answer consent must be enabled before final-submit review.")
+    else:
+        required_answers = {
+            "Work authorization": answer_profile.work_authorized_us,
+            "Sponsorship now": answer_profile.requires_sponsorship_now,
+            "Sponsorship future": answer_profile.requires_sponsorship_future,
+        }
+        missing = [
+            label
+            for label, value in required_answers.items()
+            if value in ("unspecified", "prefer_not_to_answer", None, "")
+        ]
+        if missing:
+            blockers.append(f"Required application answers are incomplete: {', '.join(missing)}.")
+        else:
+            checks.append("Required work-authorization answers are complete.")
+
+    if not latest_review:
+        blockers.append("Run fill-for-review before final-submit readiness can be evaluated.")
+    else:
+        if latest_review.blockers:
+            blockers.append("Latest fill-review attempt still has blockers.")
+        if latest_review.fields_missing:
+            blockers.append("Latest fill-review attempt still has missing fields.")
+        if not latest_review.blockers and not latest_review.fields_missing:
+            checks.append("Latest fill-review attempt has no saved blockers or missing fields.")
+
+    ready = len(blockers) == 0
+    return {
+        "application_id": app.id,
+        "ready": ready,
+        "can_submit": False,
+        "status": "ready_for_confirmation" if ready else "blocked",
+        "message": (
+            "This application is ready for a future final confirmation step."
+            if ready
+            else "This application is not ready for final-submit confirmation yet."
+        ),
+        "blockers": blockers,
+        "warnings": warnings,
+        "checks": checks,
+        "evaluated_at": datetime.utcnow(),
     }
 
 def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest) -> dict:
@@ -782,6 +988,32 @@ def delete_application_profile(user: User = Depends(get_current_user), session: 
         session.delete(answer_profile)
         session.commit()
     return {"message": "Application answers reset successfully"}
+
+@router.get("/submission-settings", response_model=ApplicationSubmitSettingsResponse)
+def get_submission_settings(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    settings = get_or_create_submit_settings(session, user.id)
+    return serialize_submit_settings(settings)
+
+@router.post("/submission-settings", response_model=ApplicationSubmitSettingsResponse)
+def update_submission_settings(
+    payload: ApplicationSubmitSettingsRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    settings = get_or_create_submit_settings(session, user.id)
+    updated = update_submit_settings_from_payload(session, settings, payload)
+    return serialize_submit_settings(updated)
+
+@router.delete("/submission-settings", response_model=ApplicationSubmitSettingsResponse)
+def reset_submission_settings(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    existing = session.exec(
+        select(ApplicationSubmitSettings).where(ApplicationSubmitSettings.user_id == user.id)
+    ).first()
+    if existing:
+        session.delete(existing)
+        session.commit()
+    settings = get_or_create_submit_settings(session, user.id)
+    return serialize_submit_settings(settings)
 
 @router.post("/agent/run", response_model=AgentRunResponse)
 async def run_agent(
@@ -1183,6 +1415,32 @@ async def fill_application_for_review(
     )
     response.pop("trace_base64", None)
     return response
+
+@router.post("/applications/{app_id}/submit-readiness", response_model=ApplicationSubmitReadinessResponse)
+def check_application_submit_readiness(
+    app_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    settings = get_or_create_submit_settings(session, user.id)
+    answer_profile = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+    latest_review = get_latest_fill_review(session, user.id, app.id)
+    submits_today_count = get_submits_today_count(session, user.id)
+
+    return evaluate_submit_readiness(
+        app=app,
+        user=user,
+        settings=settings,
+        answer_profile=answer_profile,
+        latest_review=latest_review,
+        submits_today_count=submits_today_count,
+    )
 
 @router.get("/applications/{app_id}/fill-reviews", response_model=List[ApplicationFillReviewRecordResponse])
 def get_application_fill_reviews(

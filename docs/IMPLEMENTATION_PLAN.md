@@ -87,6 +87,7 @@ Issues to address:
 - Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, and SmartRecruiters links via `POST /applications/{app_id}/fill-review`.
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
 - Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
+- Final-submit guardrails are implemented with user-scoped submission settings and per-application readiness checks. Actual final submission remains disabled until the confirmation endpoint and fixture tests exist.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 ## Milestone 0: Repository Hygiene and Documentation
@@ -413,7 +414,7 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
-2. Add stronger final-submit confirmation and allow/deny rules before enabling true auto-submit.
+2. Add the per-job final confirmation endpoint and fixture-backed submit-button detection before enabling true auto-submit.
 3. Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, and SmartRecruiters, starting with Workday research and fixture-driven tests.
 4. Expand pytest coverage for package generation, admin access, and external-service failure paths.
 5. Move schema management to Alembic if the app needs a larger production migration workflow.

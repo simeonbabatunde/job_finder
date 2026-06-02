@@ -253,6 +253,48 @@ class ApplicationFillReviewRecordResponse(BaseModel):
     created_at: datetime
 
 
+class ApplicationSubmitSettingsRequest(BaseModel):
+    true_submit_enabled: bool = False
+    require_human_confirmation: bool = True
+    min_fit_score: int = 80
+    max_submits_per_day: int = 5
+    allowed_companies: List[str] = Field(default_factory=list)
+    denied_companies: List[str] = Field(default_factory=list)
+    allowed_domains: List[str] = Field(default_factory=list)
+    denied_domains: List[str] = Field(default_factory=list)
+    allowed_job_title_keywords: List[str] = Field(default_factory=list)
+    consent_to_submit: bool = False
+
+
+class ApplicationSubmitSettingsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = None
+    true_submit_enabled: bool
+    require_human_confirmation: bool
+    min_fit_score: int
+    max_submits_per_day: int
+    allowed_companies: List[str] = Field(default_factory=list)
+    denied_companies: List[str] = Field(default_factory=list)
+    allowed_domains: List[str] = Field(default_factory=list)
+    denied_domains: List[str] = Field(default_factory=list)
+    allowed_job_title_keywords: List[str] = Field(default_factory=list)
+    consented_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ApplicationSubmitReadinessResponse(BaseModel):
+    application_id: int
+    ready: bool
+    can_submit: bool = False
+    status: str
+    message: str
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    checks: List[str] = Field(default_factory=list)
+    evaluated_at: datetime
+
+
 class AutoApplyAuditResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

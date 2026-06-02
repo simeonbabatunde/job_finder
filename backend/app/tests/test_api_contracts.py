@@ -17,7 +17,7 @@ from app.api import endpoints
 from app.agent import nodes
 from app.agent.nodes import apply_browser, submit_application
 from app.database import engine, run_schema_migrations
-from app.models import Application, ApplicationAnswerProfile, Profile, User
+from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, Profile, User
 from app.services.application_fill_review import FillReviewResult
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.persistence import PersistenceService
@@ -783,6 +783,102 @@ def test_application_answer_profile_stores_demographics_with_explicit_consent():
         assert body["consent_to_use_demographics"] is True
 
 
+def test_submission_settings_and_readiness_contract():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "submit-settings")
+        user_id = auth["user"]["id"]
+        prepare_agent_setup(client, headers)
+
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            user.subscription_tier = "pro"
+            session.add(user)
+            session.add(
+                ApplicationAnswerProfile(
+                    user_id=user_id,
+                    work_authorized_us="yes",
+                    requires_sponsorship_now="no",
+                    requires_sponsorship_future="no",
+                    consent_to_use_answers=True,
+                )
+            )
+            saved_app = Application(
+                user_id=user_id,
+                job_title="Senior Backend Engineer",
+                company="Acme",
+                job_url="https://boards.greenhouse.io/acme/jobs/123",
+                resolved_url="https://boards.greenhouse.io/acme/jobs/123",
+                source_type="ats",
+                ats_type="greenhouse",
+                resolution_status="resolved",
+                status="Needs Review",
+                fit_score=0.92,
+            )
+            session.add(saved_app)
+            session.commit()
+            session.refresh(saved_app)
+            app_id = saved_app.id
+            app_url = saved_app.resolved_url
+            session.add(
+                ApplicationFillReview(
+                    user_id=user_id,
+                    application_id=app_id,
+                    ats_type="greenhouse",
+                    application_url=app_url,
+                    status="ready_for_review",
+                    message="Prepared in test.",
+                    fields_filled=["First name", "Last name", "Email", "Resume"],
+                    fields_missing=[],
+                    blockers=[],
+                )
+            )
+            session.commit()
+
+        default_settings = client.get("/submission-settings", headers=headers)
+        assert default_settings.status_code == 200, default_settings.text
+        assert default_settings.json()["true_submit_enabled"] is False
+
+        readiness_blocked = client.post(f"/applications/{app_id}/submit-readiness", headers=headers)
+        assert readiness_blocked.status_code == 200, readiness_blocked.text
+        assert readiness_blocked.json()["ready"] is False
+        assert "True submit mode is off" in readiness_blocked.json()["blockers"][0]
+
+        settings_response = client.post(
+            "/submission-settings",
+            headers=headers,
+            json={
+                "true_submit_enabled": True,
+                "require_human_confirmation": True,
+                "min_fit_score": 85,
+                "max_submits_per_day": 3,
+                "allowed_companies": ["Acme"],
+                "denied_companies": ["Nope"],
+                "allowed_domains": ["greenhouse.io"],
+                "denied_domains": [],
+                "allowed_job_title_keywords": ["Backend"],
+                "consent_to_submit": True,
+            },
+        )
+        assert settings_response.status_code == 200, settings_response.text
+        settings_body = settings_response.json()
+        assert settings_body["true_submit_enabled"] is True
+        assert settings_body["consented_at"] is not None
+        assert settings_body["allowed_companies"] == ["Acme"]
+
+        readiness = client.post(f"/applications/{app_id}/submit-readiness", headers=headers)
+        assert readiness.status_code == 200, readiness.text
+        body = readiness.json()
+        assert body["ready"] is True
+        assert body["can_submit"] is False
+        assert body["status"] == "ready_for_confirmation"
+        assert body["blockers"] == []
+        assert "Fit score meets the submit threshold." in body["checks"]
+
+        reset_response = client.delete("/submission-settings", headers=headers)
+        assert reset_response.status_code == 200, reset_response.text
+        assert reset_response.json()["true_submit_enabled"] is False
+
+
 def test_schema_migrations_are_recorded_and_idempotent():
     with TestClient(app):
         run_schema_migrations()
@@ -798,6 +894,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0005_application_fill_review_artifacts",) in rows
     assert ("0006_agent_run_claims",) in rows
     assert ("0007_auth_sessions",) in rows
+    assert ("0008_application_submit_settings",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

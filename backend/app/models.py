@@ -98,6 +98,21 @@ class ApplicationFillReview(SQLModel, table=True):
     trace_path: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
+class ApplicationSubmitSettings(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", unique=True, index=True)
+    true_submit_enabled: bool = Field(default=False)
+    require_human_confirmation: bool = Field(default=True)
+    min_fit_score: int = Field(default=80)
+    max_submits_per_day: int = Field(default=5)
+    allowed_companies: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    denied_companies: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    allowed_domains: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    denied_domains: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    allowed_job_title_keywords: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    consented_at: Optional[datetime] = Field(default=None)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 class Profile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", unique=True)

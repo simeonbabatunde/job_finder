@@ -62,6 +62,7 @@ Current implementation:
 - The application is marked `Needs Review` after the fill-review attempt.
 - The dashboard shows `Fill review` for resolved supported ATS applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
 - Fill-review screenshots and Playwright traces are saved as local authenticated artifacts; saved review history can preview screenshots and download traces.
+- User-scoped submission guardrails and `POST /applications/{app_id}/submit-readiness` evaluate whether a prepared application could move to a future final-confirm step without clicking submit.
 
 ### Phase 2: Application Link Resolution
 

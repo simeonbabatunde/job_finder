@@ -192,12 +192,13 @@ Completed:
 - Added ephemeral screenshot preview support in fill-review responses and the review modal.
 - Added persisted fill-review screenshot and Playwright trace artifacts, authenticated artifact endpoints, migration support, and dashboard actions to preview saved screenshots or download traces.
 - Added durable worker-mode agent execution with `claimed_at` queue metadata, stale-run protection, `backend/app/worker.py`, Docker Compose worker service wiring, and worker-mode API contract coverage.
+- Added final-submit guardrail settings, allow/deny lists, readiness evaluation, dashboard guardrail controls, and a fill-review modal readiness check. This still does not submit applications.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 20 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 21 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
@@ -205,4 +206,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Add explicit final-submit confirmation and allow/deny rules before expanding true auto-submit behavior, then broaden deterministic ATS coverage with fixture-driven Workday research.
+- Add the per-job final confirmation endpoint and fixture-backed submit-button detection, while keeping true submit disabled until those checks prove reliable.

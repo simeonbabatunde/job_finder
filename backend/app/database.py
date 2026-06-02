@@ -177,6 +177,41 @@ def migrate_auth_sessions(connection):
         )
     )
 
+def migrate_application_submit_settings(connection):
+    """Create user-scoped guardrails for future final-submit confirmation."""
+    id_column = "SERIAL PRIMARY KEY" if connection.dialect.name == "postgresql" else "INTEGER PRIMARY KEY"
+    bool_false = "FALSE" if connection.dialect.name == "postgresql" else "0"
+    bool_true = "TRUE" if connection.dialect.name == "postgresql" else "1"
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS applicationsubmitsettings (
+                id {id_column},
+                user_id INTEGER NOT NULL UNIQUE,
+                true_submit_enabled BOOLEAN NOT NULL DEFAULT {bool_false},
+                require_human_confirmation BOOLEAN NOT NULL DEFAULT {bool_true},
+                min_fit_score INTEGER NOT NULL DEFAULT 80,
+                max_submits_per_day INTEGER NOT NULL DEFAULT 5,
+                allowed_companies JSON,
+                denied_companies JSON,
+                allowed_domains JSON,
+                denied_domains JSON,
+                allowed_job_title_keywords JSON,
+                consented_at TIMESTAMP,
+                updated_at TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES "user" (id)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "ix_applicationsubmitsettings_user_unique "
+            "ON applicationsubmitsettings (user_id)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -185,6 +220,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0005_application_fill_review_artifacts", migrate_application_fill_review_artifacts),
     ("0006_agent_run_claims", migrate_agent_run_claims),
     ("0007_auth_sessions", migrate_auth_sessions),
+    ("0008_application_submit_settings", migrate_application_submit_settings),
 )
 
 def ensure_schema_migrations_table(connection):

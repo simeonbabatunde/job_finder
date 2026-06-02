@@ -17,6 +17,7 @@ import type { ResumeUploadHandle } from './components/ResumeUpload';
 import { ResumeFeedback } from './components/ResumeFeedback';
 import { UserProfile } from './components/UserProfile';
 import { ApplicationAnswers } from './components/ApplicationAnswers';
+import { SubmissionSettings } from './components/SubmissionSettings';
 import { JobPreferences } from './components/JobPreferences';
 import type { JobPreferencesHandle } from './components/JobPreferences';
 import { AgentControls } from './components/AgentControls';
@@ -305,6 +306,9 @@ function App() {
                   initialData={applicationProfileData}
                   onSaved={setApplicationProfileData}
                 />
+              </div>
+              <div className="mt-4 border-t border-[var(--line)] pt-4">
+                <SubmissionSettings />
               </div>
             </section>
           </div>
