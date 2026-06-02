@@ -203,6 +203,18 @@ def get_daily_agent_run_limit(user: User):
 def can_auto_apply(user: User):
     return user.role == "admin" or user.subscription_tier == "pro"
 
+def get_agent_runner_mode():
+    return os.getenv("AGENT_RUNNER_MODE", "background").strip().lower()
+
+def should_schedule_background_agent_run():
+    return get_agent_runner_mode() != "worker"
+
+def get_agent_run_stale_minutes():
+    try:
+        return max(int(os.getenv("AGENT_RUN_STALE_MINUTES", "120")), 1)
+    except ValueError:
+        return 120
+
 def get_agent_runs_today(session: Session, user_id: int):
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     return session.exec(
@@ -249,6 +261,60 @@ def persist_auto_apply_audit(session: Session, user_id: int, agent_run_id: Optio
                 message=record.get("message"),
             )
         )
+
+def fail_stale_agent_runs(session: Session):
+    stale_before = datetime.utcnow() - timedelta(minutes=get_agent_run_stale_minutes())
+    stale_runs = session.exec(
+        select(AgentRun).where(
+            AgentRun.status == "running",
+            AgentRun.claimed_at.is_not(None),
+            AgentRun.claimed_at < stale_before,
+        )
+    ).all()
+    for run in stale_runs:
+        run.status = "failed"
+        run.error = "Agent run timed out while claimed by a worker."
+        run.logs = (run.logs or []) + [run.error]
+        run.completed_at = datetime.utcnow()
+        session.add(run)
+    if stale_runs:
+        session.commit()
+    return len(stale_runs)
+
+def claim_next_queued_agent_run():
+    with Session(engine) as session:
+        fail_stale_agent_runs(session)
+        run = session.exec(
+            select(AgentRun)
+            .where(AgentRun.status == "queued")
+            .order_by(AgentRun.started_at.asc())
+        ).first()
+        if not run:
+            return None
+
+        run.status = "running"
+        run.claimed_at = datetime.utcnow()
+        run.logs = (run.logs or []) + ["Agent workflow claimed by worker"]
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        return {
+            "agent_run_id": run.id,
+            "user_id": run.user_id,
+            "auto_apply": run.auto_apply,
+        }
+
+async def run_next_queued_agent_run():
+    claim = claim_next_queued_agent_run()
+    if not claim:
+        return False
+
+    await execute_agent_run(
+        claim["agent_run_id"],
+        claim["user_id"],
+        claim["auto_apply"],
+    )
+    return True
 
 def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAudit]] = None):
     return {
@@ -313,6 +379,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
 
         try:
             agent_run.status = "running"
+            agent_run.claimed_at = agent_run.claimed_at or datetime.utcnow()
             agent_run.logs = ["Agent workflow started"]
             session.add(agent_run)
             session.commit()
@@ -689,13 +756,18 @@ async def run_agent(
         user_id=user.id,
         status="queued",
         auto_apply=auto_apply,
-        logs=["Agent workflow queued"],
+        logs=[
+            "Agent workflow queued for worker"
+            if get_agent_runner_mode() == "worker"
+            else "Agent workflow queued"
+        ],
     )
     session.add(agent_run)
     session.commit()
     session.refresh(agent_run)
 
-    background_tasks.add_task(execute_agent_run, agent_run.id, user.id, auto_apply)
+    if should_schedule_background_agent_run():
+        background_tasks.add_task(execute_agent_run, agent_run.id, user.id, auto_apply)
 
     return {
         "status": "queued",

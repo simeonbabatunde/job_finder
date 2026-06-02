@@ -126,12 +126,31 @@ def migrate_application_fill_review_artifacts(connection):
                 text(f"ALTER TABLE applicationfillreview ADD COLUMN {column_name} VARCHAR")
             )
 
+def migrate_agent_run_claims(connection):
+    """Add worker-claim metadata for durable queued agent runs."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "agentrun" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("agentrun")}
+    if "claimed_at" not in columns:
+        connection.execute(text("ALTER TABLE agentrun ADD COLUMN claimed_at TIMESTAMP"))
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS "
+            "ix_agentrun_status_claimed "
+            "ON agentrun (status, claimed_at)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
     ("0003_application_answer_profile", migrate_application_answer_profile),
     ("0004_application_fill_review", migrate_application_fill_review),
     ("0005_application_fill_review_artifacts", migrate_application_fill_review_artifacts),
+    ("0006_agent_run_claims", migrate_agent_run_claims),
 )
 
 def ensure_schema_migrations_table(connection):

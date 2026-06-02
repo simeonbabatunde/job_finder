@@ -80,7 +80,7 @@ Issues to address:
 - Startup now uses `create_all` plus a lightweight versioned `schema_migrations` table.
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
-- Agent runs are queued in background tasks and persist logs, selected application counts, and found job counts.
+- Agent runs are persisted as queued records, can run in local background mode, and can be processed by the Docker worker service in worker mode.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit still needs stronger confirmation boundaries before production.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
@@ -413,7 +413,7 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Harden auth secrets, token rotation, and server-side session invalidation.
-2. Move in-process background agent execution to a durable worker/queue for multi-process deployments.
-3. Add stronger final-submit confirmation and allow/deny rules before enabling true auto-submit.
+2. Add stronger final-submit confirmation and allow/deny rules before enabling true auto-submit.
+3. Expand deterministic ATS coverage beyond Greenhouse/Lever, starting with Ashby and SmartRecruiters.
 4. Expand pytest coverage for package generation, admin access, and external-service failure paths.
 5. Move schema management to Alembic if the app needs a larger production migration workflow.

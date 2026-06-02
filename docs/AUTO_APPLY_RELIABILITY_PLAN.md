@@ -374,8 +374,8 @@ Browser automation should move out of the API process before production.
 
 Recommended architecture:
 
-- API queues `AutoApplyAttempt` jobs.
-- Worker process runs Playwright.
+- API queues persisted agent runs and future `AutoApplyAttempt` jobs.
+- Worker process runs queued agent work and future Playwright submission attempts.
 - Worker writes attempt state transitions.
 - Frontend polls attempt/run status.
 - Browser traces and screenshots are stored as artifacts.

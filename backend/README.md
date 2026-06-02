@@ -79,6 +79,9 @@ AUTH_TOKEN_TTL_SECONDS=604800
 FREE_DAILY_AGENT_RUN_LIMIT=3
 PRO_DAILY_AGENT_RUN_LIMIT=50
 FILL_REVIEW_ARTIFACT_DIR=storage/fill_review_artifacts
+AGENT_RUNNER_MODE=background
+AGENT_WORKER_POLL_SECONDS=2
+AGENT_RUN_STALE_MINUTES=120
 ```
 
 Docker Compose also expects:
@@ -88,6 +91,16 @@ POSTGRES_USER=
 POSTGRES_PASSWORD=
 POSTGRES_DB=
 VITE_API_URL=
+```
+
+## Agent Worker
+
+Local API runs default to background execution. Docker Compose defaults to worker mode and starts a separate `worker` service that claims queued agent runs from the database.
+
+To run worker mode manually:
+
+```bash
+AGENT_RUNNER_MODE=worker uv run python -m app.worker
 ```
 
 ## API Surface

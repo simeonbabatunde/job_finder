@@ -726,6 +726,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0003_application_answer_profile",) in rows
     assert ("0004_application_fill_review",) in rows
     assert ("0005_application_fill_review_artifacts",) in rows
+    assert ("0006_agent_run_claims",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):
@@ -761,6 +762,34 @@ def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):
         runs_response = client.get("/agent/runs", headers=headers)
         assert runs_response.status_code == 200, runs_response.text
         assert runs_response.json()[0]["id"] == body["agent_run_id"]
+
+
+def test_agent_run_worker_mode_processes_persisted_queue(monkeypatch):
+    monkeypatch.setattr(endpoints, "agent_graph", FakeAgentGraph())
+    monkeypatch.setenv("AGENT_RUNNER_MODE", "worker")
+
+    with TestClient(app) as client:
+        _, headers = register_user(client, "agent-worker")
+        prepare_agent_setup(client, headers)
+
+        response = client.post("/agent/run", headers=headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "queued"
+
+        queued_run = client.get(f"/agent/runs/{body['agent_run_id']}", headers=headers)
+        assert queued_run.status_code == 200, queued_run.text
+        assert queued_run.json()["status"] == "queued"
+        assert queued_run.json()["logs"] == ["Agent workflow queued for worker"]
+
+        assert asyncio.run(endpoints.run_next_queued_agent_run()) is True
+
+        completed_run = client.get(f"/agent/runs/{body['agent_run_id']}", headers=headers)
+        assert completed_run.status_code == 200, completed_run.text
+        run_body = completed_run.json()
+        assert run_body["status"] == "completed"
+        assert run_body["applications_count"] == 1
+        assert run_body["logs"][-1] == "Fake search complete"
 
 
 def test_free_agent_run_quota_is_enforced(monkeypatch):

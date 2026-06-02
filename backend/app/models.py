@@ -60,6 +60,7 @@ class AgentRun(SQLModel, table=True):
     found_jobs_count: int = Field(default=0)
     error: Optional[str] = Field(default=None)
     started_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    claimed_at: Optional[datetime] = Field(default=None, index=True)
     completed_at: Optional[datetime] = Field(default=None)
 
 class AutoApplyAudit(SQLModel, table=True):

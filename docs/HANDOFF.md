@@ -77,6 +77,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit remains future work until stronger final confirmation rules exist.
+- Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
 ## Session Start Checklist
@@ -189,12 +190,13 @@ Completed:
 - Added `DELETE /applications/{app_id}/fill-reviews` and a modal clear action for saved fill-review attempts.
 - Added ephemeral screenshot preview support in fill-review responses and the review modal.
 - Added persisted fill-review screenshot and Playwright trace artifacts, authenticated artifact endpoints, migration support, and dashboard actions to preview saved screenshots or download traces.
+- Added durable worker-mode agent execution with `claimed_at` queue metadata, stale-run protection, `backend/app/worker.py`, Docker Compose worker service wiring, and worker-mode API contract coverage.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 18 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 19 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
@@ -202,4 +204,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Move in-process background agent execution to a durable worker/queue, then add explicit final-submit confirmation and allow/deny rules before expanding true auto-submit behavior.
+- Add explicit final-submit confirmation and allow/deny rules before expanding true auto-submit behavior, then broaden deterministic ATS coverage beyond Greenhouse and Lever.
