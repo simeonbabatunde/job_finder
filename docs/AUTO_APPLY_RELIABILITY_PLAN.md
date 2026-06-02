@@ -231,6 +231,23 @@ Current implementation:
 - Final confirmation updates the latest attempt with readiness and submit-control snapshots and links the audit event back to the attempt.
 - The dashboard shows an automation timeline in the fill-review modal.
 
+## Pre-Screen Cost Gate
+
+Before full AI fit analysis, the matching workflow should run a cheap, high-recall screen so obvious non-fits do not spend LLM budget.
+
+Implemented behavior:
+
+- Jobs are classified as `pass`, `maybe`, or `reject` before the full LLM fit analysis.
+- `pass` and `maybe` jobs continue to AI analysis.
+- `reject` jobs are persisted as `Screened Out` with `pre_screen_reasons`, but they do not enter the AI analysis batch.
+- The screen rejects only clear preference conflicts, such as senior role preference vs. junior/internship title, full-time preference vs. contract/part-time title, or remote preference vs. clearly on-site posting.
+- Weak role-keyword overlap is never a hard reject; it becomes `maybe` so the full AI analysis can still catch good but unusually written postings.
+- The application API exposes `match_bucket=strong|below_threshold|screened_out|all`.
+- The dashboard defaults to `Strong matches`, with separate lanes for below-threshold and screened-out jobs.
+- Package generation and fill-for-review are blocked server-side for screened-out jobs and jobs below the latest minimum match score.
+
+This keeps the pre-screen conservative enough to avoid eliminating good matches while still reducing avoidable LLM and package-generation cost.
+
 ### Phase 5: Hard Stop Rules
 
 Auto-submit must stop for review when any of these happen:

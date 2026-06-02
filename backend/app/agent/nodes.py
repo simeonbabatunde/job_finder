@@ -10,6 +10,7 @@ from app.services.job_search import JobSearchService
 from app.services.browser_apply import BrowserApplyService
 from app.services.persistence import PersistenceService
 from app.services.application_link_resolver import ApplicationLinkResolver
+from app.services.job_pre_screen import JobPreScreenService
 
 async def parse_resume(state: AgentState):
     """
@@ -101,23 +102,45 @@ async def search_jobs(state: AgentState):
             print(f"Found {len(ats_jobs)} ATS jobs for {company}")
             jobs.extend(ats_jobs)
     
-    # Persist jobs incrementally
+    # Persist jobs incrementally, but only send pass/maybe jobs to expensive AI analysis.
     user_id = state.get("user_id")
+    jobs_for_analysis = []
+    pre_screen_counts = {"pass": 0, "maybe": 0, "reject": 0}
     for job in jobs:
-        PersistenceService.save_job(user_id, job, "Identified")
+        pre_screen = JobPreScreenService.screen(job, prefs)
+        job["pre_screen_status"] = pre_screen.status
+        job["pre_screen_reasons"] = pre_screen.reasons
+        pre_screen_counts[pre_screen.status] = pre_screen_counts.get(pre_screen.status, 0) + 1
+
+        if pre_screen.should_analyze:
+            PersistenceService.save_job(user_id, job, "Identified")
+            jobs_for_analysis.append(job)
+        else:
+            PersistenceService.save_job(user_id, job, "Screened Out")
+
+    screened_summary = (
+        f"Pre-screen kept {len(jobs_for_analysis)} for AI analysis "
+        f"({pre_screen_counts['pass']} pass, {pre_screen_counts['maybe']} maybe) "
+        f"and screened out {pre_screen_counts['reject']} obvious non-fits."
+    )
     
     return {
-        "found_jobs": jobs, 
-        "logs": state.get("logs", []) + [f"Found {len(jobs)} jobs for '{search_query}' in '{search_loc}' (including {len(target_companies)} target companies)"]
+        "found_jobs": jobs_for_analysis,
+        "total_found_jobs": len(jobs),
+        "screened_out_jobs_count": pre_screen_counts["reject"],
+        "logs": state.get("logs", []) + [
+            f"Found {len(jobs)} jobs for '{search_query}' in '{search_loc}' (including {len(target_companies)} target companies)",
+            screened_summary,
+        ]
     }
 
 async def analyze_fit(state: AgentState):
     """
-    Analyzes the fit of ALL found jobs using an LLM in batch.
+    Analyzes the fit of pass/maybe found jobs using an LLM in batch.
     """
     jobs = state.get("found_jobs", [])
     if not jobs:
-        return {"application_status": "completed", "logs": state.get("logs", []) + ["No jobs found to analyze"]}
+        return {"application_status": "completed", "logs": state.get("logs", []) + ["No jobs passed pre-screen for AI analysis"]}
     
     resume_summary = state.get("resume_summary", "")
     prefs = state.get("preferences")
@@ -173,6 +196,7 @@ async def analyze_fit(state: AgentState):
             
             # Update the job in the list
             jobs[i]["fit_score"] = score
+            jobs[i]["explanation"] = explanation
             jobs[i]["cover_letter"] = cover_letter
             
             # Persist analysis results incrementally

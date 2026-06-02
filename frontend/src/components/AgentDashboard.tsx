@@ -32,19 +32,32 @@ interface Application {
     resolution_notes?: string | null;
     explanation?: string;
     cover_letter?: string;
+    pre_screen_status?: string;
+    pre_screen_reasons?: string[];
 }
 
 interface AgentDashboardProps {
     limit?: number;
     fullPage?: boolean;
     compact?: boolean;
+    minMatchScore?: number;
 }
+
+type MatchView = 'strong' | 'below_threshold' | 'screened_out' | 'all';
+
+const matchViews: { key: MatchView; label: string }[] = [
+    { key: 'strong', label: 'Strong matches' },
+    { key: 'below_threshold', label: 'Below threshold' },
+    { key: 'screened_out', label: 'Screened out' },
+    { key: 'all', label: 'All tracked' },
+];
 
 function statusTone(status: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
     if (status === 'Submitted' || status === 'Applied' || status === 'Offer') return 'success';
     if (status === 'Analyzed' || status === 'Interview' || status === 'Phone Screen') return 'accent';
+    if (status === 'Needs Review' || status === 'Take-Home') return 'warning';
     if (status === 'Analysis Failed' || status === 'Rejected') return 'danger';
-    if (status === 'Take-Home') return 'warning';
+    if (status === 'Screened Out') return 'danger';
     return 'neutral';
 }
 
@@ -104,7 +117,64 @@ function canFillReview(app: Application) {
         && ['greenhouse', 'lever', 'ashby', 'smartrecruiters'].includes(app.ats_type || '');
 }
 
-export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage = false, compact = false }) => {
+function isScreenedOut(app: Application) {
+    return app.pre_screen_status === 'reject' || app.status === 'Screened Out';
+}
+
+function isBelowThreshold(app: Application, minMatchScore: number) {
+    return !isScreenedOut(app) && app.fit_score > 0 && app.fit_score * 100 < minMatchScore;
+}
+
+function actionBlockReason(app: Application, minMatchScore: number) {
+    if (isScreenedOut(app)) return 'Screened-out jobs are review-only.';
+    if (app.fit_score * 100 < minMatchScore) {
+        return app.fit_score > 0
+            ? `Below your ${minMatchScore}% minimum match score.`
+            : 'Not analyzed yet.';
+    }
+    return null;
+}
+
+function scoreOrScreenChip(app: Application, minMatchScore: number) {
+    if (isScreenedOut(app)) {
+        return <StatusChip tone="danger">Screened out</StatusChip>;
+    }
+    if (isBelowThreshold(app, minMatchScore)) {
+        return <StatusChip tone="warning">{(app.fit_score * 100).toFixed(0)}%</StatusChip>;
+    }
+    return (
+        <StatusChip tone={scoreTone(app.fit_score)}>
+            {(app.fit_score * 100).toFixed(0)}%
+        </StatusChip>
+    );
+}
+
+function emptyStateCopy(matchView: MatchView) {
+    if (matchView === 'below_threshold') {
+        return {
+            title: 'No below-threshold jobs.',
+            detail: 'Jobs that were analyzed but did not clear your minimum score will appear here for review.',
+        };
+    }
+    if (matchView === 'screened_out') {
+        return {
+            title: 'No screened-out jobs.',
+            detail: 'Obvious non-fits skipped before AI analysis will appear here with the reason they were held back.',
+        };
+    }
+    if (matchView === 'all') {
+        return {
+            title: 'No tracked jobs yet.',
+            detail: 'Upload your resume, set preferences, then start matching to build your application pipeline.',
+        };
+    }
+    return {
+        title: 'No strong matches yet.',
+        detail: 'Start matching to find roles that clear your minimum score and are ready for application packaging.',
+    };
+}
+
+export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage = false, compact = false, minMatchScore = 70 }) => {
     const [applications, setApplications] = useState<Application[]>([]);
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
@@ -126,13 +196,16 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
+    const [matchView, setMatchView] = useState<MatchView>('strong');
 
     const fetchApplications = useCallback(async () => {
         setLoading(true);
         try {
+            const requestedMatchView: MatchView = fullPage ? matchView : 'strong';
             const params = new URLSearchParams({
                 sort: fullPage ? sortBy : 'date',
                 direction: fullPage ? sortDir : 'desc',
+                match_bucket: requestedMatchView,
             });
             if (limit) {
                 params.set('limit', String(limit));
@@ -151,7 +224,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         } finally {
             setLoading(false);
         }
-    }, [fullPage, limit, sortBy, sortDir]);
+    }, [fullPage, limit, matchView, sortBy, sortDir]);
 
     useEffect(() => {
         void fetchApplications();
@@ -204,6 +277,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
 
     const displayedApps = limit ? sortedApplications.slice(0, limit) : sortedApplications;
     const useCompactList = compact && !fullPage;
+    const currentEmpty = emptyStateCopy(fullPage ? matchView : 'strong');
 
     const handleStatusChange = (appId: number, status: string) => {
         setApplications(prev =>
@@ -668,6 +742,25 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                     )}
                 </div>
             </div>
+            {fullPage && (
+                <div className="mb-4 flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                        {matchViews.map(view => (
+                            <Button
+                                key={view.key}
+                                variant={matchView === view.key ? 'primary' : 'secondary'}
+                                size="sm"
+                                onClick={() => setMatchView(view.key)}
+                            >
+                                {view.label}
+                            </Button>
+                        ))}
+                    </div>
+                    <p className="text-xs font-semibold text-[var(--muted)]">
+                        Minimum match score: {minMatchScore}%
+                    </p>
+                </div>
+            )}
             {linkError && (
                 <p className="mb-3 rounded-md border border-[var(--danger-soft)] bg-[var(--danger-soft)] px-3 py-2 text-xs font-semibold text-[var(--danger)]">
                     {linkError}
@@ -680,88 +773,96 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                 </div>
             ) : applications.length === 0 ? (
                 <EmptyState
-                    title="No best-fit jobs yet."
-                    detail="Upload your resume, set preferences, then start matching to find roles that align with your background."
+                    title={currentEmpty.title}
+                    detail={currentEmpty.detail}
                 />
             ) : useCompactList ? (
                 <div className="space-y-2">
-                    {displayedApps.map((app) => (
-                        <article key={app.id} className="rounded-lg border border-[var(--line)] bg-white p-3">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold text-[var(--ink)]">{app.job_title}</p>
-                                    <p className="mt-1 truncate text-xs text-[var(--muted)]">{app.company}</p>
+                    {displayedApps.map((app) => {
+                        const blockReason = actionBlockReason(app, minMatchScore);
+                        return (
+                            <article key={app.id} className="rounded-lg border border-[var(--line)] bg-white p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-[var(--ink)]">{app.job_title}</p>
+                                        <p className="mt-1 truncate text-xs text-[var(--muted)]">{app.company}</p>
+                                    </div>
+                                    {scoreOrScreenChip(app, minMatchScore)}
                                 </div>
-                                <StatusChip tone={scoreTone(app.fit_score)}>
-                                    {(app.fit_score * 100).toFixed(0)}%
-                                </StatusChip>
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
-                                <StatusChip tone={resolutionTone(app.resolution_status)} title={app.resolution_notes || undefined}>
-                                    {resolutionLabel(app)}
-                                </StatusChip>
-                                <span className="text-xs text-[var(--muted)]">
-                                    {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                </span>
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => setSelectedApp(app)}
-                                >
-                                    <Box size={15} />
-                                    Package
-                                </Button>
-                                {canResolveLink(app) && (
+                                {app.pre_screen_reasons?.length ? (
+                                    <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+                                        {app.pre_screen_reasons[0]}
+                                    </p>
+                                ) : null}
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
+                                    <StatusChip tone={resolutionTone(app.resolution_status)} title={app.resolution_notes || undefined}>
+                                        {resolutionLabel(app)}
+                                    </StatusChip>
+                                    <span className="text-xs text-[var(--muted)]">
+                                        {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
                                     <Button
                                         variant="secondary"
                                         size="sm"
-                                        onClick={() => void handleResolveLink(app.id)}
-                                        disabled={resolvingId === app.id}
+                                        onClick={() => setSelectedApp(app)}
+                                        disabled={Boolean(blockReason)}
+                                        title={blockReason || undefined}
                                     >
-                                        {resolvingId === app.id ? (
-                                            <RefreshCw size={14} className="animate-spin" />
-                                        ) : (
-                                            <Link2 size={14} />
-                                        )}
-                                        {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                        <Box size={15} />
+                                        Package
                                     </Button>
-                                )}
-                                {canFillReview(app) && (
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => void handleFillReview(app)}
-                                        disabled={fillingId === app.id}
-                                    >
-                                        {fillingId === app.id ? (
-                                            <RefreshCw size={14} className="animate-spin" />
-                                        ) : (
-                                            <ClipboardCheck size={14} />
-                                        )}
-                                        {fillingId === app.id ? 'Preparing' : 'Fill review'}
-                                    </Button>
-                                )}
-                                {app.job_url ? (
-                                    <a
-                                        href={app.resolved_url || app.job_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                                    >
-                                        <ExternalLink size={14} />
-                                        Open
-                                    </a>
-                                ) : (
-                                    <IconButton label="No job URL" variant="ghost" size="sm" disabled>
-                                        <ArchiveX size={15} />
-                                    </IconButton>
-                                )}
-                            </div>
-                        </article>
-                    ))}
+                                    {canResolveLink(app) && (
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => void handleResolveLink(app.id)}
+                                            disabled={resolvingId === app.id}
+                                        >
+                                            {resolvingId === app.id ? (
+                                                <RefreshCw size={14} className="animate-spin" />
+                                            ) : (
+                                                <Link2 size={14} />
+                                            )}
+                                            {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                        </Button>
+                                    )}
+                                    {canFillReview(app) && !blockReason && (
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => void handleFillReview(app)}
+                                            disabled={fillingId === app.id}
+                                        >
+                                            {fillingId === app.id ? (
+                                                <RefreshCw size={14} className="animate-spin" />
+                                            ) : (
+                                                <ClipboardCheck size={14} />
+                                            )}
+                                            {fillingId === app.id ? 'Preparing' : 'Fill review'}
+                                        </Button>
+                                    )}
+                                    {app.job_url ? (
+                                        <a
+                                            href={app.resolved_url || app.job_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                                        >
+                                            <ExternalLink size={14} />
+                                            Open
+                                        </a>
+                                    ) : (
+                                        <IconButton label="No job URL" variant="ghost" size="sm" disabled>
+                                            <ArchiveX size={15} />
+                                        </IconButton>
+                                    )}
+                                </div>
+                            </article>
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-white">
@@ -793,89 +894,97 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                             </tr>
                         </thead>
                         <tbody>
-                            {displayedApps.map((app) => (
-                                <tr key={app.id} className="border-t border-[var(--line)] hover:bg-[var(--page)]">
-                                    <td className="px-4 py-4 align-middle">
-                                        <div className="max-w-[320px]">
-                                            <p className="truncate font-semibold text-[var(--ink)]">{app.job_title}</p>
-                                            <p className="mt-1 truncate text-sm text-[var(--muted)]">{app.company}</p>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-4 align-middle">
-                                        <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
-                                    </td>
-                                    <td className="px-4 py-4 align-middle">
-                                        <StatusChip tone={scoreTone(app.fit_score)}>
-                                            {(app.fit_score * 100).toFixed(0)}%
-                                        </StatusChip>
-                                    </td>
-                                    <td className="px-4 py-4 align-middle text-[var(--muted)]">
-                                        {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </td>
-                                    <td className="px-4 py-4 align-middle">
-                                        <StatusChip tone={resolutionTone(app.resolution_status)} title={app.resolution_notes || undefined}>
-                                            {resolutionLabel(app)}
-                                        </StatusChip>
-                                    </td>
-                                    <td className="px-4 py-4 align-middle">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => setSelectedApp(app)}
-                                            >
-                                                <Box size={15} />
-                                                Package
-                                            </Button>
-                                            {canResolveLink(app) && (
+                            {displayedApps.map((app) => {
+                                const blockReason = actionBlockReason(app, minMatchScore);
+                                return (
+                                    <tr key={app.id} className="border-t border-[var(--line)] hover:bg-[var(--page)]">
+                                        <td className="px-4 py-4 align-middle">
+                                            <div className="max-w-[320px]">
+                                                <p className="truncate font-semibold text-[var(--ink)]">{app.job_title}</p>
+                                                <p className="mt-1 truncate text-sm text-[var(--muted)]">{app.company}</p>
+                                                {app.pre_screen_reasons?.length ? (
+                                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+                                                        {app.pre_screen_reasons[0]}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-4 align-middle">
+                                            <StatusChip tone={statusTone(app.status)}>{app.status}</StatusChip>
+                                        </td>
+                                        <td className="px-4 py-4 align-middle">
+                                            {scoreOrScreenChip(app, minMatchScore)}
+                                        </td>
+                                        <td className="px-4 py-4 align-middle text-[var(--muted)]">
+                                            {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </td>
+                                        <td className="px-4 py-4 align-middle">
+                                            <StatusChip tone={resolutionTone(app.resolution_status)} title={app.resolution_notes || undefined}>
+                                                {resolutionLabel(app)}
+                                            </StatusChip>
+                                        </td>
+                                        <td className="px-4 py-4 align-middle">
+                                            <div className="flex flex-wrap items-center gap-2">
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
-                                                    onClick={() => void handleResolveLink(app.id)}
-                                                    disabled={resolvingId === app.id}
+                                                    onClick={() => setSelectedApp(app)}
+                                                    disabled={Boolean(blockReason)}
+                                                    title={blockReason || undefined}
                                                 >
-                                                    {resolvingId === app.id ? (
-                                                        <RefreshCw size={14} className="animate-spin" />
-                                                    ) : (
-                                                        <Link2 size={14} />
-                                                    )}
-                                                    {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                                    <Box size={15} />
+                                                    Package
                                                 </Button>
-                                            )}
-                                            {canFillReview(app) && (
-                                                <Button
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    onClick={() => void handleFillReview(app)}
-                                                    disabled={fillingId === app.id}
-                                                >
-                                                    {fillingId === app.id ? (
-                                                        <RefreshCw size={14} className="animate-spin" />
-                                                    ) : (
-                                                        <ClipboardCheck size={14} />
-                                                    )}
-                                                    {fillingId === app.id ? 'Preparing' : 'Fill review'}
-                                                </Button>
-                                            )}
-                                            {app.job_url ? (
-                                                <a
-                                                    href={app.resolved_url || app.job_url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                                                >
-                                                    <ExternalLink size={14} />
-                                                    Open
-                                                </a>
-                                            ) : (
-                                                <IconButton label="No job URL" variant="ghost" size="sm" disabled>
-                                                    <ArchiveX size={15} />
-                                                </IconButton>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                                                {canResolveLink(app) && (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => void handleResolveLink(app.id)}
+                                                        disabled={resolvingId === app.id}
+                                                    >
+                                                        {resolvingId === app.id ? (
+                                                            <RefreshCw size={14} className="animate-spin" />
+                                                        ) : (
+                                                            <Link2 size={14} />
+                                                        )}
+                                                        {resolvingId === app.id ? 'Resolving' : 'Resolve link'}
+                                                    </Button>
+                                                )}
+                                                {canFillReview(app) && !blockReason && (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => void handleFillReview(app)}
+                                                        disabled={fillingId === app.id}
+                                                    >
+                                                        {fillingId === app.id ? (
+                                                            <RefreshCw size={14} className="animate-spin" />
+                                                        ) : (
+                                                            <ClipboardCheck size={14} />
+                                                        )}
+                                                        {fillingId === app.id ? 'Preparing' : 'Fill review'}
+                                                    </Button>
+                                                )}
+                                                {app.job_url ? (
+                                                    <a
+                                                        href={app.resolved_url || app.job_url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-3 text-xs font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                        Open
+                                                    </a>
+                                                ) : (
+                                                    <IconButton label="No job URL" variant="ghost" size="sm" disabled>
+                                                        <ArchiveX size={15} />
+                                                    </IconButton>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

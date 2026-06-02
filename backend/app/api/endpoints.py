@@ -230,6 +230,24 @@ def get_latest_preferences(session: Session, user_id: int):
         .order_by(JobPreference.created_at.desc())
     ).first()
 
+def get_min_match_score(session: Session, user_id: int):
+    prefs = get_latest_preferences(session, user_id)
+    return prefs.min_match_score if prefs else 70
+
+def assert_application_matches_threshold(app: Application, session: Session, user_id: int, action: str):
+    if app.pre_screen_status == "reject" or app.status == "Screened Out":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Screened-out jobs are review-only and cannot be used for {action}.",
+        )
+
+    min_match_score = get_min_match_score(session, user_id)
+    if app.fit_score * 100 < min_match_score:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This job is below your {min_match_score}% minimum match score and cannot be used for {action}.",
+        )
+
 def get_daily_agent_run_limit(user: User):
     if user.role == "admin":
         return PRO_DAILY_AGENT_RUN_LIMIT
@@ -845,7 +863,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
             agent_run.status = result.get("application_status", "completed")
             agent_run.logs = result.get("logs", [])
             agent_run.applications_count = len(result.get("applications_submitted", []))
-            agent_run.found_jobs_count = len(result.get("found_jobs", []))
+            agent_run.found_jobs_count = result.get("total_found_jobs", len(result.get("found_jobs", [])))
             agent_run.completed_at = datetime.utcnow()
             persist_auto_apply_audit(session, user_id, agent_run.id, result.get("auto_apply_audit", []))
             session.add(agent_run)
@@ -1290,6 +1308,7 @@ def get_applications(
     sort: str = "date",
     direction: str = "desc",
     status: Optional[str] = None,
+    match_bucket: str = "all",
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
@@ -1297,6 +1316,31 @@ def get_applications(
 
     if status:
         query = query.where(Application.status == status)
+
+    if match_bucket != "all":
+        latest_prefs = get_latest_preferences(session, user.id)
+        min_match_score = latest_prefs.min_match_score if latest_prefs else 70
+        threshold = min_match_score / 100
+
+        if match_bucket == "strong":
+            query = query.where(
+                Application.pre_screen_status != "reject",
+                Application.status != "Screened Out",
+                Application.fit_score >= threshold,
+            )
+        elif match_bucket == "below_threshold":
+            query = query.where(
+                Application.pre_screen_status != "reject",
+                Application.status != "Screened Out",
+                Application.fit_score > 0,
+                Application.fit_score < threshold,
+            )
+        elif match_bucket == "screened_out":
+            query = query.where(
+                (Application.pre_screen_status == "reject") | (Application.status == "Screened Out")
+            )
+        else:
+            raise HTTPException(status_code=400, detail="match_bucket must be one of: all, strong, below_threshold, screened_out")
 
     sort_columns = {
         "date": Application.created_at,
@@ -1522,6 +1566,7 @@ async def fill_application_for_review(
     app = session.get(Application, app_id)
     if not app or app.user_id != user.id:
         raise HTTPException(status_code=404, detail="Application not found")
+    assert_application_matches_threshold(app, session, user.id, "fill-for-review")
 
     application_url = app.resolved_url or app.job_url
     link_resolution = ApplicationLinkResolver.classify_url(application_url)
@@ -1842,6 +1887,18 @@ async def prepare_application(
     resume = get_latest_resume(session, user.id)
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
     prefs = get_latest_preferences(session, user.id)
+    package_app = None
+
+    if job_data.app_id:
+        package_app = session.get(Application, job_data.app_id)
+        if not package_app or package_app.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Application not found")
+        assert_application_matches_threshold(
+            package_app,
+            session,
+            user.id,
+            "application package generation",
+        )
 
     if not resume:
         raise HTTPException(status_code=400, detail="Please upload a resume first")
@@ -1933,13 +1990,10 @@ Return a JSON object with exactly these keys:
         result["company_brief"] = interview_result.get("company_brief", {})
 
     # Update cover letter on the application record if app_id provided
-    app_id = job_data.app_id
-    if app_id:
-        app = session.get(Application, app_id)
-        if app and app.user_id == user.id:
-            app.cover_letter = result.get("cover_letter", "")
-            session.add(app)
-            session.commit()
+    if package_app:
+        package_app.cover_letter = result.get("cover_letter", "")
+        session.add(package_app)
+        session.commit()
 
     return result
 

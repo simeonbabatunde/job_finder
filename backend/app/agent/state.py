@@ -9,8 +9,11 @@ class Job(TypedDict):
     url: str
     source: str # "api", "mock", "linkedin_scrape"
     fit_score: Optional[float]
+    explanation: NotRequired[str]
     cover_letter: Optional[str]
     application_url: NotRequired[str]
+    pre_screen_status: NotRequired[str]
+    pre_screen_reasons: NotRequired[List[str]]
 
 class AgentState(TypedDict):
     resume: str
@@ -21,6 +24,8 @@ class AgentState(TypedDict):
     preferences: JobPreference
     profile: Optional[Profile]
     found_jobs: List[Job]
+    total_found_jobs: NotRequired[int]
+    screened_out_jobs_count: NotRequired[int]
     current_job: Optional[Job]
     application_status: str # "searching", "analyzing", "applying", "completed"
     applications_submitted: List[str] # List of job URLs

@@ -280,6 +280,48 @@ def migrate_auto_apply_attempts(connection):
             )
         )
 
+def migrate_application_prescreen(connection):
+    """Add conservative pre-screen metadata used before full AI analysis."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "application" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("application")}
+    if "pre_screen_status" not in columns:
+        connection.execute(
+            text("ALTER TABLE application ADD COLUMN pre_screen_status VARCHAR DEFAULT 'not_screened'")
+        )
+    if "pre_screen_reasons" not in columns:
+        connection.execute(text("ALTER TABLE application ADD COLUMN pre_screen_reasons JSON"))
+
+    empty_json = "'[]'::json" if connection.dialect.name == "postgresql" else "'[]'"
+    connection.execute(
+        text(
+            """
+            UPDATE application
+            SET pre_screen_status = 'not_screened'
+            WHERE pre_screen_status IS NULL
+            """
+        )
+    )
+    connection.execute(
+        text(
+            f"""
+            UPDATE application
+            SET pre_screen_reasons = {empty_json}
+            WHERE pre_screen_reasons IS NULL
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS "
+            "ix_application_user_prescreen_score "
+            "ON application (user_id, pre_screen_status, fit_score DESC)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -290,6 +332,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0007_auth_sessions", migrate_auth_sessions),
     ("0008_application_submit_settings", migrate_application_submit_settings),
     ("0009_auto_apply_attempts", migrate_auto_apply_attempts),
+    ("0010_application_prescreen", migrate_application_prescreen),
 )
 
 def ensure_schema_migrations_table(connection):

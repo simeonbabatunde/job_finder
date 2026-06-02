@@ -30,6 +30,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
   - admin scraper configuration
 - Documentation was expanded on 2026-05-31 with root docs, UI/UX direction, implementation plan, and this handoff.
 - The first Influence Chart-style UI implementation pass is complete for the main dashboard, run panel, application history, package modal, auth modal, and admin settings.
+- The matching workflow now runs a conservative pre-screen before full AI analysis, persists screened-out jobs with reasons, and keeps below-threshold/screened-out jobs in separate review lanes.
 
 ## Active Technical Direction
 
@@ -108,6 +109,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-05-31 | Backfill unowned resume/preference rows only for single-user local databases | Avoids guessing ownership in multi-user data while keeping the common local dev path smooth. |
 | 2026-05-31 | Use signed bearer tokens before introducing external auth infrastructure | Removes the email-header trust model without adding a new dependency during this pass. |
 | 2026-05-31 | Keep migrations lightweight for now | A versioned startup runner covers current local evolution without adding Alembic setup before tests exist. |
+| 2026-06-02 | Use a conservative pre-screen before expensive matching work | Saves AI/package cost while keeping uncertain jobs eligible for full review. |
 
 ## Open Questions
 
@@ -119,10 +121,17 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 
 ## Latest Handoff Entry
 
-Date: 2026-05-31
+Date: 2026-06-02
 
 Completed:
 
+- Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
+- Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
+- Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
+- Added `GET /applications?match_bucket=strong|below_threshold|screened_out|all`.
+- Added server-side action guards so package generation and fill-for-review are blocked for screened-out jobs and jobs below the latest minimum match score.
+- Updated the dashboard to default to strong matches, add full-page lanes for below-threshold and screened-out jobs, show pre-screen reasons, and disable package/fill actions for non-qualifying rows.
+- Updated backend and auto-apply reliability docs with the pre-screen cost gate and match bucket behavior.
 - Reviewed current frontend structure, backend structure, agent workflow, models, services, and existing docs.
 - Reviewed the Influence Chart project for the target design language and docs style.
 - Added root `README.md`.
@@ -200,12 +209,12 @@ Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 23 tests.
-- Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 27 tests.
+- Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, `job_pre_screen.py`, and `persistence.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
 - `npm audit --json` in `frontend` reports 0 vulnerabilities after `npm audit fix`.
 
 Next concrete step:
 
-- Expand `AutoApplyAttempt` into worker-run state transitions and fixture-backed Workday research before considering any real submit click.
+- Resume the earlier remaining auto-apply work after the pre-screen cost gate has been reviewed in the UI.

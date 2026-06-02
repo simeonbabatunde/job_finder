@@ -56,6 +56,8 @@ class Application(SQLModel, table=True):
     fit_score: float
     explanation: Optional[str] = Field(default=None)
     cover_letter: Optional[str] = Field(default=None)
+    pre_screen_status: str = Field(default="not_screened", index=True)
+    pre_screen_reasons: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class AgentRun(SQLModel, table=True):

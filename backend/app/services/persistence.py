@@ -68,6 +68,12 @@ class PersistenceService:
                         existing_app.explanation = job_data["explanation"]
                     if job_data.get("cover_letter"):
                         existing_app.cover_letter = job_data["cover_letter"]
+                    if job_data.get("pre_screen_status"):
+                        existing_app.pre_screen_status = job_data["pre_screen_status"]
+                    if "pre_screen_reasons" in job_data:
+                        existing_app.pre_screen_reasons = job_data.get("pre_screen_reasons") or []
+                    elif existing_app.pre_screen_reasons is None:
+                        existing_app.pre_screen_reasons = []
                     existing_app.source_url = existing_app.source_url or link_resolution.original_url
                     existing_app.resolved_url = link_resolution.resolved_url
                     existing_app.source_type = link_resolution.source_type
@@ -76,7 +82,8 @@ class PersistenceService:
                     existing_app.resolution_notes = link_resolution.notes
                     # Update status only when moving to a more advanced stage
                     status_order = [
-                        "Identified", "Analyzed", "Analysis Failed",
+                        "Screened Out", "Identified", "Analysis Failed",
+                        "Analyzed", "Needs Review", "Submitted",
                         "Applied", "Phone Screen", "Interview",
                         "Take-Home", "Offer", "Rejected", "No Response"
                     ]
@@ -102,7 +109,9 @@ class PersistenceService:
                         status=status,
                         fit_score=job_data.get("fit_score", 0.0),
                         explanation=job_data.get("explanation"),
-                        cover_letter=job_data.get("cover_letter")
+                        cover_letter=job_data.get("cover_letter"),
+                        pre_screen_status=job_data.get("pre_screen_status", "not_screened"),
+                        pre_screen_reasons=job_data.get("pre_screen_reasons") or [],
                     )
                     session.add(new_app)
                     session.commit()

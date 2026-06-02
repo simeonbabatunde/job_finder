@@ -205,7 +205,7 @@ function App() {
           description="Track every best-fit role, manage status, and open the generated materials for each application."
         />
         <div className="mt-5">
-          <AgentDashboard key={refreshHistory} fullPage />
+          <AgentDashboard key={refreshHistory} fullPage minMatchScore={prefsData?.min_match_score ?? 70} />
         </div>
       </PageShell>,
     );
@@ -345,7 +345,7 @@ function App() {
               title="Best-fit jobs"
               description="Latest roles scored against your resume and preferences."
             />
-            <AgentDashboard key={refreshHistory} limit={5} compact />
+            <AgentDashboard key={refreshHistory} limit={5} compact minMatchScore={prefsData?.min_match_score ?? 70} />
           </Panel>
         </aside>
       </section>

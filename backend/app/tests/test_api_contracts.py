@@ -21,6 +21,7 @@ from app.database import engine, run_schema_migrations
 from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, AutoApplyAudit, Profile, User
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
+from app.services.job_pre_screen import JobPreScreenService
 from app.services.persistence import PersistenceService
 from main import app
 
@@ -103,7 +104,112 @@ class FakeAgentGraph:
 
 
 class FakePrefs:
+    role = ["Software Engineer"]
+    experience_level = ["Senior"]
+    location = ["Remote"]
+    job_type = ["Full-time"]
+    target_companies = []
+    posted_within_days = 7
     min_match_score = 70
+
+
+def test_job_pre_screen_rejects_only_clear_conflicts_and_keeps_uncertain_jobs():
+    prefs = FakePrefs()
+
+    rejected = JobPreScreenService.screen(
+        {
+            "title": "Junior Software Engineer Internship",
+            "company": "Acme",
+            "location": "Remote",
+            "description": "Campus program for students.",
+            "url": "https://example.test/junior",
+        },
+        prefs,
+    )
+    assert rejected.status == "reject"
+    assert any("entry-level" in reason or "internship" in reason for reason in rejected.reasons)
+
+    uncertain = JobPreScreenService.screen(
+        {
+            "title": "Platform Analyst",
+            "company": "Acme",
+            "location": "Boston, MA",
+            "description": "Build internal tooling and automate reporting.",
+            "url": "https://example.test/analyst",
+        },
+        prefs,
+    )
+    assert uncertain.status == "maybe"
+    assert any("kept for full" in reason.lower() for reason in uncertain.reasons)
+
+    passed = JobPreScreenService.screen(
+        {
+            "title": "Senior Software Engineer",
+            "company": "Acme",
+            "location": "Remote",
+            "description": "Build backend services and APIs.",
+            "url": "https://example.test/senior",
+        },
+        prefs,
+    )
+    assert passed.status == "pass"
+
+
+def test_search_jobs_prescreens_before_ai_analysis(monkeypatch):
+    def fake_search_jobs(query: str, location: str, posted_within_days: int = 7):
+        return [
+            {
+                "title": "Senior Software Engineer",
+                "company": "Acme",
+                "location": "Remote",
+                "description": "Build backend APIs.",
+                "url": "https://example.test/senior",
+                "fit_score": 0.0,
+            },
+            {
+                "title": "Junior Software Engineer Internship",
+                "company": "Beta",
+                "location": "Remote",
+                "description": "Campus internship program.",
+                "url": "https://example.test/intern",
+                "fit_score": 0.0,
+            },
+            {
+                "title": "Platform Analyst",
+                "company": "Core",
+                "location": "Boston, MA",
+                "description": "Automate internal reporting.",
+                "url": "https://example.test/analyst",
+                "fit_score": 0.0,
+            },
+        ]
+
+    saved_jobs = []
+    monkeypatch.setattr(nodes.JobSearchService, "search_jobs", staticmethod(fake_search_jobs))
+    monkeypatch.setattr(
+        PersistenceService,
+        "save_job",
+        staticmethod(lambda user_id, job, status: saved_jobs.append((user_id, job.copy(), status))),
+    )
+
+    result = asyncio.run(nodes.search_jobs({
+        "preferences": FakePrefs(),
+        "logs": [],
+        "user_id": 42,
+    }))
+
+    assert [job["title"] for job in result["found_jobs"]] == [
+        "Senior Software Engineer",
+        "Platform Analyst",
+    ]
+    assert result["total_found_jobs"] == 3
+    assert result["screened_out_jobs_count"] == 1
+    saved_by_title = {job["title"]: (job, status) for _, job, status in saved_jobs}
+    assert saved_by_title["Junior Software Engineer Internship"][1] == "Screened Out"
+    assert saved_by_title["Junior Software Engineer Internship"][0]["pre_screen_status"] == "reject"
+    assert saved_by_title["Senior Software Engineer"][1] == "Identified"
+    assert saved_by_title["Platform Analyst"][0]["pre_screen_status"] == "maybe"
+    assert "screened out 1 obvious non-fits" in result["logs"][-1]
 
 
 SUBMIT_DETECTION_FIXTURES = Path(__file__).parent / "fixtures" / "submit_detection"
@@ -232,6 +338,128 @@ def test_application_history_query_contracts():
         assert filtered.status_code == 200, filtered.text
         filtered_body = filtered.json()
         assert [item["job_title"] for item in filtered_body] == ["Middle Role", "Recent Role"]
+
+
+def test_application_match_bucket_filters_use_latest_threshold():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "match-buckets")
+        user_id = auth["user"]["id"]
+
+        prefs_response = client.post(
+            "/preferences",
+            json={
+                "role": ["Software Engineer"],
+                "experience_level": ["Senior"],
+                "location": ["Remote"],
+                "job_type": ["Full-time"],
+                "target_companies": [],
+                "min_match_score": 75,
+                "posted_within_days": 7,
+            },
+            headers=headers,
+        )
+        assert prefs_response.status_code == 200, prefs_response.text
+
+        with Session(engine) as session:
+            session.add(
+                Application(
+                    user_id=user_id,
+                    job_title="Strong Role",
+                    company="Acme",
+                    job_url="https://example.test/strong",
+                    status="Analyzed",
+                    fit_score=0.91,
+                    pre_screen_status="pass",
+                    pre_screen_reasons=["Compatible role signals."],
+                )
+            )
+            session.add(
+                Application(
+                    user_id=user_id,
+                    job_title="Low Role",
+                    company="Beta",
+                    job_url="https://example.test/low",
+                    status="Analyzed",
+                    fit_score=0.62,
+                    pre_screen_status="maybe",
+                    pre_screen_reasons=["Kept for full review."],
+                )
+            )
+            session.add(
+                Application(
+                    user_id=user_id,
+                    job_title="Screened Role",
+                    company="Core",
+                    job_url="https://example.test/screened",
+                    status="Screened Out",
+                    fit_score=0.0,
+                    pre_screen_status="reject",
+                    pre_screen_reasons=["Title is clearly not full-time."],
+                )
+            )
+            session.commit()
+
+        strong = client.get("/applications?match_bucket=strong&sort=role&direction=asc", headers=headers)
+        assert strong.status_code == 200, strong.text
+        assert [item["job_title"] for item in strong.json()] == ["Strong Role"]
+
+        below = client.get("/applications?match_bucket=below_threshold", headers=headers)
+        assert below.status_code == 200, below.text
+        assert [item["job_title"] for item in below.json()] == ["Low Role"]
+
+        screened = client.get("/applications?match_bucket=screened_out", headers=headers)
+        assert screened.status_code == 200, screened.text
+        screened_body = screened.json()
+        assert [item["job_title"] for item in screened_body] == ["Screened Role"]
+        assert screened_body[0]["pre_screen_status"] == "reject"
+        assert screened_body[0]["pre_screen_reasons"] == ["Title is clearly not full-time."]
+
+        all_apps = client.get("/applications?match_bucket=all", headers=headers)
+        assert all_apps.status_code == 200, all_apps.text
+        assert {item["job_title"] for item in all_apps.json()} == {
+            "Strong Role",
+            "Low Role",
+            "Screened Role",
+        }
+
+        invalid = client.get("/applications?match_bucket=unknown", headers=headers)
+        assert invalid.status_code == 400
+
+
+def test_application_package_generation_requires_threshold_match():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "package-threshold")
+        user_id = auth["user"]["id"]
+        prepare_agent_setup(client, headers)
+
+        with Session(engine) as session:
+            session.add(
+                Application(
+                    user_id=user_id,
+                    job_title="Below Threshold Role",
+                    company="Acme",
+                    job_url="https://example.test/below-package",
+                    status="Analyzed",
+                    fit_score=0.61,
+                    pre_screen_status="maybe",
+                )
+            )
+            session.commit()
+
+        app_body = client.get("/applications", headers=headers).json()[0]
+        response = client.post(
+            "/agent/prepare-application",
+            json={
+                "app_id": app_body["id"],
+                "title": app_body["job_title"],
+                "company": app_body["company"],
+                "description": "Backend platform role.",
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 400
+        assert "below your 75% minimum match score" in response.json()["detail"]
 
 
 def test_application_link_resolver_classifies_ats_and_aggregators():
@@ -1067,6 +1295,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0007_auth_sessions",) in rows
     assert ("0008_application_submit_settings",) in rows
     assert ("0009_auto_apply_attempts",) in rows
+    assert ("0010_application_prescreen",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

@@ -174,10 +174,15 @@ The agent currently:
 
 - extracts resume summary and skills
 - searches job boards and target company career pages
-- analyzes jobs in a batch LLM call
-- persists job records incrementally
+- runs a conservative pre-screen that rejects only obvious non-fits before LLM analysis
+- analyzes pass/maybe jobs in a batch LLM call
+- persists job records incrementally, including review-only screened-out records with reasons
 - selects jobs above the minimum match score
 - optionally fills or submits application forms through Playwright
+
+`GET /applications` also accepts `match_bucket=strong|below_threshold|screened_out|all`.
+The dashboard uses `strong` by default so below-threshold and screened-out jobs stay out of
+the main best-fit view while remaining reviewable from the full pipeline.
 
 ## Current Data Models
 

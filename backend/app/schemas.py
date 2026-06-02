@@ -198,6 +198,8 @@ class ApplicationResponse(BaseModel):
     fit_score: float
     explanation: Optional[str] = None
     cover_letter: Optional[str] = None
+    pre_screen_status: str = "not_screened"
+    pre_screen_reasons: List[str] = Field(default_factory=list)
     created_at: datetime
 
 
