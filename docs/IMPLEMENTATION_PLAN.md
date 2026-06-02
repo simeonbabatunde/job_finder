@@ -44,7 +44,7 @@ Issues to address:
 - There is no shared app shell or component system.
 - Manual routing in `App.tsx` will get brittle as pages grow.
 - The "View all applications" behavior is inline instead of a true route.
-- Auth uses signed bearer tokens stored in `localStorage`; production hardening still needs server-side session invalidation/rotation.
+- Auth uses signed bearer tokens stored in `localStorage`; server-side token invalidation exists, while refresh-token rotation remains future hardening.
 - Frontend state uses `any` in several places, which hides API contract drift.
 
 ### Backend
@@ -76,7 +76,7 @@ Strengths:
 Issues to address:
 
 - Resume and preferences are now user-scoped in the core backend flows.
-- Auth now uses signed bearer tokens; production still needs hardened sessions/token rotation/server-side invalidation.
+- Auth now uses signed bearer tokens with server-side session records and logout invalidation; production still needs secret rotation and optional refresh-token rotation.
 - Startup now uses `create_all` plus a lightweight versioned `schema_migrations` table.
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
@@ -309,7 +309,7 @@ Move from prototype auth toward a model that can support paid plans and safe aut
 
 Deliverables:
 
-- Replace `X-User-Email` prototype auth with real session or bearer token auth. Implemented with signed bearer tokens.
+- Replace `X-User-Email` prototype auth with real session or bearer token auth. Implemented with signed bearer tokens backed by server-side session records.
 - User-scoped resumes and preferences. Implemented for upload, preferences save, user status, agent run, single-job analysis, application packages, and resume feedback.
 - Subscription model with enforced quotas.
 - Free/pro plan behavior:
@@ -412,7 +412,7 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Harden auth secrets, token rotation, and server-side session invalidation.
+1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
 2. Add stronger final-submit confirmation and allow/deny rules before enabling true auto-submit.
 3. Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, and SmartRecruiters, starting with Workday research and fixture-driven tests.
 4. Expand pytest coverage for package generation, admin access, and external-service failure paths.

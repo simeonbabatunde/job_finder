@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2, Circle, FileText, Play, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { clearAuthSession, getUserStatus, hasAuthSession } from './api/client';
+import { clearAuthSession, getUserStatus, hasAuthSession, revokeAuthSession } from './api/client';
 import type {
   AgentQuotaStatus,
   AppUser,
@@ -85,14 +85,20 @@ function App() {
     }
   }, [loading, resumeData]);
 
-  const handleLogout = () => {
-    clearAuthSession();
-    setUser(null);
-    setResumeData(null);
-    setPrefsData(null);
-    setProfileData(null);
-    setApplicationProfileData(null);
-    setQuotaData(null);
+  const handleLogout = async () => {
+    try {
+      await revokeAuthSession();
+    } catch (error) {
+      console.warn('Logout session revoke failed:', error);
+    } finally {
+      clearAuthSession();
+      setUser(null);
+      setResumeData(null);
+      setPrefsData(null);
+      setProfileData(null);
+      setApplicationProfileData(null);
+      setQuotaData(null);
+    }
   };
 
   const handleLoginSuccess = (u: AppUser) => {

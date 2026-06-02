@@ -120,6 +120,19 @@ def test_bearer_auth_and_user_status_contract():
         assert body["resume"] is None
         assert body["preferences"] is None
         assert body["profile"]["location"] == "Remote"
+
+        logout_response = client.post("/auth/logout", headers=headers)
+        assert logout_response.status_code == 200, logout_response.text
+        assert logout_response.json()["message"] == "Signed out successfully"
+        assert client.get("/user/status", headers=headers).status_code == 401
+
+        login_response = client.post(
+            "/auth/login",
+            json={"email": auth["user"]["email"], "password": "Password123!"},
+        )
+        assert login_response.status_code == 200, login_response.text
+        new_headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+        assert client.get("/user/status", headers=new_headers).status_code == 200
         assert body["quota"]["agent_run_limit"] == 3
         assert body["quota"]["agent_runs_remaining"] == 3
         assert body["quota"]["auto_apply_enabled"] is False
@@ -784,6 +797,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0004_application_fill_review",) in rows
     assert ("0005_application_fill_review_artifacts",) in rows
     assert ("0006_agent_run_claims",) in rows
+    assert ("0007_auth_sessions",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

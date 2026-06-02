@@ -12,6 +12,7 @@ from app.models import (
     Application,
     ApplicationAnswerProfile,
     ApplicationFillReview,
+    AuthSession,
     AutoApplyAudit,
     JobPreference,
     PasswordResetToken,
@@ -102,10 +103,21 @@ def serialize_user(user: User):
         "role": user.role,
     }
 
-def create_access_token(user: User):
+def create_access_token(user: User, session: Session):
+    token_id = uuid4().hex
+    expires_at = datetime.utcnow() + timedelta(seconds=AUTH_TOKEN_TTL_SECONDS)
+    session.add(
+        AuthSession(
+            user_id=user.id,
+            token_id=token_id,
+            expires_at=expires_at,
+        )
+    )
+    session.commit()
     payload = {
         "sub": str(user.id),
         "email": user.email,
+        "jti": token_id,
         "exp": int(time.time()) + AUTH_TOKEN_TTL_SECONDS,
     }
     body = b64url_encode(
@@ -137,10 +149,10 @@ def decode_access_token(token: str):
     except Exception:
         return None
 
-def auth_response(user: User):
+def auth_response(user: User, session: Session):
     return {
         "user": serialize_user(user),
-        "access_token": create_access_token(user),
+        "access_token": create_access_token(user, session),
         "token_type": "bearer",
     }
 
@@ -170,10 +182,27 @@ def get_current_user(session: Session = Depends(get_session), authorization: Opt
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     user_id = payload.get("sub")
+    token_id = payload.get("jti")
     try:
-        user = session.get(User, int(user_id))
+        user_id_int = int(user_id)
     except (TypeError, ValueError):
-        user = None
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if not token_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    auth_session = session.exec(
+        select(AuthSession).where(AuthSession.token_id == token_id)
+    ).first()
+    if (
+        not auth_session
+        or auth_session.user_id != user_id_int
+        or auth_session.revoked_at is not None
+        or auth_session.expires_at < datetime.utcnow()
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user = session.get(User, user_id_int)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -450,7 +479,7 @@ def login(payload: LoginRequest, session: Session = Depends(get_session)):
     if not verify_password(password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid password")
     
-    return auth_response(user)
+    return auth_response(user, session)
 
 @router.post("/auth/register", response_model=AuthResponse)
 def register_user(payload: RegisterRequest, session: Session = Depends(get_session)):
@@ -488,7 +517,7 @@ def register_user(payload: RegisterRequest, session: Session = Depends(get_sessi
     session.commit()
     session.refresh(user)
     
-    response = auth_response(user)
+    response = auth_response(user, session)
     response["message"] = "User registered successfully"
     return response
 
@@ -549,7 +578,7 @@ def google_callback(code: str, session: Session = Depends(get_session)):
             session.add(profile)
             session.commit()
         
-        params = urlencode({"token": create_access_token(user), "email": email})
+        params = urlencode({"token": create_access_token(user, session), "email": email})
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?{params}")
     except Exception as e:
         print(f"Error in Google callback: {e}")
@@ -615,7 +644,7 @@ def linkedin_callback(code: str, session: Session = Depends(get_session)):
             session.add(profile)
             session.commit()
         
-        params = urlencode({"token": create_access_token(user), "email": email})
+        params = urlencode({"token": create_access_token(user, session), "email": email})
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?{params}")
     except Exception as e:
         print(f"Error in LinkedIn callback: {e}")
@@ -633,7 +662,29 @@ def legacy_social_login(payload: SocialAuthRequest, session: Session = Depends(g
         session.add(user)
         session.commit()
         session.refresh(user)
-    return auth_response(user)
+    return auth_response(user, session)
+
+@router.post("/auth/logout", response_model=MessageResponse)
+def logout(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    authorization: Optional[str] = Header(None)
+):
+    token = authorization.split(" ", 1)[1].strip() if authorization else ""
+    payload = decode_access_token(token)
+    token_id = payload.get("jti") if payload else None
+    if token_id:
+        auth_session = session.exec(
+            select(AuthSession).where(
+                AuthSession.token_id == token_id,
+                AuthSession.user_id == user.id,
+            )
+        ).first()
+        if auth_session and auth_session.revoked_at is None:
+            auth_session.revoked_at = datetime.utcnow()
+            session.add(auth_session)
+            session.commit()
+    return {"message": "Signed out successfully"}
 
 @router.post("/upload-resume", response_model=ResumeUploadResponse)
 async def upload_resume(

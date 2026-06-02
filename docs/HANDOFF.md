@@ -71,7 +71,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 
 - Worktree was already dirty before this documentation pass. Do not assume non-doc changes were made by this session.
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but rotate it if it was real.
-- Auth uses signed bearer tokens stored in `localStorage`; production still needs hardened sessions/token rotation/server-side invalidation.
+- Auth uses signed bearer tokens stored in `localStorage`; server-side session records and logout invalidation are implemented, while secret rotation and optional refresh-token rotation remain production hardening items.
 - Resumes and preferences are now user-scoped in the touched backend flows.
 - Database startup uses `create_all` plus a lightweight versioned `schema_migrations` runner. Alembic is still a future production upgrade.
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
@@ -160,6 +160,7 @@ Completed:
 - Replaced `X-User-Email` auth with signed bearer tokens on protected backend endpoints.
 - Updated login, registration, legacy social auth, and OAuth callbacks to issue access tokens.
 - Updated frontend auth storage to keep `auth_token` and send `Authorization: Bearer ...`.
+- Added server-side auth session records, token IDs, logout invalidation, frontend logout revocation, and API coverage proving revoked tokens are rejected.
 - Added `AUTH_SECRET_KEY` and `AUTH_TOKEN_TTL_SECONDS` to `.env.example`.
 - Added `backend/app/schemas.py` with explicit request schemas for auth, profile, preferences, single-job analysis, application package generation, application status, and password reset flows.
 - Replaced the touched broad `dict` request payloads in `backend/app/api/endpoints.py`.
@@ -196,7 +197,7 @@ Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 19 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 20 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, and `main.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.

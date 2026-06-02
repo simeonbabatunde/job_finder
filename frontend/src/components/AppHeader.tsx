@@ -12,7 +12,7 @@ interface AppHeaderProps {
     user: AppUser | null;
     currentPath: string;
     onLogin: () => void;
-    onLogout: () => void;
+    onLogout: () => void | Promise<void>;
 }
 
 const navItems = [

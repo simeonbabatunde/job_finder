@@ -144,6 +144,39 @@ def migrate_agent_run_claims(connection):
         )
     )
 
+def migrate_auth_sessions(connection):
+    """Create server-side auth session records for token invalidation."""
+    id_column = "SERIAL PRIMARY KEY" if connection.dialect.name == "postgresql" else "INTEGER PRIMARY KEY"
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS authsession (
+                id {id_column},
+                user_id INTEGER NOT NULL,
+                token_id VARCHAR NOT NULL UNIQUE,
+                expires_at TIMESTAMP NOT NULL,
+                revoked_at TIMESTAMP,
+                created_at TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES "user" (id)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS "
+            "ix_authsession_token_id "
+            "ON authsession (token_id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS "
+            "ix_authsession_user_id "
+            "ON authsession (user_id)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -151,6 +184,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0004_application_fill_review", migrate_application_fill_review),
     ("0005_application_fill_review_artifacts", migrate_application_fill_review_artifacts),
     ("0006_agent_run_claims", migrate_agent_run_claims),
+    ("0007_auth_sessions", migrate_auth_sessions),
 )
 
 def ensure_schema_migrations_table(connection):

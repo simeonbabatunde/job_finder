@@ -142,6 +142,17 @@ export function clearAuthSession() {
     localStorage.removeItem(USER_EMAIL_KEY);
 }
 
+export async function revokeAuthSession() {
+    const response = await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok && response.status !== 401) {
+        throw new Error(await getResponseDetail(response, 'Failed to sign out'));
+    }
+    return response.ok ? response.json() : null;
+}
+
 export function saveAuthSession(data: AuthResponse) {
     localStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
     if (data.user?.email) {

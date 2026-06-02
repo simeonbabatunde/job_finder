@@ -109,6 +109,7 @@ Auth and account:
 
 - `POST /auth/login`
 - `POST /auth/register`
+- `POST /auth/logout`
 - `GET /auth/google/login`
 - `GET /auth/google/callback`
 - `GET /auth/linkedin/login`
@@ -195,7 +196,7 @@ The agent currently:
 
 ## Backend Implementation Priorities
 
-1. Harden auth secrets, token rotation, and server-side session invalidation.
+1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
 2. Move background agent execution to a durable worker/queue for multi-process deployments.
 3. Move schema management to Alembic if the app needs a larger production migration workflow.
 4. Add stronger browser auto-submit confirmation and allow/deny rules.
