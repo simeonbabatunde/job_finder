@@ -49,6 +49,16 @@ function App() {
   const resumeRef = useRef<ResumeUploadHandle>(null);
   const prefsRef = useRef<JobPreferencesHandle>(null);
 
+  const resetSessionState = useCallback(() => {
+    clearAuthSession();
+    setUser(null);
+    setResumeData(null);
+    setPrefsData(null);
+    setProfileData(null);
+    setApplicationProfileData(null);
+    setQuotaData(null);
+  }, []);
+
   const refreshStatus = useCallback(async (showLoading = true) => {
     if (hasAuthSession()) {
       if (showLoading) setLoading(true);
@@ -64,13 +74,14 @@ function App() {
         }
       } catch (err) {
         console.error('Error fetching user status', err);
+        resetSessionState();
       } finally {
         setLoading(false);
       }
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [resetSessionState]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -91,13 +102,7 @@ function App() {
     } catch (error) {
       console.warn('Logout session revoke failed:', error);
     } finally {
-      clearAuthSession();
-      setUser(null);
-      setResumeData(null);
-      setPrefsData(null);
-      setProfileData(null);
-      setApplicationProfileData(null);
-      setQuotaData(null);
+      resetSessionState();
     }
   };
 
