@@ -6,12 +6,13 @@ import {
     createApplicationSubmitConfirmation,
     fetchFillReviewArtifact,
     fillApplicationForReview,
+    getApplicationAutomationAttempts,
     getApplicationFillReviews,
     getAuthHeaders,
     API_URL,
     resolveApplicationLink,
 } from '../api/client';
-import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitConfirmation, ApplicationSubmitReadiness } from '../api/client';
+import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitConfirmation, ApplicationSubmitReadiness, AutoApplyAttemptRecord } from '../api/client';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -51,6 +52,14 @@ function scoreTone(score: number): 'neutral' | 'accent' | 'success' | 'warning' 
     if (score > 0.8) return 'success';
     if (score > 0.6) return 'accent';
     if (score > 0.4) return 'warning';
+    return 'neutral';
+}
+
+function attemptTone(status: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
+    if (status.includes('ready')) return 'success';
+    if (status.includes('blocked')) return 'warning';
+    if (status.includes('failed')) return 'danger';
+    if (status.includes('filling') || status.includes('confirming')) return 'accent';
     return 'neutral';
 }
 
@@ -109,6 +118,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     } | null>(null);
     const [artifactPreviewUrl, setArtifactPreviewUrl] = useState<string | null>(null);
     const [artifactLoadingId, setArtifactLoadingId] = useState<number | null>(null);
+    const [automationAttempts, setAutomationAttempts] = useState<AutoApplyAttemptRecord[]>([]);
     const [submitReadiness, setSubmitReadiness] = useState<ApplicationSubmitReadiness | null>(null);
     const [submitReadinessLoading, setSubmitReadinessLoading] = useState(false);
     const [submitConfirmation, setSubmitConfirmation] = useState<ApplicationSubmitConfirmation | null>(null);
@@ -219,14 +229,17 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         setFillingId(app.id);
         setLinkError(null);
         setArtifactPreviewUrl(null);
+        setAutomationAttempts([]);
         setSubmitReadiness(null);
         setSubmitConfirmation(null);
         try {
             const result = await fillApplicationForReview(app.id);
             const history = await getApplicationFillReviews(app.id).catch(() => []);
+            const attempts = await getApplicationAutomationAttempts(app.id).catch(() => []);
             const updatedApp = { ...app, status: result.application_status };
             setApplications(prev => prev.map(item => item.id === app.id ? updatedApp : item));
             setSelectedApp(prev => prev?.id === app.id ? updatedApp : prev);
+            setAutomationAttempts(attempts);
             setFillReview({ app: updatedApp, result, history });
         } catch (error) {
             setLinkError(error instanceof Error ? error.message : 'Failed to prepare fill review');
@@ -243,6 +256,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
             await clearApplicationFillReviews(fillReview.app.id);
             setFillReview(prev => prev ? { ...prev, history: [] } : prev);
             setArtifactPreviewUrl(null);
+            const attempts = await getApplicationAutomationAttempts(fillReview.app.id).catch(() => []);
+            setAutomationAttempts(attempts);
         } catch (error) {
             setLinkError(error instanceof Error ? error.message : 'Failed to clear fill-review history');
         }
@@ -251,6 +266,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const closeFillReview = () => {
         setFillReview(null);
         setArtifactPreviewUrl(null);
+        setAutomationAttempts([]);
         setSubmitReadiness(null);
         setSubmitConfirmation(null);
     };
@@ -280,6 +296,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
             const result = await createApplicationSubmitConfirmation(fillReview.app.id);
             setSubmitConfirmation(result);
             setSubmitReadiness(result.readiness);
+            const attempts = await getApplicationAutomationAttempts(fillReview.app.id).catch(() => []);
+            setAutomationAttempts(attempts);
         } catch (error) {
             setLinkError(error instanceof Error ? error.message : 'Failed to prepare final confirmation');
         } finally {
@@ -482,6 +500,42 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                         {submitConfirmation.warnings[0]}
                                     </p>
                                 )}
+                            </div>
+                        )}
+                        {automationAttempts.length > 0 && (
+                            <div className="border-t border-[var(--line)] px-5 py-4">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-[var(--ink)]">Automation timeline</h4>
+                                    <StatusChip tone="neutral">{automationAttempts.length}</StatusChip>
+                                </div>
+                                <div className="space-y-2">
+                                    {automationAttempts.slice(0, 4).map(attempt => (
+                                        <div key={attempt.id} className="rounded-md border border-[var(--line)] bg-[var(--page)] px-3 py-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <p className="text-sm font-semibold text-[var(--ink)]">
+                                                    {attempt.mode.replaceAll('_', ' ')}
+                                                </p>
+                                                <StatusChip tone={attemptTone(attempt.status)}>
+                                                    {attempt.status.replaceAll('_', ' ')}
+                                                </StatusChip>
+                                            </div>
+                                            <p className="mt-1 text-xs text-[var(--muted)]">
+                                                {new Date(attempt.updated_at).toLocaleString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: 'numeric',
+                                                    minute: '2-digit',
+                                                })}
+                                                {' '}· confidence {(attempt.confidence_score * 100).toFixed(0)}%
+                                            </p>
+                                            {attempt.blocked_reason && (
+                                                <p className="mt-2 rounded-md bg-[var(--warning-soft)] px-2 py-1 text-xs font-semibold text-[var(--warning)]">
+                                                    {attempt.blocked_reason}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                         {fillReview.history.length > 0 && (

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 import base64
 import hmac
@@ -15,6 +16,7 @@ from app.models import (
     ApplicationSubmitSettings,
     AuthSession,
     AutoApplyAudit,
+    AutoApplyAttempt,
     JobPreference,
     PasswordResetToken,
     Profile,
@@ -47,6 +49,7 @@ from app.schemas import (
     ApplicationStatusRequest,
     ApplicationStatusResponse,
     AuthResponse,
+    AutoApplyAttemptResponse,
     EmailRequest,
     JobAnalysisRequest,
     JobAnalysisResponse,
@@ -287,6 +290,7 @@ def persist_auto_apply_audit(session: Session, user_id: int, agent_run_id: Optio
             AutoApplyAudit(
                 user_id=user_id,
                 agent_run_id=agent_run_id,
+                auto_apply_attempt_id=record.get("auto_apply_attempt_id"),
                 job_url=job_url,
                 job_title=record.get("job_title"),
                 company=record.get("company"),
@@ -394,6 +398,127 @@ def serialize_fill_review_record(record: ApplicationFillReview):
         ),
         "created_at": record.created_at,
     }
+
+def serialize_auto_apply_attempt(attempt: AutoApplyAttempt):
+    return {
+        "id": attempt.id,
+        "application_id": attempt.application_id,
+        "agent_run_id": attempt.agent_run_id,
+        "fill_review_id": attempt.fill_review_id,
+        "job_url": attempt.job_url,
+        "job_title": attempt.job_title,
+        "company": attempt.company,
+        "ats_type": attempt.ats_type,
+        "mode": attempt.mode,
+        "status": attempt.status,
+        "confidence_score": attempt.confidence_score,
+        "blocked_reason": attempt.blocked_reason,
+        "filled_fields": attempt.filled_fields or [],
+        "missing_fields": attempt.missing_fields or [],
+        "blockers": attempt.blockers or [],
+        "readiness_snapshot": attempt.readiness_snapshot or {},
+        "submit_control": attempt.submit_control or {},
+        "screenshot_url": fill_review_artifact_url(
+            attempt.application_id,
+            attempt.fill_review_id,
+            "screenshot",
+            attempt.screenshot_path,
+        ),
+        "trace_url": fill_review_artifact_url(
+            attempt.application_id,
+            attempt.fill_review_id,
+            "trace",
+            attempt.trace_path,
+        ),
+        "submitted_at": attempt.submitted_at,
+        "created_at": attempt.created_at,
+        "updated_at": attempt.updated_at,
+    }
+
+def blocked_reason_from_lists(blockers: list[str], missing_fields: Optional[list[str]] = None):
+    if blockers:
+        return blockers[0]
+    if missing_fields:
+        return f"Missing required field: {missing_fields[0]}"
+    return None
+
+def create_auto_apply_attempt(
+    session: Session,
+    *,
+    user_id: int,
+    app: Application,
+    mode: str,
+    status: str = "queued",
+    agent_run_id: Optional[int] = None,
+):
+    attempt = AutoApplyAttempt(
+        user_id=user_id,
+        application_id=app.id,
+        agent_run_id=agent_run_id,
+        job_url=app.resolved_url or app.job_url,
+        job_title=app.job_title,
+        company=app.company,
+        ats_type=app.ats_type,
+        mode=mode,
+        status=status,
+        updated_at=datetime.utcnow(),
+    )
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+    return attempt
+
+def get_latest_auto_apply_attempt(session: Session, user_id: int, application_id: int):
+    return session.exec(
+        select(AutoApplyAttempt)
+        .where(AutoApplyAttempt.user_id == user_id, AutoApplyAttempt.application_id == application_id)
+        .order_by(AutoApplyAttempt.created_at.desc())
+    ).first()
+
+def update_attempt_from_fill_review(
+    session: Session,
+    attempt: AutoApplyAttempt,
+    review_record: ApplicationFillReview,
+):
+    attempt.fill_review_id = review_record.id
+    attempt.ats_type = review_record.ats_type
+    attempt.job_url = review_record.application_url
+    attempt.status = (
+        "ready_for_confirmation"
+        if not review_record.blockers and not review_record.fields_missing
+        else "blocked_needs_review"
+    )
+    attempt.confidence_score = 0.75 if attempt.status == "ready_for_confirmation" else 0.25
+    attempt.blocked_reason = blocked_reason_from_lists(review_record.blockers or [], review_record.fields_missing or [])
+    attempt.filled_fields = review_record.fields_filled or []
+    attempt.missing_fields = review_record.fields_missing or []
+    attempt.blockers = review_record.blockers or []
+    attempt.screenshot_path = review_record.screenshot_path
+    attempt.trace_path = review_record.trace_path
+    attempt.updated_at = datetime.utcnow()
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+    return attempt
+
+def update_attempt_from_confirmation(
+    session: Session,
+    attempt: AutoApplyAttempt,
+    response: dict,
+):
+    submit_control = response.get("submit_control") or {}
+    attempt.mode = "submit_confirmation"
+    attempt.status = "ready_for_human_confirmation" if response.get("ready") else "blocked_needs_review"
+    attempt.confidence_score = float(submit_control.get("confidence") or 0.0)
+    attempt.blocked_reason = blocked_reason_from_lists(response.get("blockers") or [])
+    attempt.blockers = response.get("blockers") or []
+    attempt.readiness_snapshot = jsonable_encoder(response.get("readiness") or {})
+    attempt.submit_control = jsonable_encoder(submit_control)
+    attempt.updated_at = datetime.utcnow()
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+    return attempt
 
 def normalize_policy_list(values: Optional[list[str]]) -> list[str]:
     if not values:
@@ -1417,6 +1542,14 @@ async def fill_application_for_review(
     if not profile:
         raise HTTPException(status_code=400, detail="Please complete your candidate profile first")
 
+    attempt = create_auto_apply_attempt(
+        session,
+        user_id=user.id,
+        app=app,
+        mode="fill_for_review",
+        status="filling",
+    )
+
     fill_result = await ApplicationFillReviewService.fill_application_for_review(
         application_url=application_url,
         ats_type=ats_type,
@@ -1463,9 +1596,11 @@ async def fill_application_for_review(
     session.add(review_record)
     session.commit()
     session.refresh(review_record)
+    attempt = update_attempt_from_fill_review(session, attempt, review_record)
 
     response = fill_result.model_dump()
     response["review_id"] = review_record.id
+    response["attempt_id"] = attempt.id
     response["screenshot_url"] = fill_review_artifact_url(
         app.id,
         review_record.id,
@@ -1540,9 +1675,25 @@ async def create_application_submit_confirmation(
         submit_control = serialize_submit_control_detection(detection)
 
     response = build_submit_confirmation_response(app, readiness, submit_control)
+    attempt = get_latest_auto_apply_attempt(session, user.id, app.id)
+    if not attempt:
+        attempt = create_auto_apply_attempt(
+            session,
+            user_id=user.id,
+            app=app,
+            mode="submit_confirmation",
+            status="confirming",
+        )
+    if latest_review and not attempt.fill_review_id:
+        attempt.fill_review_id = latest_review.id
+        attempt.screenshot_path = latest_review.screenshot_path
+        attempt.trace_path = latest_review.trace_path
+    attempt = update_attempt_from_confirmation(session, attempt, response)
+    response["attempt_id"] = attempt.id
     session.add(
         AutoApplyAudit(
             user_id=user.id,
+            auto_apply_attempt_id=attempt.id,
             job_url=app.resolved_url or app.job_url,
             job_title=app.job_title,
             company=app.company,
@@ -1572,6 +1723,25 @@ def get_application_fill_reviews(
         .limit(min(max(limit, 1), 25))
     )
     return [serialize_fill_review_record(record) for record in session.exec(query).all()]
+
+@router.get("/applications/{app_id}/automation-attempts", response_model=List[AutoApplyAttemptResponse])
+def get_application_automation_attempts(
+    app_id: int,
+    limit: int = 10,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    query = (
+        select(AutoApplyAttempt)
+        .where(AutoApplyAttempt.application_id == app.id, AutoApplyAttempt.user_id == user.id)
+        .order_by(AutoApplyAttempt.created_at.desc())
+        .limit(min(max(limit, 1), 25))
+    )
+    return [serialize_auto_apply_attempt(attempt) for attempt in session.exec(query).all()]
 
 @router.get("/applications/{app_id}/fill-reviews/{review_id}/screenshot")
 def get_application_fill_review_screenshot(
@@ -1640,6 +1810,19 @@ def clear_application_fill_reviews(
         .where(ApplicationFillReview.application_id == app.id, ApplicationFillReview.user_id == user.id)
     ).all()
     for review in reviews:
+        linked_attempts = session.exec(
+            select(AutoApplyAttempt).where(
+                AutoApplyAttempt.user_id == user.id,
+                AutoApplyAttempt.application_id == app.id,
+                AutoApplyAttempt.fill_review_id == review.id,
+            )
+        ).all()
+        for attempt in linked_attempts:
+            attempt.fill_review_id = None
+            attempt.screenshot_path = None
+            attempt.trace_path = None
+            attempt.updated_at = datetime.utcnow()
+            session.add(attempt)
         FillReviewArtifactStore.delete(review.screenshot_path)
         FillReviewArtifactStore.delete(review.trace_path)
         session.delete(review)

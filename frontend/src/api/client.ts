@@ -50,6 +50,7 @@ export interface ApplicationAnswerProfilePayload {
 
 export interface ApplicationFillReviewResult {
     review_id?: number;
+    attempt_id?: number;
     status: string;
     ats_type: string;
     application_url: string;
@@ -76,6 +77,31 @@ export interface ApplicationFillReviewRecord {
     screenshot_url?: string | null;
     trace_url?: string | null;
     created_at: string;
+}
+
+export interface AutoApplyAttemptRecord {
+    id: number;
+    application_id: number;
+    agent_run_id?: number | null;
+    fill_review_id?: number | null;
+    job_url: string;
+    job_title?: string | null;
+    company?: string | null;
+    ats_type?: string | null;
+    mode: string;
+    status: string;
+    confidence_score: number;
+    blocked_reason?: string | null;
+    filled_fields: string[];
+    missing_fields: string[];
+    blockers: string[];
+    readiness_snapshot: Record<string, unknown>;
+    submit_control: Record<string, unknown>;
+    screenshot_url?: string | null;
+    trace_url?: string | null;
+    submitted_at?: string | null;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface ApplicationSubmitSettingsPayload {
@@ -508,6 +534,16 @@ export async function getApplicationFillReviews(appId: number): Promise<Applicat
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to fetch fill-review history'));
+    }
+    return response.json();
+}
+
+export async function getApplicationAutomationAttempts(appId: number): Promise<AutoApplyAttemptRecord[]> {
+    const response = await fetch(`${API_URL}/applications/${appId}/automation-attempts`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch automation attempts'));
     }
     return response.json();
 }

@@ -87,7 +87,7 @@ Issues to address:
 - Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, and SmartRecruiters links via `POST /applications/{app_id}/fill-review`.
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
 - Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
-- Final-submit guardrails are implemented with user-scoped submission settings, per-application readiness checks, and a no-click final confirmation endpoint with fixture-backed submit-control detection. Actual final submission remains disabled.
+- Final-submit guardrails are implemented with user-scoped submission settings, per-application readiness checks, a no-click final confirmation endpoint with fixture-backed submit-control detection, and persisted `AutoApplyAttempt` records tying fill-review and confirmation into one auditable workflow. Actual final submission remains disabled.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 ## Milestone 0: Repository Hygiene and Documentation
@@ -414,7 +414,7 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
-2. Add persisted `AutoApplyAttempt` state-machine records so fill, confirmation, artifacts, and future submit events live under one auditable attempt.
+2. Expand `AutoApplyAttempt` into step-level worker state transitions for opened, detected ATS, profile validated, resume uploaded, fields filled, final confirmation, and future submit states.
 3. Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, and SmartRecruiters, starting with Workday research and fixture-driven tests.
 4. Expand pytest coverage for package generation, admin access, and external-service failure paths.
 5. Move schema management to Alembic if the app needs a larger production migration workflow.

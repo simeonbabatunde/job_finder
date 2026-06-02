@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from sqlmodel import Field, SQLModel, Column, JSON
 from datetime import datetime
 
@@ -71,10 +71,36 @@ class AgentRun(SQLModel, table=True):
     claimed_at: Optional[datetime] = Field(default=None, index=True)
     completed_at: Optional[datetime] = Field(default=None)
 
+class AutoApplyAttempt(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    application_id: int = Field(foreign_key="application.id", index=True)
+    agent_run_id: Optional[int] = Field(default=None, foreign_key="agentrun.id", index=True)
+    fill_review_id: Optional[int] = Field(default=None, foreign_key="applicationfillreview.id", index=True)
+    job_url: str
+    job_title: Optional[str] = Field(default=None)
+    company: Optional[str] = Field(default=None)
+    ats_type: Optional[str] = Field(default=None)
+    mode: str = Field(default="fill_for_review")
+    status: str = Field(default="queued", index=True)
+    confidence_score: float = Field(default=0.0)
+    blocked_reason: Optional[str] = Field(default=None)
+    filled_fields: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    missing_fields: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    blockers: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    readiness_snapshot: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    submit_control: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    screenshot_path: Optional[str] = Field(default=None)
+    trace_path: Optional[str] = Field(default=None)
+    submitted_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
 class AutoApplyAudit(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
     agent_run_id: Optional[int] = Field(default=None, foreign_key="agentrun.id", index=True)
+    auto_apply_attempt_id: Optional[int] = Field(default=None, foreign_key="autoapplyattempt.id", index=True)
     job_url: str
     job_title: Optional[str] = Field(default=None)
     company: Optional[str] = Field(default=None)

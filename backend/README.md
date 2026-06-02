@@ -150,6 +150,7 @@ Applications:
 - `POST /applications/{app_id}/submit-readiness`
 - `POST /applications/{app_id}/submit-confirmation`
 - `GET /applications/{app_id}/fill-reviews`
+- `GET /applications/{app_id}/automation-attempts`
 - `DELETE /applications/{app_id}/fill-reviews`
 - `POST /agent/prepare-application`
 - `GET /applications/{app_id}/cover-letter.pdf`

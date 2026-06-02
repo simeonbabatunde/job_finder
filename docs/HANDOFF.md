@@ -194,6 +194,7 @@ Completed:
 - Added durable worker-mode agent execution with `claimed_at` queue metadata, stale-run protection, `backend/app/worker.py`, Docker Compose worker service wiring, and worker-mode API contract coverage.
 - Added final-submit guardrail settings, allow/deny lists, readiness evaluation, dashboard guardrail controls, and a fill-review modal readiness check. This still does not submit applications.
 - Added no-click final confirmation via `POST /applications/{app_id}/submit-confirmation`, fixture-backed submit-control detection, audit logging, and a dashboard final-step inspection action.
+- Added persisted `AutoApplyAttempt` records, `GET /applications/{app_id}/automation-attempts`, attempt-linked audit events, and a dashboard automation timeline tying fill-review and final confirmation into one workflow.
 
 Tests/checks:
 
@@ -207,4 +208,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Add persisted `AutoApplyAttempt` state-machine records so fill-review, final confirmation, artifacts, and future submit events can be audited as one workflow.
+- Expand `AutoApplyAttempt` into worker-run state transitions and fixture-backed Workday research before considering any real submit click.

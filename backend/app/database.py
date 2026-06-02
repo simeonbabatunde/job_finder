@@ -212,6 +212,74 @@ def migrate_application_submit_settings(connection):
         )
     )
 
+def migrate_auto_apply_attempts(connection):
+    """Create auditable workflow records for fill-review and final-confirmation attempts."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    id_column = "SERIAL PRIMARY KEY" if connection.dialect.name == "postgresql" else "INTEGER PRIMARY KEY"
+    timestamp_default = "CURRENT_TIMESTAMP"
+    if "autoapplyattempt" not in table_names:
+        connection.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS autoapplyattempt (
+                    id {id_column},
+                    user_id INTEGER NOT NULL,
+                    application_id INTEGER NOT NULL,
+                    agent_run_id INTEGER,
+                    fill_review_id INTEGER,
+                    job_url VARCHAR NOT NULL,
+                    job_title VARCHAR,
+                    company VARCHAR,
+                    ats_type VARCHAR,
+                    mode VARCHAR NOT NULL DEFAULT 'fill_for_review',
+                    status VARCHAR NOT NULL DEFAULT 'queued',
+                    confidence_score FLOAT NOT NULL DEFAULT 0,
+                    blocked_reason VARCHAR,
+                    filled_fields JSON,
+                    missing_fields JSON,
+                    blockers JSON,
+                    readiness_snapshot JSON,
+                    submit_control JSON,
+                    screenshot_path VARCHAR,
+                    trace_path VARCHAR,
+                    submitted_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT {timestamp_default},
+                    updated_at TIMESTAMP DEFAULT {timestamp_default},
+                    FOREIGN KEY(user_id) REFERENCES "user" (id),
+                    FOREIGN KEY(application_id) REFERENCES application (id),
+                    FOREIGN KEY(agent_run_id) REFERENCES agentrun (id),
+                    FOREIGN KEY(fill_review_id) REFERENCES applicationfillreview (id)
+                )
+                """
+            )
+        )
+
+    for index_name, columns in (
+        ("ix_autoapplyattempt_user_created", "user_id, created_at DESC"),
+        ("ix_autoapplyattempt_application_created", "application_id, created_at DESC"),
+        ("ix_autoapplyattempt_status", "status"),
+        ("ix_autoapplyattempt_fill_review", "fill_review_id"),
+    ):
+        connection.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {index_name} "
+                f"ON autoapplyattempt ({columns})"
+            )
+        )
+
+    if "autoapplyaudit" in table_names:
+        columns = {column["name"] for column in inspector.get_columns("autoapplyaudit")}
+        if "auto_apply_attempt_id" not in columns:
+            connection.execute(text("ALTER TABLE autoapplyaudit ADD COLUMN auto_apply_attempt_id INTEGER"))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_autoapplyaudit_attempt "
+                "ON autoapplyaudit (auto_apply_attempt_id)"
+            )
+        )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -221,6 +289,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0006_agent_run_claims", migrate_agent_run_claims),
     ("0007_auth_sessions", migrate_auth_sessions),
     ("0008_application_submit_settings", migrate_application_submit_settings),
+    ("0009_auto_apply_attempts", migrate_auto_apply_attempts),
 )
 
 def ensure_schema_migrations_table(connection):

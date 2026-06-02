@@ -64,6 +64,7 @@ Current implementation:
 - Fill-review screenshots and Playwright traces are saved as local authenticated artifacts; saved review history can preview screenshots and download traces.
 - User-scoped submission guardrails and `POST /applications/{app_id}/submit-readiness` evaluate whether a prepared application could move to a future final-confirm step without clicking submit.
 - `POST /applications/{app_id}/submit-confirmation` runs the readiness gate, detects the final submit control with deterministic heuristics, records an audit event, and still does not click submit.
+- `AutoApplyAttempt` records now persist fill-review and final-confirmation status, field summaries, blockers, artifacts, readiness snapshots, submit-control evidence, and attempt-linked audit events. `GET /applications/{app_id}/automation-attempts` exposes the signed-in user's attempt history.
 
 ### Phase 2: Application Link Resolution
 
@@ -222,6 +223,13 @@ Recommended model:
 - `updated_at`
 
 The existing `AutoApplyAudit` can either be expanded or kept as the append-only event log under this attempt record.
+
+Current implementation:
+
+- `AutoApplyAttempt` exists as the workflow record for fill-review and final-confirmation checks.
+- Fill-review creates an attempt and links the saved `ApplicationFillReview` plus screenshot/trace artifact paths.
+- Final confirmation updates the latest attempt with readiness and submit-control snapshots and links the audit event back to the attempt.
+- The dashboard shows an automation timeline in the fill-review modal.
 
 ### Phase 5: Hard Stop Rules
 

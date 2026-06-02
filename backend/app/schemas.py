@@ -223,6 +223,7 @@ class ApplicationStatusResponse(BaseModel):
 
 class ApplicationFillReviewResponse(BaseModel):
     review_id: Optional[int] = None
+    attempt_id: Optional[int] = None
     status: str
     ats_type: str
     application_url: str
@@ -309,6 +310,7 @@ class SubmitControlDetectionResponse(BaseModel):
 
 
 class ApplicationSubmitConfirmationResponse(BaseModel):
+    attempt_id: Optional[int] = None
     application_id: int
     ready: bool
     can_submit: bool = False
@@ -326,6 +328,7 @@ class AutoApplyAuditResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: Optional[int] = None
+    auto_apply_attempt_id: Optional[int] = None
     job_url: str
     job_title: Optional[str] = None
     company: Optional[str] = None
@@ -333,6 +336,33 @@ class AutoApplyAuditResponse(BaseModel):
     status: str
     message: Optional[str] = None
     created_at: datetime
+
+
+class AutoApplyAttemptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = None
+    application_id: int
+    agent_run_id: Optional[int] = None
+    fill_review_id: Optional[int] = None
+    job_url: str
+    job_title: Optional[str] = None
+    company: Optional[str] = None
+    ats_type: Optional[str] = None
+    mode: str
+    status: str
+    confidence_score: float = 0.0
+    blocked_reason: Optional[str] = None
+    filled_fields: List[str] = Field(default_factory=list)
+    missing_fields: List[str] = Field(default_factory=list)
+    blockers: List[str] = Field(default_factory=list)
+    readiness_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    submit_control: Dict[str, Any] = Field(default_factory=dict)
+    screenshot_url: Optional[str] = None
+    trace_url: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class AgentRunRecordResponse(BaseModel):

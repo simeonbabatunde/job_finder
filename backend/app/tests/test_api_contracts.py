@@ -392,6 +392,7 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert "Resume" in body["fields_filled"]
         assert body["application_status"] == "Needs Review"
         assert isinstance(body["review_id"], int)
+        assert isinstance(body["attempt_id"], int)
         assert body["screenshot_url"] == f"/applications/{app_body['id']}/fill-reviews/{body['review_id']}/screenshot"
         assert body["trace_url"] == f"/applications/{app_body['id']}/fill-reviews/{body['review_id']}/trace"
 
@@ -408,6 +409,16 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert review_body[0]["trace_url"] == body["trace_url"]
         assert "user_id" not in review_body[0]
 
+        attempts = client.get(f"/applications/{app_body['id']}/automation-attempts", headers=headers)
+        assert attempts.status_code == 200, attempts.text
+        attempt_body = attempts.json()
+        assert attempt_body[0]["id"] == body["attempt_id"]
+        assert attempt_body[0]["fill_review_id"] == body["review_id"]
+        assert attempt_body[0]["status"] == "ready_for_confirmation"
+        assert attempt_body[0]["filled_fields"] == body["fields_filled"]
+        assert attempt_body[0]["screenshot_url"] == body["screenshot_url"]
+        assert "user_id" not in attempt_body[0]
+
         screenshot = client.get(body["screenshot_url"], headers=headers)
         assert screenshot.status_code == 200, screenshot.text
         assert screenshot.content == b"fake-png"
@@ -419,6 +430,8 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         _, other_headers = register_user(client, "fill-review-record-other")
         denied = client.get(f"/applications/{app_body['id']}/fill-reviews", headers=other_headers)
         assert denied.status_code == 404
+        denied_attempts = client.get(f"/applications/{app_body['id']}/automation-attempts", headers=other_headers)
+        assert denied_attempts.status_code == 404
         denied_screenshot = client.get(body["screenshot_url"], headers=other_headers)
         assert denied_screenshot.status_code == 404
         denied_trace = client.get(body["trace_url"], headers=other_headers)
@@ -1008,6 +1021,7 @@ def test_submit_confirmation_endpoint_detects_final_control_without_clicking(mon
         confirmation = client.post(f"/applications/{app_id}/submit-confirmation", headers=headers)
         assert confirmation.status_code == 200, confirmation.text
         body = confirmation.json()
+        assert isinstance(body["attempt_id"], int)
         assert body["ready"] is True
         assert body["can_submit"] is False
         assert body["status"] == "ready_for_human_confirmation"
@@ -1015,6 +1029,15 @@ def test_submit_confirmation_endpoint_detects_final_control_without_clicking(mon
         assert body["submit_control"]["confidence"] == 0.93
         assert "Final submit control was detected with high confidence." in body["checks"]
         assert "No automated final click was performed." in body["warnings"]
+
+        attempts = client.get(f"/applications/{app_id}/automation-attempts", headers=headers)
+        assert attempts.status_code == 200, attempts.text
+        attempt = attempts.json()[0]
+        assert attempt["id"] == body["attempt_id"]
+        assert attempt["status"] == "ready_for_human_confirmation"
+        assert attempt["confidence_score"] == 0.93
+        assert attempt["submit_control"]["selector"] == "#submit_application"
+        assert attempt["readiness_snapshot"]["ready"] is True
 
         with Session(engine) as session:
             audit = session.exec(
@@ -1024,6 +1047,7 @@ def test_submit_confirmation_endpoint_detects_final_control_without_clicking(mon
             ).first()
         assert audit.action == "submit_confirmation"
         assert audit.status == "ready"
+        assert audit.auto_apply_attempt_id == body["attempt_id"]
 
 
 def test_schema_migrations_are_recorded_and_idempotent():
@@ -1042,6 +1066,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0006_agent_run_claims",) in rows
     assert ("0007_auth_sessions",) in rows
     assert ("0008_application_submit_settings",) in rows
+    assert ("0009_auto_apply_attempts",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):
