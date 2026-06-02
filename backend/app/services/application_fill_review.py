@@ -25,7 +25,7 @@ class FillReviewResult:
 
 
 class ApplicationFillReviewService:
-    SUPPORTED_ATS = {"greenhouse", "lever"}
+    SUPPORTED_ATS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
 
     @classmethod
     async def fill_application_for_review(
@@ -118,8 +118,28 @@ class ApplicationFillReviewService:
                             answer_profile=answer_profile,
                             cover_letter=cover_letter,
                         )
-                    else:
+                    elif ats_type == "lever":
                         fill_result = await cls._fill_lever_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
+                    elif ats_type == "ashby":
+                        fill_result = await cls._fill_ashby_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
+                    else:
+                        fill_result = await cls._fill_smartrecruiters_page(
                             page=page,
                             application_url=application_url,
                             profile=profile,
@@ -295,6 +315,138 @@ class ApplicationFillReviewService:
             screenshot_base64=screenshot_base64,
         )
 
+    @classmethod
+    async def _fill_ashby_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        fields_filled: list[str] = []
+        fields_missing: list[str] = []
+        blockers: list[str] = []
+
+        await cls._open_generic_apply_form(page)
+
+        contact_fields = [
+            ("First name", ["input[name='firstName']", "input[name='first_name']", "input[id*='first' i]"], profile.first_name),
+            ("Last name", ["input[name='lastName']", "input[name='last_name']", "input[id*='last' i]"], profile.last_name),
+            ("Email", ["input[name='email']", "input[type='email']", "input[id*='email' i]"], profile.email),
+            ("Phone", ["input[name='phone']", "input[name='phoneNumber']", "input[type='tel']", "input[id*='phone' i]"], profile.phone),
+            ("LinkedIn", ["input[name*='linkedin' i]", "input[id*='linkedin' i]"], profile.linkedin_url),
+            ("Website", ["input[name*='portfolio' i]", "input[name*='website' i]", "input[name*='github' i]"], profile.portfolio_url or profile.github_url),
+        ]
+        for label, selectors, value in contact_fields:
+            if not value:
+                fields_missing.append(label)
+                continue
+            if await cls._fill_first_available(page, selectors, value):
+                fields_filled.append(label)
+            elif label in ("First name", "Last name", "Email"):
+                fields_missing.append(label)
+
+        if cover_letter:
+            if await cls._fill_first_available(page, ["textarea[name*='cover' i]", "textarea"], cover_letter):
+                fields_filled.append("Cover letter")
+
+        if await cls._upload_resume(page, resume_bytes, resume_filename):
+            fields_filled.append("Resume")
+        else:
+            fields_missing.append("Resume upload")
+
+        if answer_profile:
+            await cls._fill_answer_profile_fields(page, answer_profile, fields_filled, fields_missing)
+        else:
+            blockers.append("Application answer consent is off or no answer profile is saved; work authorization answers were not filled.")
+
+        required_missing = await cls._detect_required_missing_fields(page)
+        for item in required_missing:
+            if item not in fields_missing:
+                fields_missing.append(item)
+
+        status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
+        return FillReviewResult(
+            status=status,
+            ats_type="ashby",
+            application_url=page.url or application_url,
+            fields_filled=fields_filled,
+            fields_missing=fields_missing,
+            blockers=blockers,
+            message="Ashby form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
+        )
+
+    @classmethod
+    async def _fill_smartrecruiters_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        fields_filled: list[str] = []
+        fields_missing: list[str] = []
+        blockers: list[str] = []
+
+        await cls._open_generic_apply_form(page)
+
+        contact_fields = [
+            ("First name", ["input[name='firstName']", "input[name='first_name']", "input[id*='first' i]"], profile.first_name),
+            ("Last name", ["input[name='lastName']", "input[name='last_name']", "input[id*='last' i]"], profile.last_name),
+            ("Email", ["input[name='email']", "input[type='email']", "input[id*='email' i]"], profile.email),
+            ("Phone", ["input[name='phone']", "input[name='phoneNumber']", "input[type='tel']", "input[id*='phone' i]"], profile.phone),
+            ("LinkedIn", ["input[name*='linkedin' i]", "input[id*='linkedin' i]"], profile.linkedin_url),
+            ("Website", ["input[name*='portfolio' i]", "input[name*='website' i]", "input[name*='github' i]"], profile.portfolio_url or profile.github_url),
+        ]
+        for label, selectors, value in contact_fields:
+            if not value:
+                fields_missing.append(label)
+                continue
+            if await cls._fill_first_available(page, selectors, value):
+                fields_filled.append(label)
+            elif label in ("First name", "Last name", "Email"):
+                fields_missing.append(label)
+
+        if cover_letter:
+            if await cls._fill_first_available(page, ["textarea[name*='cover' i]", "textarea[name*='message' i]", "textarea"], cover_letter):
+                fields_filled.append("Cover letter")
+
+        if await cls._upload_resume(page, resume_bytes, resume_filename):
+            fields_filled.append("Resume")
+        else:
+            fields_missing.append("Resume upload")
+
+        if answer_profile:
+            await cls._fill_answer_profile_fields(page, answer_profile, fields_filled, fields_missing)
+        else:
+            blockers.append("Application answer consent is off or no answer profile is saved; work authorization answers were not filled.")
+
+        required_missing = await cls._detect_required_missing_fields(page)
+        for item in required_missing:
+            if item not in fields_missing:
+                fields_missing.append(item)
+
+        status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
+        return FillReviewResult(
+            status=status,
+            ats_type="smartrecruiters",
+            application_url=page.url or application_url,
+            fields_filled=fields_filled,
+            fields_missing=fields_missing,
+            blockers=blockers,
+            message="SmartRecruiters form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
+        )
+
     @staticmethod
     async def _open_lever_apply_form(page) -> bool:
         try:
@@ -314,6 +466,28 @@ class ApplicationFillReviewService:
                 return True
 
             return await page.locator("input[name='name'], input[name='email'], input[type='file']").first().count() > 0
+        except Exception:
+            return False
+
+    @staticmethod
+    async def _open_generic_apply_form(page) -> bool:
+        try:
+            if await page.locator("input[type='file'], input[type='email']").first().count() > 0:
+                return True
+
+            for selector in (
+                "a[href*='application']",
+                "a[href*='apply']",
+                "button:has-text('Apply')",
+                "a:has-text('Apply')",
+            ):
+                locator = page.locator(selector).first()
+                if await locator.count() == 0:
+                    continue
+                await locator.click(timeout=3000)
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                return True
+            return False
         except Exception:
             return False
 

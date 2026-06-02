@@ -57,10 +57,10 @@ Current implementation:
 - Each fill-review attempt is saved as an `ApplicationFillReview` record with filled fields, missing fields, blockers, status, and timestamp.
 - `GET /applications/{app_id}/fill-reviews` returns the signed-in user's saved review attempts for that application.
 - `DELETE /applications/{app_id}/fill-reviews` clears the signed-in user's saved review attempts for that application.
-- The first deterministic ATS adapters are Greenhouse and Lever.
-- The Greenhouse and Lever adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
+- The first deterministic ATS adapters are Greenhouse, Lever, Ashby, and SmartRecruiters.
+- The supported ATS adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
 - The application is marked `Needs Review` after the fill-review attempt.
-- The dashboard shows `Fill review` for resolved Greenhouse and Lever applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
+- The dashboard shows `Fill review` for resolved supported ATS applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
 - Fill-review screenshots and Playwright traces are saved as local authenticated artifacts; saved review history can preview screenshots and download traces.
 
 ### Phase 2: Application Link Resolution
@@ -425,7 +425,7 @@ First reliable version:
 
 - `Prepare only` remains default.
 - Add `Fill for review`.
-- Support Greenhouse and Lever first.
+- Support Greenhouse, Lever, Ashby, and SmartRecruiters first.
 - Add `ApplicationAnswerVault` for work authorization and common application answers.
 - Add optional sensitive self-ID fields with `Prefer not to answer` defaults.
 - Keep true auto-submit pro/admin-only.

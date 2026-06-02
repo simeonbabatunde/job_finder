@@ -182,8 +182,8 @@ Completed:
 - Added the dashboard `Application answers` section for work authorization, sponsorship, relocation/work-setting preferences, compensation/start timing, and optional self-identification answers.
 - Added backend consent handling so sensitive self-ID values are saved as `prefer_not_to_answer` unless demographic storage consent is enabled.
 - Added `DELETE /application-profile` and a dashboard reset action for clearing saved application answers.
-- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse and Lever applications.
-- Added `ApplicationFillReviewService` to fill standard Greenhouse/Lever fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
+- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse, Lever, Ashby, and SmartRecruiters applications.
+- Added `ApplicationFillReviewService` to fill standard supported-ATS fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
 - Updated the fill-review modal to show recent saved review attempts after a run.
@@ -204,4 +204,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Add explicit final-submit confirmation and allow/deny rules before expanding true auto-submit behavior, then broaden deterministic ATS coverage beyond Greenhouse and Lever.
+- Add explicit final-submit confirmation and allow/deny rules before expanding true auto-submit behavior, then broaden deterministic ATS coverage with fixture-driven Workday research.

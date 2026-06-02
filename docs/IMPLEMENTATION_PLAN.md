@@ -84,7 +84,7 @@ Issues to address:
 - Browser fill-for-review is gated to pro/admin users; true auto-submit still needs stronger confirmation boundaries before production.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
-- The first fill-for-review adapters are implemented for resolved Greenhouse and Lever links via `POST /applications/{app_id}/fill-review`.
+- Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, and SmartRecruiters links via `POST /applications/{app_id}/fill-review`.
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
 - Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
 - A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
@@ -414,6 +414,6 @@ Acceptance criteria:
 
 1. Harden auth secrets, token rotation, and server-side session invalidation.
 2. Add stronger final-submit confirmation and allow/deny rules before enabling true auto-submit.
-3. Expand deterministic ATS coverage beyond Greenhouse/Lever, starting with Ashby and SmartRecruiters.
+3. Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, and SmartRecruiters, starting with Workday research and fixture-driven tests.
 4. Expand pytest coverage for package generation, admin access, and external-service failure paths.
 5. Move schema management to Alembic if the app needs a larger production migration workflow.
