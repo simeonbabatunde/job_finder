@@ -15,6 +15,35 @@ Docker Compose runs all four services locally:
 docker compose up --build
 ```
 
+## Launch Preflight
+
+Run this command before sharing a staging build, pushing a larger feature branch,
+or testing real user data:
+
+```bash
+./scripts/preflight.sh
+```
+
+It performs the current launch-readiness gate:
+
+- Dockerized backend API contract tests.
+- Frontend dependency install when needed, lint, and production build.
+- `docker compose config` rendering with safe development defaults.
+- Isolated Alembic `upgrade head` against a disposable SQLite database.
+- Docker Compose `up --build -d`.
+- `/health`, `/health/db`, `/health/worker`, and frontend HTTP readiness checks.
+- Answer-vault save, export, and audit smoke test with a throwaway local user.
+
+By default, the command leaves the Compose stack running for browser testing at
+`http://localhost:5173`. For CI or a disposable local check, use:
+
+```bash
+PREFLIGHT_COMPOSE_DOWN_ON_EXIT=1 ./scripts/preflight.sh
+```
+
+The smoke test does not call live LLMs or live job scrapers, and true final
+submission remains blocked by `ENABLE_TRUE_AUTO_SUBMIT=false`.
+
 ## Health Checks
 
 The backend exposes public, non-sensitive deployment checks:
@@ -197,7 +226,13 @@ only in the hosting secret manager.
 
 ## Docker E2E Smoke
 
-After `docker compose up --build`, verify:
+The preferred repeatable E2E smoke is:
+
+```bash
+./scripts/preflight.sh
+```
+
+For a manual check after `docker compose up --build`, verify:
 
 ```bash
 curl http://localhost:8000/health

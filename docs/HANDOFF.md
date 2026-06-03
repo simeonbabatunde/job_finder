@@ -35,6 +35,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
+- `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate.
 
 ## Active Technical Direction
 
@@ -121,6 +122,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-06-03 | Add public non-sensitive health checks | Staging and Docker E2E need API, database, and worker readiness signals without exposing user data. |
 | 2026-06-03 | Audit answer-vault access without values | The app needs accountability for sensitive-answer access without creating another sensitive data copy. |
 | 2026-06-03 | Treat staging as production-like | Staging should catch weak secrets and unsafe CORS before production. |
+| 2026-06-03 | Use Dockerized preflight checks | Local and CI checks should match the Python 3.11 backend container instead of depending on a host venv. |
 
 ## Open Questions
 
@@ -154,6 +156,10 @@ Completed:
 - Added environment-driven CORS with production-like startup rejection for wildcard and local origins, plus `CORS_ALLOWED_ORIGINS`.
 - Added previous answer-vault data-key read support through `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
 - Expanded deployment readiness docs with Alembic staging rehearsal, backup/restore rehearsal, and secret rotation steps.
+- Added `./scripts/preflight.sh` to run backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, health checks, and answer-vault export/audit smoke from one command.
+- Added `scripts/preflight-answer-audit.mjs` for the throwaway-user answer-vault export/audit smoke.
+- Added `.github/workflows/preflight.yml` so pushes and pull requests run the same preflight gate in CI.
+- Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -256,7 +262,10 @@ Tests/checks:
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
 - `npm audit --json` in `frontend` reports 0 vulnerabilities after `npm audit fix`.
+- `bash -n scripts/preflight.sh` passed.
+- `node --check scripts/preflight-answer-audit.mjs` passed.
+- `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
 
 Next concrete step:
 
-- Continue hardening launch readiness by adding a dedicated preflight command or CI workflow that runs the staging checklist automatically.
+- Run `./scripts/preflight.sh`, then keep true final submit disabled while planning any controlled real-submit pilot.

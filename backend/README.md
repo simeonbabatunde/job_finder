@@ -48,12 +48,21 @@ uv sync
 uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Backend tests:
+Backend tests from the repository root:
 
 ```bash
-python3 -m venv backend/.venv
-backend/.venv/bin/python -m pip install -e backend pytest
-PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests/test_api_contracts.py
+docker run --rm \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/uv-venv \
+  -v "$PWD/backend:/app" \
+  -w /app \
+  ghcr.io/astral-sh/uv:python3.11-bookworm \
+  uv run --frozen --group dev python -m pytest app/tests/test_api_contracts.py
+```
+
+Full repository preflight from the root:
+
+```bash
+./scripts/preflight.sh
 ```
 
 Default API URL:
@@ -246,9 +255,10 @@ the main best-fit view while remaining reviewable from the full pipeline.
 
 ## Backend Implementation Priorities
 
-1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
-2. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
-3. Follow `docs/DEPLOYMENT_READINESS.md` before sharing a hosted staging environment.
+1. Run `./scripts/preflight.sh` before staging pushes or broad feature branches.
+2. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
+3. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
+4. Follow `docs/DEPLOYMENT_READINESS.md` before sharing a hosted staging environment.
 
 ## Product Notes Preserved
 

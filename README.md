@@ -60,6 +60,22 @@ Recommended full stack:
 docker compose up --build
 ```
 
+Full launch-readiness preflight:
+
+```bash
+./scripts/preflight.sh
+```
+
+The preflight command runs the Dockerized backend API contract suite, frontend
+lint/build, Compose config rendering, an isolated Alembic upgrade, Docker health
+checks, and an answer-vault export/audit smoke test. It starts the local Compose
+stack and leaves it running so you can continue testing in the browser. To make
+the command clean up containers and volumes when it exits, run:
+
+```bash
+PREFLIGHT_COMPOSE_DOWN_ON_EXIT=1 ./scripts/preflight.sh
+```
+
 Frontend only:
 
 ```bash
@@ -96,5 +112,6 @@ Default URLs:
 - Fill-review screenshots and traces are authenticated artifacts with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` pruning.
 - Public health checks now cover API liveness, DB reachability, and worker heartbeat freshness through `/health`, `/health/db`, and `/health/worker`.
 - The focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
+- `./scripts/preflight.sh` is the repeatable local/CI gate before staging or larger feature work.
 
 See [docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) for the staged fix plan.

@@ -365,7 +365,7 @@ Implementation notes:
 
 ## Milestone 8: Testing and QA
 
-Status: Not started
+Status: In progress
 
 Goal:
 
@@ -373,11 +373,13 @@ Create a repeatable confidence loop.
 
 Deliverables:
 
-- Backend pytest suite.
-- Frontend typecheck and build checks.
+- Backend pytest suite. Implemented for API contracts through the Dockerized preflight.
+- Frontend typecheck and build checks. Implemented through `npm run build` in preflight.
 - Frontend component smoke tests where practical.
 - Playwright smoke test for the main workflow.
 - Manual QA checklist.
+- Repeatable local/CI preflight command. Implemented through `./scripts/preflight.sh`.
+- Answer-vault export/audit smoke test. Implemented through `scripts/preflight-answer-audit.mjs`.
 
 Acceptance criteria:
 
@@ -389,10 +391,11 @@ Implementation notes:
 
 - Mock JobSpy and LLM calls in tests.
 - Keep live scraper and live LLM tests opt-in.
+- `./scripts/preflight.sh` starts Docker Compose, verifies health endpoints, and uses a throwaway local user for answer-vault export/audit coverage without calling live LLMs.
 
 ## Milestone 9: Deployment Preparation
 
-Status: Not started
+Status: In progress
 
 Goal:
 
@@ -403,10 +406,11 @@ Deliverables:
 - Production Dockerfiles verified.
 - Environment templates.
 - CORS and frontend URL settings documented.
-- Health and readiness endpoints.
+- Health and readiness endpoints. Implemented for API, DB, and worker.
 - Logging strategy.
-- Background job or worker strategy for long agent runs.
-- Deployment guide.
+- Background job or worker strategy for long agent runs. Implemented with worker mode and heartbeat checks.
+- Deployment guide. In progress through `docs/DEPLOYMENT_READINESS.md`.
+- CI preflight workflow. Implemented in `.github/workflows/preflight.yml`.
 
 Acceptance criteria:
 
@@ -416,7 +420,7 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Add a dedicated preflight command or CI workflow that runs backend tests, frontend lint/build, Compose config, Alembic upgrade, health checks, and answer-vault export/audit smoke.
-2. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-3. Add longer-term account/data export coverage for resumes, generated packages, and automation artifacts.
-4. Add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.
+1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
+2. Add longer-term account/data export coverage for resumes, generated packages, and automation artifacts.
+3. Add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.
+4. Add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
