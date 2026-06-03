@@ -74,10 +74,12 @@ GOOGLE_API_KEY=
 SMTP_EMAIL=
 SMTP_PASSWORD=
 FRONTEND_URL=http://localhost:5173
+CORS_ALLOWED_ORIGINS=
 AUTH_SECRET_KEY=
 AUTH_ACCESS_TOKEN_TTL_SECONDS=3600
 AUTH_REFRESH_TOKEN_TTL_SECONDS=2592000
 APP_DATA_ENCRYPTION_KEY=
+APP_DATA_PREVIOUS_ENCRYPTION_KEYS=
 FREE_DAILY_AGENT_RUN_LIMIT=3
 PRO_DAILY_AGENT_RUN_LIMIT=50
 FILL_REVIEW_ARTIFACT_DIR=storage/fill_review_artifacts
@@ -111,6 +113,13 @@ AGENT_RUNNER_MODE=worker uv run python -m app.worker
 ```
 
 The worker writes a heartbeat row while idle and while processing long agent runs. `GET /health/worker` uses that heartbeat to report whether worker mode is ready to drain queued runs.
+
+## CORS
+
+Development defaults to `http://localhost:5173` and `http://127.0.0.1:5173`.
+Production-like environments (`APP_ENV=production`, `prod`, or `staging`) must set
+`CORS_ALLOWED_ORIGINS` or `FRONTEND_URL` to deployed, non-local origins. Localhost
+and wildcard origins are rejected at startup in production-like environments.
 
 ## API Surface
 
@@ -229,6 +238,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
 - Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
+- `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
 - Application answer-vault export, view, reset, dashboard preload, and automation-use events are audited without storing answer values in the audit log.
 - Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Health endpoints expose API liveness, DB reachability, and worker heartbeat freshness without returning user data.

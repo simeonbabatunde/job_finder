@@ -342,6 +342,7 @@ Current implementation:
 - `consent_to_use_answers` must be enabled before future fill-for-review logic can use the stored common answers.
 - Sensitive self-identification answers are reset to `prefer_not_to_answer` unless `consent_to_use_demographics` is explicitly enabled.
 - `ApplicationAnswerAudit` records view, export, reset, dashboard preload, fill-for-review, and submit-readiness access without storing answer values.
+- `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` can keep older encrypted answer rows readable during a planned data-key rotation.
 - Government ID numbers and I-9 documents remain out of scope.
 
 ### Work Authorization

@@ -34,6 +34,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - The matching workflow now runs a conservative pre-screen before full AI analysis, persists screened-out jobs with reasons, and keeps below-threshold/screened-out jobs in separate review lanes.
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
+- Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
 
 ## Active Technical Direction
 
@@ -84,6 +85,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
 - Application answer-vault access is audited for direct views, exports, resets, dashboard preload, fill-for-review, and submit-readiness usage.
+- `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` can keep old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
 ## Session Start Checklist
@@ -118,6 +120,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-06-03 | Keep true final submit behind an explicit pilot flag | Current flows are useful as fill-for-review, but real submission needs explicit approval, fixture coverage, auditability, and rollback. |
 | 2026-06-03 | Add public non-sensitive health checks | Staging and Docker E2E need API, database, and worker readiness signals without exposing user data. |
 | 2026-06-03 | Audit answer-vault access without values | The app needs accountability for sensitive-answer access without creating another sensitive data copy. |
+| 2026-06-03 | Treat staging as production-like | Staging should catch weak secrets and unsafe CORS before production. |
 
 ## Open Questions
 
@@ -148,6 +151,9 @@ Completed:
 - Added deployment-readiness documentation covering health checks, staging env, worker readiness, migration mode, Docker E2E smoke, and production gates.
 - Added `ApplicationAnswerAudit`, startup migration `0014_application_answer_audit`, Alembic revision `0003_application_answer_audit`, `GET /application-profile/export`, and `GET /application-profile/audit`.
 - Added dashboard export for application answers and audit logging for answer-vault view/export/save/delete, dashboard preload, fill-for-review, and submit-readiness access.
+- Added environment-driven CORS with production-like startup rejection for wildcard and local origins, plus `CORS_ALLOWED_ORIGINS`.
+- Added previous answer-vault data-key read support through `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
+- Expanded deployment readiness docs with Alembic staging rehearsal, backup/restore rehearsal, and secret rotation steps.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -253,4 +259,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Run a staging rehearsal with `USE_ALEMBIC_MIGRATIONS=true` using `docs/DEPLOYMENT_READINESS.md`, then tighten production CORS/secret rotation and backup/restore checks.
+- Continue hardening launch readiness by adding a dedicated preflight command or CI workflow that runs the staging checklist automatically.

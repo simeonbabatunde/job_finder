@@ -8,6 +8,7 @@ import os
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_hunter")
 USE_ALEMBIC_MIGRATIONS = os.getenv("USE_ALEMBIC_MIGRATIONS", "").lower() in {"1", "true", "yes"}
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+STARTUP_MIGRATION_LOCK_ID = 741319502
 
 engine = create_engine(DATABASE_URL, echo=True)
 
@@ -506,7 +507,21 @@ def run_alembic_migrations() -> bool:
     config = Config(str(alembic_ini))
     config.set_main_option("sqlalchemy.url", DATABASE_URL)
     config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
-    command.upgrade(config, "head")
+    lock_connection = engine.connect()
+    try:
+        if lock_connection.dialect.name == "postgresql":
+            lock_connection.execute(
+                text("SELECT pg_advisory_lock(:lock_id)"),
+                {"lock_id": STARTUP_MIGRATION_LOCK_ID},
+            )
+        command.upgrade(config, "head")
+    finally:
+        if lock_connection.dialect.name == "postgresql":
+            lock_connection.execute(
+                text("SELECT pg_advisory_unlock(:lock_id)"),
+                {"lock_id": STARTUP_MIGRATION_LOCK_ID},
+            )
+        lock_connection.close()
     return True
 
 def create_db_and_tables():

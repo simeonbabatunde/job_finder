@@ -107,6 +107,7 @@ from app.oauth_config import (
 router = APIRouter()
 
 APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").lower()
+PRODUCTION_LIKE_ENVS = {"prod", "production", "staging"}
 AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "job-finder-dev-secret-change-me"
 AUTH_PREVIOUS_SECRET_KEYS = tuple(
     key.strip()
@@ -129,10 +130,10 @@ INSECURE_AUTH_SECRET_VALUES = {
 def auth_secret_is_insecure(secret: str) -> bool:
     return not secret or secret in INSECURE_AUTH_SECRET_VALUES or len(secret) < 32
 
-if APP_ENV in {"prod", "production"} and auth_secret_is_insecure(AUTH_SECRET_KEY):
+if APP_ENV in PRODUCTION_LIKE_ENVS and auth_secret_is_insecure(AUTH_SECRET_KEY):
     raise RuntimeError("Set a strong AUTH_SECRET_KEY before running in production.")
 
-if APP_ENV in {"prod", "production"} and not data_encryption_key_is_configured():
+if APP_ENV in PRODUCTION_LIKE_ENVS and not data_encryption_key_is_configured():
     raise RuntimeError("Set APP_DATA_ENCRYPTION_KEY before running in production.")
 
 def b64url_encode(value: bytes) -> str:

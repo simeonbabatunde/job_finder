@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 os.environ["AUTH_SECRET_KEY"] = "test-secret"
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/job_finder_test.db"
 os.environ["FILL_REVIEW_ARTIFACT_DIR"] = tempfile.mkdtemp()
@@ -35,11 +37,12 @@ from app.services import job_search as job_search_module
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.browser_apply import BrowserApplyService
-from app.services.field_encryption import ENCRYPTED_VALUE_PREFIX
+from app.services.field_encryption import ENCRYPTED_VALUE_PREFIX, decrypt_text, encrypt_text
 from app.services.fill_review_artifacts import FillReviewArtifactStore
 from app.time_utils import utc_now
 from app.services.job_pre_screen import JobPreScreenService
 from app.services.persistence import PersistenceService
+import main as api_main
 from main import app
 
 
@@ -267,6 +270,40 @@ def test_health_endpoints_report_database_and_background_worker(monkeypatch):
         assert body["heartbeat_status"] == "not_expected"
 
 
+def test_cors_origins_are_local_by_default_and_strict_in_production(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("FRONTEND_URL", raising=False)
+    assert api_main.get_cors_allowed_origins() == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("FRONTEND_URL", "https://jobs.example.com/app")
+    assert api_main.get_cors_allowed_origins() == ["https://jobs.example.com"]
+
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://jobs.example.com,https://preview.example.com")
+    monkeypatch.setenv("FRONTEND_URL", "https://jobs.example.com")
+    assert api_main.get_cors_allowed_origins() == [
+        "https://jobs.example.com",
+        "https://preview.example.com",
+    ]
+
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "*")
+    with pytest.raises(RuntimeError):
+        api_main.get_cors_allowed_origins()
+
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "jobs.example.com")
+    with pytest.raises(RuntimeError):
+        api_main.get_cors_allowed_origins()
+
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+    monkeypatch.delenv("FRONTEND_URL", raising=False)
+    with pytest.raises(RuntimeError):
+        api_main.get_cors_allowed_origins()
+
+
 def test_worker_health_reports_fresh_heartbeat_and_queue_counts(monkeypatch):
     monkeypatch.setenv("AGENT_RUNNER_MODE", "worker")
     monkeypatch.setenv("AGENT_WORKER_HEARTBEAT_STALE_SECONDS", "30")
@@ -406,6 +443,20 @@ def test_auth_secret_insecurity_detector_flags_dev_defaults():
     assert endpoints.auth_secret_is_insecure("change-me-in-production")
     assert endpoints.auth_secret_is_insecure("short")
     assert not endpoints.auth_secret_is_insecure("a-production-secret-with-enough-entropy")
+
+
+def test_answer_encryption_supports_previous_key_rotation(monkeypatch):
+    monkeypatch.setenv("APP_DATA_ENCRYPTION_KEY", "old-answer-key")
+    monkeypatch.delenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", raising=False)
+    encrypted = encrypt_text("yes")
+    assert encrypted.startswith(ENCRYPTED_VALUE_PREFIX)
+
+    monkeypatch.setenv("APP_DATA_ENCRYPTION_KEY", "new-answer-key")
+    assert decrypt_text(encrypted, fallback="unreadable") == "unreadable"
+
+    monkeypatch.setenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", "older-key,old-answer-key")
+    assert decrypt_text(encrypted, fallback="unreadable") == "yes"
+    assert encrypt_text("yes") != encrypted
 
 
 def test_admin_config_requires_admin_and_persists_updates():

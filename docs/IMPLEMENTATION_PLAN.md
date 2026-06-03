@@ -416,7 +416,7 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Rehearse staging with `USE_ALEMBIC_MIGRATIONS=true` against a database copy and verify `/health`, `/health/db`, and `/health/worker`.
-2. Tighten production CORS, provider-key rotation, and backup/restore checks using `docs/DEPLOYMENT_READINESS.md`.
-3. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-4. Add longer-term account/data export coverage for resumes, generated packages, and automation artifacts.
+1. Add a dedicated preflight command or CI workflow that runs backend tests, frontend lint/build, Compose config, Alembic upgrade, health checks, and answer-vault export/audit smoke.
+2. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
+3. Add longer-term account/data export coverage for resumes, generated packages, and automation artifacts.
+4. Add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.

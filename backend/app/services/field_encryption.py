@@ -24,7 +24,15 @@ def _key_material() -> str:
     return material or "job-finder-dev-secret-change-me"
 
 
-@lru_cache(maxsize=4)
+def _previous_key_materials() -> list[str]:
+    return [
+        material.strip()
+        for material in os.getenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", "").split(",")
+        if material.strip()
+    ]
+
+
+@lru_cache(maxsize=16)
 def _fernet_for_material(material: str) -> Fernet:
     key = base64.urlsafe_b64encode(hashlib.sha256(material.encode("utf-8")).digest())
     return Fernet(key)
@@ -41,7 +49,9 @@ def decrypt_text(value: Optional[str], fallback: Optional[str] = None) -> Option
     if value is None or not value.startswith(ENCRYPTED_VALUE_PREFIX):
         return value
     token = value[len(ENCRYPTED_VALUE_PREFIX):].encode("ascii")
-    try:
-        return _fernet_for_material(_key_material()).decrypt(token).decode("utf-8")
-    except (InvalidToken, ValueError):
-        return fallback
+    for material in (_key_material(), *_previous_key_materials()):
+        try:
+            return _fernet_for_material(material).decrypt(token).decode("utf-8")
+        except (InvalidToken, ValueError):
+            continue
+    return fallback

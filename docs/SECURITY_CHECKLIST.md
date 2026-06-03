@@ -15,9 +15,11 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Set a strong `AUTH_SECRET_KEY` with at least 32 random characters.
 - Set a strong dedicated `APP_DATA_ENCRYPTION_KEY`; production startup rejects missing keys.
 - Use `AUTH_PREVIOUS_SECRET_KEYS` only during planned key rotation.
+- Use `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` only during planned answer-vault data-key rotation.
 - Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a real-submit pilot has explicit approval and fixture coverage.
 - Set `USE_ALEMBIC_MIGRATIONS=true` in staging after validating the baseline against a copy of existing data.
 - Set `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` to the approved screenshot/trace retention window.
+- Set `CORS_ALLOWED_ORIGINS` or `FRONTEND_URL` to deployed HTTPS origins only; production-like startup rejects localhost and wildcard CORS origins.
 - Use provider API keys with least-privilege scopes where the provider supports scoping.
 
 ## User Data
@@ -46,4 +48,4 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Confirm Postgres credentials are not the default local values.
 - Confirm `/health`, `/health/db`, and `/health/worker` are healthy.
 - Confirm the worker process is running when `AGENT_RUNNER_MODE=worker`.
-- Confirm backups and restore testing for the production database before storing real user data.
+- Confirm backup and restore testing for the production database before storing real user data.

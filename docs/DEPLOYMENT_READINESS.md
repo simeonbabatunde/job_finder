@@ -65,9 +65,12 @@ Set these before a hosted staging run:
 ```text
 APP_ENV=production
 AUTH_SECRET_KEY=<32+ random characters>
+AUTH_PREVIOUS_SECRET_KEYS=
 APP_DATA_ENCRYPTION_KEY=<32+ random characters>
+APP_DATA_PREVIOUS_ENCRYPTION_KEYS=
 DATABASE_URL=<staging postgres url>
 FRONTEND_URL=<staging frontend origin>
+CORS_ALLOWED_ORIGINS=<staging frontend origin>
 VITE_API_URL=<staging api origin>
 USE_ALEMBIC_MIGRATIONS=true
 ENABLE_TRUE_AUTO_SUBMIT=false
@@ -89,6 +92,9 @@ LINKEDIN_CLIENT_SECRET=
 
 Keep `.env` local and private. Use `.env.example` only as a placeholder template.
 
+`APP_ENV=staging` is production-like: weak auth secrets, missing data-encryption keys,
+localhost CORS origins, and wildcard CORS origins are rejected at startup.
+
 ## Migration Path
 
 Local development defaults to the lightweight startup migration runner. Staging should use:
@@ -103,6 +109,91 @@ Before enabling that against an existing database:
 2. Run Alembic upgrade against the copy.
 3. Verify `/health/db` reports `migration_mode: "alembic"`.
 4. Smoke-test auth, resume upload, preferences, agent queueing, application package generation, and artifact download.
+
+When `USE_ALEMBIC_MIGRATIONS=true`, startup migrations take a Postgres advisory
+lock so the API and worker can start at the same time without racing the Alembic
+version table.
+
+Local staging rehearsal with Docker Compose:
+
+```bash
+APP_ENV=staging \
+AUTH_SECRET_KEY=<32+ random characters> \
+APP_DATA_ENCRYPTION_KEY=<32+ random characters> \
+FRONTEND_URL=https://staging-job-finder.example.com \
+CORS_ALLOWED_ORIGINS=https://staging-job-finder.example.com \
+USE_ALEMBIC_MIGRATIONS=true \
+docker compose up --build -d backend worker
+```
+
+Then verify:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/db
+curl http://localhost:8000/health/worker
+```
+
+`/health/db` should report `migration_mode: "alembic"`.
+
+## CORS
+
+Development can use the local frontend origins. Production-like environments must
+set `CORS_ALLOWED_ORIGINS` or `FRONTEND_URL` to deployed HTTPS frontend origins.
+The backend rejects wildcard and localhost CORS origins when `APP_ENV` is
+`production`, `prod`, or `staging`.
+
+Use `CORS_ALLOWED_ORIGINS` when more than one deployed frontend origin is needed:
+
+```text
+CORS_ALLOWED_ORIGINS=https://app.example.com,https://preview.example.com
+```
+
+## Backup And Restore
+
+Before storing real resumes or application answers, prove restore works against a
+copy of the database. Do not commit backup artifacts.
+
+Local Compose backup example:
+
+```bash
+mkdir -p backups
+docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/job_finder.backup
+docker cp job_finder-db-1:/tmp/job_finder.backup backups/job_finder.backup
+```
+
+Local restore rehearsal against a disposable database:
+
+```bash
+docker compose exec db createdb -U "$POSTGRES_USER" job_hunter_restore_check
+docker cp backups/job_finder.backup job_finder-db-1:/tmp/job_finder.backup
+docker compose exec db pg_restore -U "$POSTGRES_USER" -d job_hunter_restore_check --clean --if-exists /tmp/job_finder.backup
+docker compose exec db dropdb -U "$POSTGRES_USER" job_hunter_restore_check
+```
+
+For managed Postgres, use the provider's snapshot/restore tooling plus one manual
+restore rehearsal before launch.
+
+## Secret Rotation
+
+Auth token signing supports a rolling rotation:
+
+1. Move the current `AUTH_SECRET_KEY` into `AUTH_PREVIOUS_SECRET_KEYS`.
+2. Set a new strong `AUTH_SECRET_KEY`.
+3. Deploy.
+4. Wait longer than `AUTH_REFRESH_TOKEN_TTL_SECONDS`.
+5. Remove the previous key.
+
+Answer-vault encryption supports previous data keys for reads:
+
+1. Move the current `APP_DATA_ENCRYPTION_KEY` into `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
+2. Set a new strong `APP_DATA_ENCRYPTION_KEY`.
+3. Deploy.
+4. New or updated answer-vault saves use the new key.
+5. Keep previous keys until old rows have been re-saved or a dedicated re-encryption job exists.
+
+Provider, SMTP, and OAuth keys should be rotated in the provider console and stored
+only in the hosting secret manager.
 
 ## Docker E2E Smoke
 

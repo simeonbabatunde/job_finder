@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 
+# Local database backups
+backups/
+*.backup
+*.dump
+
 # Python
 __pycache__/
 *.py[cod]
