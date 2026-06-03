@@ -13,6 +13,7 @@ export const OAuthCallback = () => {
                 const urlParams = new URLSearchParams(window.location.search);
                 const email = urlParams.get('email');
                 const token = urlParams.get('token');
+                const refreshToken = urlParams.get('refresh_token');
                 const error = urlParams.get('error');
 
                 if (error) {
@@ -22,7 +23,8 @@ export const OAuthCallback = () => {
                 }
 
                 if (token) {
-                    saveOAuthSession(token, email);
+                    saveOAuthSession(token, refreshToken, email);
+                    window.history.replaceState({}, document.title, window.location.pathname);
                     setStatus('success');
                     setMessage('Login successful. Redirecting...');
 

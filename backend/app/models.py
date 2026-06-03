@@ -36,8 +36,11 @@ class AuthSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
     token_id: str = Field(unique=True, index=True)
+    refresh_token_hash: Optional[str] = Field(default=None, index=True)
     expires_at: datetime = Field(index=True)
+    refresh_expires_at: Optional[datetime] = Field(default=None, index=True)
     revoked_at: Optional[datetime] = Field(default=None, index=True)
+    rotated_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Application(SQLModel, table=True):

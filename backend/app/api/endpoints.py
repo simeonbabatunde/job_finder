@@ -5,6 +5,7 @@ import base64
 import hmac
 import io
 import os
+import secrets
 import time
 from sqlalchemy import asc, desc
 from sqlmodel import Session, select
@@ -58,6 +59,7 @@ from app.schemas import (
     LoginRequest,
     MessageResponse,
     ProfileRequest,
+    RefreshTokenRequest,
     ProfileResponse,
     RegisterRequest,
     ResumeFeedbackResponse,
@@ -91,10 +93,31 @@ from app.oauth_config import (
 
 router = APIRouter()
 
+APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").lower()
 AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "job-finder-dev-secret-change-me"
-AUTH_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", str(60 * 60 * 24 * 7)))
+AUTH_PREVIOUS_SECRET_KEYS = tuple(
+    key.strip()
+    for key in os.getenv("AUTH_PREVIOUS_SECRET_KEYS", "").split(",")
+    if key.strip()
+)
+AUTH_ACCESS_TOKEN_TTL_SECONDS = int(
+    os.getenv("AUTH_ACCESS_TOKEN_TTL_SECONDS")
+    or os.getenv("AUTH_TOKEN_TTL_SECONDS", str(60 * 60))
+)
+AUTH_REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_REFRESH_TOKEN_TTL_SECONDS", str(60 * 60 * 24 * 30)))
 FREE_DAILY_AGENT_RUN_LIMIT = int(os.getenv("FREE_DAILY_AGENT_RUN_LIMIT", "3"))
 PRO_DAILY_AGENT_RUN_LIMIT = int(os.getenv("PRO_DAILY_AGENT_RUN_LIMIT", "50"))
+INSECURE_AUTH_SECRET_VALUES = {
+    "",
+    "change-me-in-production",
+    "job-finder-dev-secret-change-me",
+}
+
+def auth_secret_is_insecure(secret: str) -> bool:
+    return not secret or secret in INSECURE_AUTH_SECRET_VALUES or len(secret) < 32
+
+if APP_ENV in {"prod", "production"} and auth_secret_is_insecure(AUTH_SECRET_KEY):
+    raise RuntimeError("Set a strong AUTH_SECRET_KEY before running in production.")
 
 def b64url_encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
@@ -111,57 +134,146 @@ def serialize_user(user: User):
         "role": user.role,
     }
 
-def create_access_token(user: User, session: Session):
-    token_id = uuid4().hex
-    expires_at = datetime.utcnow() + timedelta(seconds=AUTH_TOKEN_TTL_SECONDS)
-    session.add(
-        AuthSession(
-            user_id=user.id,
-            token_id=token_id,
-            expires_at=expires_at,
-        )
-    )
-    session.commit()
+def sign_access_token_body(body: str, secret: str) -> str:
+    signature = hmac.new(
+        secret.encode("utf-8"),
+        body.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return b64url_encode(signature)
+
+def create_signed_access_token(user: User, token_id: str, expires_at: datetime):
     payload = {
         "sub": str(user.id),
         "email": user.email,
         "jti": token_id,
-        "exp": int(time.time()) + AUTH_TOKEN_TTL_SECONDS,
+        "exp": int(expires_at.timestamp()),
     }
     body = b64url_encode(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     )
-    signature = hmac.new(
-        AUTH_SECRET_KEY.encode("utf-8"),
-        body.encode("ascii"),
-        hashlib.sha256,
-    ).digest()
-    return f"{body}.{b64url_encode(signature)}"
+    return f"{body}.{sign_access_token_body(body, AUTH_SECRET_KEY)}"
+
+def create_refresh_token(token_id: str) -> str:
+    return f"{token_id}.{secrets.token_urlsafe(48)}"
+
+def hash_refresh_token(refresh_token: str) -> str:
+    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+def create_auth_tokens(user: User, session: Session):
+    token_id = uuid4().hex
+    now = datetime.utcnow()
+    expires_at = now + timedelta(seconds=AUTH_ACCESS_TOKEN_TTL_SECONDS)
+    refresh_expires_at = now + timedelta(seconds=AUTH_REFRESH_TOKEN_TTL_SECONDS)
+    refresh_token = create_refresh_token(token_id)
+    session.add(
+        AuthSession(
+            user_id=user.id,
+            token_id=token_id,
+            refresh_token_hash=hash_refresh_token(refresh_token),
+            expires_at=expires_at,
+            refresh_expires_at=refresh_expires_at,
+        )
+    )
+    session.commit()
+    return {
+        "access_token": create_signed_access_token(user, token_id, expires_at),
+        "refresh_token": refresh_token,
+        "expires_in": AUTH_ACCESS_TOKEN_TTL_SECONDS,
+        "refresh_expires_in": AUTH_REFRESH_TOKEN_TTL_SECONDS,
+    }
 
 def decode_access_token(token: str):
     try:
         body, signature = token.split(".", 1)
-        expected_signature = hmac.new(
-            AUTH_SECRET_KEY.encode("utf-8"),
-            body.encode("ascii"),
-            hashlib.sha256,
-        ).digest()
         actual_signature = b64url_decode(signature)
-        if not hmac.compare_digest(expected_signature, actual_signature):
-            return None
-
-        payload = json.loads(b64url_decode(body))
-        if int(payload.get("exp", 0)) < int(time.time()):
-            return None
-        return payload
+        for secret in (AUTH_SECRET_KEY, *AUTH_PREVIOUS_SECRET_KEYS):
+            expected_signature = hmac.new(
+                secret.encode("utf-8"),
+                body.encode("ascii"),
+                hashlib.sha256,
+            ).digest()
+            if hmac.compare_digest(expected_signature, actual_signature):
+                payload = json.loads(b64url_decode(body))
+                if int(payload.get("exp", 0)) < int(time.time()):
+                    return None
+                return payload
+        return None
     except Exception:
         return None
 
+def get_valid_refresh_session(refresh_token: str, session: Session) -> Optional[AuthSession]:
+    try:
+        token_id, _ = refresh_token.split(".", 1)
+    except ValueError:
+        return None
+
+    auth_session = session.exec(
+        select(AuthSession).where(AuthSession.token_id == token_id)
+    ).first()
+    if (
+        not auth_session
+        or auth_session.revoked_at is not None
+        or auth_session.rotated_at is not None
+        or not auth_session.refresh_token_hash
+        or not auth_session.refresh_expires_at
+        or auth_session.refresh_expires_at < datetime.utcnow()
+    ):
+        return None
+
+    if not hmac.compare_digest(auth_session.refresh_token_hash, hash_refresh_token(refresh_token)):
+        return None
+    return auth_session
+
+def find_auth_session_from_refresh(refresh_token: str, session: Session) -> Optional[AuthSession]:
+    try:
+        token_id, _ = refresh_token.split(".", 1)
+    except ValueError:
+        return None
+    auth_session = session.exec(
+        select(AuthSession).where(AuthSession.token_id == token_id)
+    ).first()
+    if not auth_session:
+        return None
+    if auth_session.refresh_token_hash and hmac.compare_digest(
+        auth_session.refresh_token_hash,
+        hash_refresh_token(refresh_token),
+    ):
+        return auth_session
+    return None
+
+def revoke_auth_session(auth_session: Optional[AuthSession], session: Session):
+    if not auth_session or auth_session.revoked_at is not None:
+        return
+    auth_session.revoked_at = datetime.utcnow()
+    session.add(auth_session)
+    session.commit()
+
+def rotate_auth_session(refresh_token: str, session: Session):
+    auth_session = get_valid_refresh_session(refresh_token, session)
+    if not auth_session:
+        return None
+
+    user = session.get(User, auth_session.user_id)
+    if not user:
+        return None
+
+    now = datetime.utcnow()
+    auth_session.revoked_at = now
+    auth_session.rotated_at = now
+    session.add(auth_session)
+    session.commit()
+    return auth_response(user, session)
+
 def auth_response(user: User, session: Session):
+    tokens = create_auth_tokens(user, session)
     return {
         "user": serialize_user(user),
-        "access_token": create_access_token(user, session),
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
         "token_type": "bearer",
+        "expires_in": tokens["expires_in"],
+        "refresh_expires_in": tokens["refresh_expires_in"],
     }
 
 def hash_password(password: str):
@@ -955,6 +1067,13 @@ def login(payload: LoginRequest, session: Session = Depends(get_session)):
     
     return auth_response(user, session)
 
+@router.post("/auth/refresh", response_model=AuthResponse)
+def refresh_auth_session(payload: RefreshTokenRequest, session: Session = Depends(get_session)):
+    response = rotate_auth_session(payload.refresh_token, session)
+    if not response:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    return response
+
 @router.post("/auth/register", response_model=AuthResponse)
 def register_user(payload: RegisterRequest, session: Session = Depends(get_session)):
     email = payload.email
@@ -1052,7 +1171,8 @@ def google_callback(code: str, session: Session = Depends(get_session)):
             session.add(profile)
             session.commit()
         
-        params = urlencode({"token": create_access_token(user, session), "email": email})
+        auth = auth_response(user, session)
+        params = urlencode({"token": auth["access_token"], "refresh_token": auth["refresh_token"], "email": email})
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?{params}")
     except Exception as e:
         print(f"Error in Google callback: {e}")
@@ -1118,7 +1238,8 @@ def linkedin_callback(code: str, session: Session = Depends(get_session)):
             session.add(profile)
             session.commit()
         
-        params = urlencode({"token": create_access_token(user, session), "email": email})
+        auth = auth_response(user, session)
+        params = urlencode({"token": auth["access_token"], "refresh_token": auth["refresh_token"], "email": email})
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?{params}")
     except Exception as e:
         print(f"Error in LinkedIn callback: {e}")
@@ -1140,24 +1261,22 @@ def legacy_social_login(payload: SocialAuthRequest, session: Session = Depends(g
 
 @router.post("/auth/logout", response_model=MessageResponse)
 def logout(
-    user: User = Depends(get_current_user),
+    payload: Optional[RefreshTokenRequest] = None,
     session: Session = Depends(get_session),
     authorization: Optional[str] = Header(None)
 ):
     token = authorization.split(" ", 1)[1].strip() if authorization else ""
-    payload = decode_access_token(token)
-    token_id = payload.get("jti") if payload else None
+    access_payload = decode_access_token(token)
+    token_id = access_payload.get("jti") if access_payload else None
+    auth_session = None
     if token_id:
         auth_session = session.exec(
-            select(AuthSession).where(
-                AuthSession.token_id == token_id,
-                AuthSession.user_id == user.id,
-            )
+            select(AuthSession).where(AuthSession.token_id == token_id)
         ).first()
-        if auth_session and auth_session.revoked_at is None:
-            auth_session.revoked_at = datetime.utcnow()
-            session.add(auth_session)
-            session.commit()
+    if not auth_session and payload and payload.refresh_token:
+        auth_session = find_auth_session_from_refresh(payload.refresh_token, session)
+
+    revoke_auth_session(auth_session, session)
     return {"message": "Signed out successfully"}
 
 @router.post("/upload-resume", response_model=ResumeUploadResponse)

@@ -44,7 +44,7 @@ Issues to address:
 - There is no shared app shell or component system.
 - Manual routing in `App.tsx` will get brittle as pages grow.
 - The "View all applications" behavior is inline instead of a true route.
-- Auth uses signed bearer tokens stored in `localStorage`; server-side token invalidation exists, while refresh-token rotation remains future hardening.
+- Auth uses signed bearer tokens and rotating refresh tokens stored in `localStorage`; server-side invalidation, refresh replay protection, and previous-secret verification for key rotation are implemented.
 - Frontend state uses `any` in several places, which hides API contract drift.
 
 ### Backend
@@ -76,7 +76,7 @@ Strengths:
 Issues to address:
 
 - Resume and preferences are now user-scoped in the core backend flows.
-- Auth now uses signed bearer tokens with server-side session records and logout invalidation; production still needs secret rotation and optional refresh-token rotation.
+- Auth now uses signed bearer tokens with server-side session records, logout invalidation, rotating refresh tokens, replay protection, and previous-secret verification for key rotation.
 - Startup now uses `create_all` plus a lightweight versioned `schema_migrations` table.
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
@@ -416,6 +416,5 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
-2. Expand pytest coverage for package generation, admin access, and external-service failure paths.
-3. Move schema management to Alembic if the app needs a larger production migration workflow.
+1. Expand pytest coverage for package generation, admin access, and external-service failure paths.
+2. Move schema management to Alembic if the app needs a larger production migration workflow.

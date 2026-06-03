@@ -154,8 +154,11 @@ def migrate_auth_sessions(connection):
                 id {id_column},
                 user_id INTEGER NOT NULL,
                 token_id VARCHAR NOT NULL UNIQUE,
+                refresh_token_hash VARCHAR,
                 expires_at TIMESTAMP NOT NULL,
+                refresh_expires_at TIMESTAMP,
                 revoked_at TIMESTAMP,
+                rotated_at TIMESTAMP,
                 created_at TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES "user" (id)
             )
@@ -174,6 +177,29 @@ def migrate_auth_sessions(connection):
             "CREATE INDEX IF NOT EXISTS "
             "ix_authsession_user_id "
             "ON authsession (user_id)"
+        )
+    )
+
+def migrate_auth_session_refresh_tokens(connection):
+    """Add refresh-token rotation metadata to auth sessions."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "authsession" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("authsession")}
+    if "refresh_token_hash" not in columns:
+        connection.execute(text("ALTER TABLE authsession ADD COLUMN refresh_token_hash VARCHAR"))
+    if "refresh_expires_at" not in columns:
+        connection.execute(text("ALTER TABLE authsession ADD COLUMN refresh_expires_at TIMESTAMP"))
+    if "rotated_at" not in columns:
+        connection.execute(text("ALTER TABLE authsession ADD COLUMN rotated_at TIMESTAMP"))
+
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS "
+            "ix_authsession_refresh_expires_at "
+            "ON authsession (refresh_expires_at)"
         )
     )
 
@@ -356,6 +382,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0009_auto_apply_attempts", migrate_auto_apply_attempts),
     ("0010_application_prescreen", migrate_application_prescreen),
     ("0011_auto_apply_attempt_steps", migrate_auto_apply_attempt_steps),
+    ("0012_auth_session_refresh_tokens", migrate_auth_session_refresh_tokens),
 )
 
 def ensure_schema_migrations_table(connection):

@@ -43,6 +43,10 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 class ProfileRequest(BaseModel):
     first_name: str = ""
     last_name: str = ""
@@ -95,7 +99,10 @@ class UserResponse(BaseModel):
 class AuthResponse(BaseModel):
     user: UserResponse
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: Literal["bearer"] = "bearer"
+    expires_in: Optional[int] = None
+    refresh_expires_in: Optional[int] = None
     message: Optional[str] = None
 
 

@@ -1,5 +1,8 @@
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const AUTH_TOKEN_KEY = 'auth_token';
+const AUTH_REFRESH_TOKEN_KEY = 'auth_refresh_token';
+const AUTH_TOKEN_EXPIRES_AT_KEY = 'auth_token_expires_at';
+const AUTH_REFRESH_EXPIRES_AT_KEY = 'auth_refresh_expires_at';
 const USER_EMAIL_KEY = 'user_email';
 
 export interface AppUser {
@@ -196,7 +199,11 @@ export interface UserStatusResponse {
 export interface AuthResponse {
     user: AppUser;
     access_token: string;
+    refresh_token?: string | null;
     token_type: 'bearer';
+    expires_in?: number | null;
+    refresh_expires_in?: number | null;
+    message?: string | null;
 }
 
 export interface AgentQuotaStatus {
@@ -222,18 +229,26 @@ export function getAuthHeaders(): Record<string, string> {
 }
 
 export function hasAuthSession() {
-    return Boolean(localStorage.getItem(AUTH_TOKEN_KEY));
+    return Boolean(localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_REFRESH_TOKEN_KEY));
 }
 
 export function clearAuthSession() {
     localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_TOKEN_EXPIRES_AT_KEY);
+    localStorage.removeItem(AUTH_REFRESH_EXPIRES_AT_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
 }
 
 export async function revokeAuthSession() {
+    const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY);
     const response = await fetch(`${API_URL}/auth/logout`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+        },
+        body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined,
     });
     if (!response.ok && response.status !== 401) {
         throw new Error(await getResponseDetail(response, 'Failed to sign out'));
@@ -243,16 +258,52 @@ export async function revokeAuthSession() {
 
 export function saveAuthSession(data: AuthResponse) {
     localStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
+    if (data.refresh_token) {
+        localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, data.refresh_token);
+    } else {
+        localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY);
+    }
+    if (data.expires_in) {
+        localStorage.setItem(AUTH_TOKEN_EXPIRES_AT_KEY, String(Date.now() + data.expires_in * 1000));
+    }
+    if (data.refresh_expires_in) {
+        localStorage.setItem(AUTH_REFRESH_EXPIRES_AT_KEY, String(Date.now() + data.refresh_expires_in * 1000));
+    }
     if (data.user?.email) {
         localStorage.setItem(USER_EMAIL_KEY, data.user.email);
     }
 }
 
-export function saveOAuthSession(token: string, email?: string | null) {
+export function saveOAuthSession(token: string, refreshToken?: string | null, email?: string | null) {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
+    if (refreshToken) {
+        localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, refreshToken);
+    }
     if (email) {
         localStorage.setItem(USER_EMAIL_KEY, email);
     }
+}
+
+export async function refreshAuthSession() {
+    const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY);
+    if (!refreshToken) return null;
+
+    const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!response.ok) {
+        clearAuthSession();
+        return null;
+    }
+
+    const data: AuthResponse = await response.json();
+    saveAuthSession(data);
+    return data;
 }
 
 export async function saveProfile(profileData: ProfilePayload) {
@@ -318,9 +369,17 @@ export async function getResumeFeedback() {
 }
 
 export async function getUserStatus(): Promise<UserStatusResponse> {
-    const response = await fetch(`${API_URL}/user/status`, {
+    let response = await fetch(`${API_URL}/user/status`, {
         headers: getAuthHeaders()
     });
+    if (response.status === 401 && localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)) {
+        const refreshed = await refreshAuthSession();
+        if (refreshed) {
+            response = await fetch(`${API_URL}/user/status`, {
+                headers: getAuthHeaders()
+            });
+        }
+    }
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to fetch user status'));
     }

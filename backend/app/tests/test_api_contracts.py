@@ -221,6 +221,9 @@ def test_bearer_auth_and_user_status_contract():
 
         auth, headers = register_user(client, "status")
         assert auth["token_type"] == "bearer"
+        assert auth["refresh_token"]
+        assert auth["expires_in"] > 0
+        assert auth["refresh_expires_in"] > auth["expires_in"]
         assert "hashed_password" not in auth["user"]
 
         response = client.get("/user/status", headers=headers)
@@ -241,11 +244,37 @@ def test_bearer_auth_and_user_status_contract():
             json={"email": auth["user"]["email"], "password": "Password123!"},
         )
         assert login_response.status_code == 200, login_response.text
-        new_headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+        login_body = login_response.json()
+        assert login_body["refresh_token"]
+        new_headers = {"Authorization": f"Bearer {login_body['access_token']}"}
         assert client.get("/user/status", headers=new_headers).status_code == 200
+
+        refresh_response = client.post(
+            "/auth/refresh",
+            json={"refresh_token": login_body["refresh_token"]},
+        )
+        assert refresh_response.status_code == 200, refresh_response.text
+        refreshed = refresh_response.json()
+        assert refreshed["access_token"] != login_body["access_token"]
+        assert refreshed["refresh_token"] != login_body["refresh_token"]
+        assert client.get("/user/status", headers=new_headers).status_code == 401
+        assert client.post(
+            "/auth/refresh",
+            json={"refresh_token": login_body["refresh_token"]},
+        ).status_code == 401
+
+        refreshed_headers = {"Authorization": f"Bearer {refreshed['access_token']}"}
+        assert client.get("/user/status", headers=refreshed_headers).status_code == 200
         assert body["quota"]["agent_run_limit"] == 3
         assert body["quota"]["agent_runs_remaining"] == 3
         assert body["quota"]["auto_apply_enabled"] is False
+
+
+def test_auth_secret_insecurity_detector_flags_dev_defaults():
+    assert endpoints.auth_secret_is_insecure("")
+    assert endpoints.auth_secret_is_insecure("change-me-in-production")
+    assert endpoints.auth_secret_is_insecure("short")
+    assert not endpoints.auth_secret_is_insecure("a-production-secret-with-enough-entropy")
 
 
 def test_resume_and_preferences_are_scoped_to_current_user():
@@ -1421,6 +1450,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0009_auto_apply_attempts",) in rows
     assert ("0010_application_prescreen",) in rows
     assert ("0011_auto_apply_attempt_steps",) in rows
+    assert ("0012_auth_session_refresh_tokens",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):
