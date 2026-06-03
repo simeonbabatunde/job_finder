@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, List
 from sqlmodel import Field, SQLModel, Column, JSON
 from datetime import datetime
+from app.time_utils import utc_now
 
 class Resume(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -10,7 +11,7 @@ class Resume(SQLModel, table=True):
     filename: str
     skills: List[str] = Field(default=[], sa_column=Column(JSON))
     summary: Optional[str] = Field(default=None)
-    upload_date: datetime = Field(default_factory=datetime.utcnow)
+    upload_date: datetime = Field(default_factory=utc_now)
 
 class JobPreference(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -22,7 +23,7 @@ class JobPreference(SQLModel, table=True):
     target_companies: List[str] = Field(default=[], sa_column=Column(JSON))
     min_match_score: int = Field(default=70)
     posted_within_days: int = Field(default=7)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -30,7 +31,7 @@ class User(SQLModel, table=True):
     hashed_password: Optional[str] = Field(default=None)
     subscription_tier: str = Field(default="free")  # "free" or "pro"
     role: str = Field(default="user") # "user" or "admin"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class AuthSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -41,7 +42,7 @@ class AuthSession(SQLModel, table=True):
     refresh_expires_at: Optional[datetime] = Field(default=None, index=True)
     revoked_at: Optional[datetime] = Field(default=None, index=True)
     rotated_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class Application(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -61,7 +62,7 @@ class Application(SQLModel, table=True):
     cover_letter: Optional[str] = Field(default=None)
     pre_screen_status: str = Field(default="not_screened", index=True)
     pre_screen_reasons: List[str] = Field(default_factory=list, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class AgentRun(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -72,7 +73,7 @@ class AgentRun(SQLModel, table=True):
     applications_count: int = Field(default=0)
     found_jobs_count: int = Field(default=0)
     error: Optional[str] = Field(default=None)
-    started_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    started_at: datetime = Field(default_factory=utc_now, index=True)
     claimed_at: Optional[datetime] = Field(default=None, index=True)
     completed_at: Optional[datetime] = Field(default=None)
 
@@ -99,8 +100,8 @@ class AutoApplyAttempt(SQLModel, table=True):
     screenshot_path: Optional[str] = Field(default=None)
     trace_path: Optional[str] = Field(default=None)
     submitted_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
 
 class AutoApplyAudit(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -113,7 +114,7 @@ class AutoApplyAudit(SQLModel, table=True):
     action: str = Field(default="submit")
     status: str
     message: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class ApplicationFillReview(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -128,7 +129,7 @@ class ApplicationFillReview(SQLModel, table=True):
     blockers: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     screenshot_path: Optional[str] = Field(default=None)
     trace_path: Optional[str] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
 
 class ApplicationSubmitSettings(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -143,7 +144,7 @@ class ApplicationSubmitSettings(SQLModel, table=True):
     denied_domains: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     allowed_job_title_keywords: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     consented_at: Optional[datetime] = Field(default=None)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class Profile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -158,7 +159,7 @@ class Profile(SQLModel, table=True):
     github_url: Optional[str] = None
     years_experience: int = Field(default=0)
     expected_salary: Optional[str] = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class ApplicationAnswerProfile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -178,18 +179,18 @@ class ApplicationAnswerProfile(SQLModel, table=True):
     veteran_status: str = Field(default="prefer_not_to_answer")
     disability_status: str = Field(default="prefer_not_to_answer")
     consent_to_use_demographics: bool = Field(default=False)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class ScraperConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     site_names: List[str] = Field(default=["linkedin", "indeed", "glassdoor"], sa_column=Column(JSON))
     results_wanted: int = Field(default=20)
     country_indeed: str = Field(default='USA')
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class PasswordResetToken(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
     token: str = Field(unique=True)
     expires_at: datetime
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)

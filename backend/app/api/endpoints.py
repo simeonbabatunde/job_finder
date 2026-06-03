@@ -79,6 +79,7 @@ import bcrypt
 import hashlib
 import requests
 from urllib.parse import urlencode, quote, urlparse
+from app.time_utils import utc_now
 from app.oauth_config import (
     get_google_oauth_url, 
     get_linkedin_oauth_url,
@@ -162,7 +163,7 @@ def hash_refresh_token(refresh_token: str) -> str:
 
 def create_auth_tokens(user: User, session: Session):
     token_id = uuid4().hex
-    now = datetime.utcnow()
+    now = utc_now()
     expires_at = now + timedelta(seconds=AUTH_ACCESS_TOKEN_TTL_SECONDS)
     refresh_expires_at = now + timedelta(seconds=AUTH_REFRESH_TOKEN_TTL_SECONDS)
     refresh_token = create_refresh_token(token_id)
@@ -217,7 +218,7 @@ def get_valid_refresh_session(refresh_token: str, session: Session) -> Optional[
         or auth_session.rotated_at is not None
         or not auth_session.refresh_token_hash
         or not auth_session.refresh_expires_at
-        or auth_session.refresh_expires_at < datetime.utcnow()
+        or auth_session.refresh_expires_at < utc_now()
     ):
         return None
 
@@ -245,7 +246,7 @@ def find_auth_session_from_refresh(refresh_token: str, session: Session) -> Opti
 def revoke_auth_session(auth_session: Optional[AuthSession], session: Session):
     if not auth_session or auth_session.revoked_at is not None:
         return
-    auth_session.revoked_at = datetime.utcnow()
+    auth_session.revoked_at = utc_now()
     session.add(auth_session)
     session.commit()
 
@@ -258,7 +259,7 @@ def rotate_auth_session(refresh_token: str, session: Session):
     if not user:
         return None
 
-    now = datetime.utcnow()
+    now = utc_now()
     auth_session.revoked_at = now
     auth_session.rotated_at = now
     session.add(auth_session)
@@ -318,7 +319,7 @@ def get_current_user(session: Session = Depends(get_session), authorization: Opt
         not auth_session
         or auth_session.user_id != user_id_int
         or auth_session.revoked_at is not None
-        or auth_session.expires_at < datetime.utcnow()
+        or auth_session.expires_at < utc_now()
     ):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -383,7 +384,7 @@ def get_agent_run_stale_minutes():
         return 120
 
 def get_agent_runs_today(session: Session, user_id: int):
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
     return session.exec(
         select(AgentRun).where(
             AgentRun.user_id == user_id,
@@ -431,7 +432,7 @@ def persist_auto_apply_audit(session: Session, user_id: int, agent_run_id: Optio
         )
 
 def fail_stale_agent_runs(session: Session):
-    stale_before = datetime.utcnow() - timedelta(minutes=get_agent_run_stale_minutes())
+    stale_before = utc_now() - timedelta(minutes=get_agent_run_stale_minutes())
     stale_runs = session.exec(
         select(AgentRun).where(
             AgentRun.status == "running",
@@ -443,7 +444,7 @@ def fail_stale_agent_runs(session: Session):
         run.status = "failed"
         run.error = "Agent run timed out while claimed by a worker."
         run.logs = (run.logs or []) + [run.error]
-        run.completed_at = datetime.utcnow()
+        run.completed_at = utc_now()
         session.add(run)
     if stale_runs:
         session.commit()
@@ -461,7 +462,7 @@ def claim_next_queued_agent_run():
             return None
 
         run.status = "running"
-        run.claimed_at = datetime.utcnow()
+        run.claimed_at = utc_now()
         run.logs = (run.logs or []) + ["Agent workflow claimed by worker"]
         session.add(run)
         session.commit()
@@ -579,7 +580,7 @@ def build_attempt_step(name: str, status: str, message: Optional[str] = None, de
         "status": status,
         "message": message,
         "details": details or {},
-        "at": datetime.utcnow(),
+        "at": utc_now(),
     })
 
 def append_attempt_step(
@@ -595,7 +596,7 @@ def append_attempt_step(
     steps = list(attempt.steps or [])
     steps.append(build_attempt_step(name, status, message, details))
     attempt.steps = steps[-50:]
-    attempt.updated_at = datetime.utcnow()
+    attempt.updated_at = utc_now()
     session.add(attempt)
     if commit:
         session.commit()
@@ -621,7 +622,7 @@ def create_auto_apply_attempt(
         ats_type=app.ats_type,
         mode=mode,
         status=status,
-        updated_at=datetime.utcnow(),
+        updated_at=utc_now(),
         steps=[
             build_attempt_step(
                 "attempt_created",
@@ -662,7 +663,7 @@ def update_attempt_from_fill_review(
     attempt.blockers = review_record.blockers or []
     attempt.screenshot_path = review_record.screenshot_path
     attempt.trace_path = review_record.trace_path
-    attempt.updated_at = datetime.utcnow()
+    attempt.updated_at = utc_now()
     attempt.steps = (list(attempt.steps or []) + [
         build_attempt_step(
             "fill_review_completed",
@@ -692,7 +693,7 @@ def update_attempt_from_confirmation(
     attempt.blockers = response.get("blockers") or []
     attempt.readiness_snapshot = jsonable_encoder(response.get("readiness") or {})
     attempt.submit_control = jsonable_encoder(submit_control)
-    attempt.updated_at = datetime.utcnow()
+    attempt.updated_at = utc_now()
     attempt.steps = (list(attempt.steps or []) + [
         build_attempt_step(
             "final_confirmation_prepared",
@@ -763,8 +764,8 @@ def update_submit_settings_from_payload(
     settings.allowed_domains = normalize_policy_list(payload.allowed_domains)
     settings.denied_domains = normalize_policy_list(payload.denied_domains)
     settings.allowed_job_title_keywords = normalize_policy_list(payload.allowed_job_title_keywords)
-    settings.consented_at = datetime.utcnow() if settings.true_submit_enabled else None
-    settings.updated_at = datetime.utcnow()
+    settings.consented_at = utc_now() if settings.true_submit_enabled else None
+    settings.updated_at = utc_now()
     session.add(settings)
     session.commit()
     session.refresh(settings)
@@ -786,7 +787,7 @@ def get_latest_fill_review(session: Session, user_id: int, application_id: int):
     ).first()
 
 def get_submits_today_count(session: Session, user_id: int):
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
     submit_audits = session.exec(
         select(AutoApplyAudit).where(
             AutoApplyAudit.user_id == user_id,
@@ -909,7 +910,7 @@ def evaluate_submit_readiness(
         "blockers": blockers,
         "warnings": warnings,
         "checks": checks,
-        "evaluated_at": datetime.utcnow(),
+        "evaluated_at": utc_now(),
     }
 
 def unavailable_submit_control(blockers: Optional[list[str]] = None):
@@ -973,7 +974,7 @@ def build_submit_confirmation_response(app: Application, readiness: dict, submit
         "blockers": blockers,
         "warnings": list(dict.fromkeys(warnings)),
         "checks": checks,
-        "evaluated_at": datetime.utcnow(),
+        "evaluated_at": utc_now(),
     }
 
 def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest) -> dict:
@@ -994,7 +995,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
 
         try:
             agent_run.status = "running"
-            agent_run.claimed_at = agent_run.claimed_at or datetime.utcnow()
+            agent_run.claimed_at = agent_run.claimed_at or utc_now()
             agent_run.logs = ["Agent workflow started"]
             session.add(agent_run)
             session.commit()
@@ -1036,7 +1037,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
             agent_run.logs = result.get("logs", [])
             agent_run.applications_count = len(result.get("applications_submitted", []))
             agent_run.found_jobs_count = result.get("total_found_jobs", len(result.get("found_jobs", [])))
-            agent_run.completed_at = datetime.utcnow()
+            agent_run.completed_at = utc_now()
             persist_auto_apply_audit(session, user_id, agent_run.id, result.get("auto_apply_audit", []))
             session.add(agent_run)
             session.commit()
@@ -1044,7 +1045,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
             agent_run.status = "failed"
             agent_run.error = str(e)
             agent_run.logs = (agent_run.logs or []) + [f"Agent failed: {e}"]
-            agent_run.completed_at = datetime.utcnow()
+            agent_run.completed_at = utc_now()
             session.add(agent_run)
             session.commit()
 
@@ -1332,7 +1333,7 @@ def update_profile(profile_data: ProfileRequest, user: User = Depends(get_curren
     if existing_profile:
         for key, value in profile_data.model_dump().items():
             setattr(existing_profile, key, value)
-        existing_profile.updated_at = datetime.utcnow()
+        existing_profile.updated_at = utc_now()
         session.add(existing_profile)
     else:
         session.add(Profile(**profile_data.model_dump(), user_id=user.id))
@@ -1356,7 +1357,7 @@ def update_application_profile(
     if existing_profile:
         for key, value in payload.items():
             setattr(existing_profile, key, value)
-        existing_profile.updated_at = datetime.utcnow()
+        existing_profile.updated_at = utc_now()
         answer_profile = existing_profile
     else:
         answer_profile = ApplicationAnswerProfile(**payload, user_id=user.id)
@@ -1670,7 +1671,7 @@ def update_admin_config(new_config: ScraperConfig, user: User = Depends(get_curr
         config.site_names = new_config.site_names
         config.results_wanted = new_config.results_wanted
         config.country_indeed = new_config.country_indeed
-        config.updated_at = datetime.utcnow()
+        config.updated_at = utc_now()
         session.add(config)
     else:
         session.add(new_config)
@@ -1692,7 +1693,7 @@ def forgot_password(payload: EmailRequest, session: Session = Depends(get_sessio
     reset_token = PasswordResetToken(
         user_id=user.id,
         token=token_str,
-        expires_at=datetime.utcnow() + timedelta(hours=1)
+        expires_at=utc_now() + timedelta(hours=1)
     )
     session.add(reset_token)
     session.commit()
@@ -1717,7 +1718,7 @@ def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get
     if not reset_record:
         raise HTTPException(status_code=400, detail="Invalid token")
         
-    if reset_record.expires_at < datetime.utcnow():
+    if reset_record.expires_at < utc_now():
         session.delete(reset_record)
         session.commit()
         raise HTTPException(status_code=400, detail="Token expired")
@@ -2102,7 +2103,7 @@ def clear_application_fill_reviews(
             attempt.fill_review_id = None
             attempt.screenshot_path = None
             attempt.trace_path = None
-            attempt.updated_at = datetime.utcnow()
+            attempt.updated_at = utc_now()
             session.add(attempt)
         FillReviewArtifactStore.delete(review.screenshot_path)
         FillReviewArtifactStore.delete(review.trace_path)

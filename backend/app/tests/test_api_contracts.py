@@ -22,6 +22,8 @@ from app.models import Application, ApplicationAnswerProfile, ApplicationFillRev
 from app.services import job_search as job_search_module
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
+from app.services.browser_apply import BrowserApplyService
+from app.time_utils import utc_now
 from app.services.job_pre_screen import JobPreScreenService
 from app.services.persistence import PersistenceService
 from main import app
@@ -365,7 +367,7 @@ def test_application_history_query_contracts():
     with TestClient(app) as client:
         auth, headers = register_user(client, "apps")
         user_id = auth["user"]["id"]
-        now = datetime.utcnow()
+        now = utc_now()
 
         with Session(engine) as session:
             session.add(
@@ -1252,6 +1254,30 @@ def test_browser_fill_review_never_clicks_final_submit(monkeypatch):
     assert result["auto_apply_audit"][0]["action"] == "fill_review"
     assert result["auto_apply_audit"][0]["status"] == "success"
     assert "Prepared ATS Role at Acme for review" in result["logs"]
+
+
+def test_browser_apply_blocks_final_submit_without_pilot_flag(monkeypatch):
+    monkeypatch.delenv("ENABLE_TRUE_AUTO_SUBMIT", raising=False)
+
+    result = asyncio.run(
+        BrowserApplyService.apply_to_job(
+            job_url="https://boards.greenhouse.io/acme/jobs/123",
+            profile=Profile(
+                user_id=42,
+                first_name="Test",
+                last_name="User",
+                email="test@example.test",
+                phone="555-0100",
+                location="Remote",
+            ),
+            resume_bytes=b"resume",
+            resume_filename="resume.pdf",
+            submit=True,
+        )
+    )
+
+    assert result["status"] == "blocked"
+    assert "Automated final submit is disabled" in result["message"]
 
 
 def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answers():

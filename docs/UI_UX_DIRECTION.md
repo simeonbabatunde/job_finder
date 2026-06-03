@@ -120,7 +120,7 @@ The run control should look operational:
 - Metrics: minimum match, date range, selected boards, fill-for-review state.
 - Primary action: "Start matching".
 - Secondary actions: "Preview matches", "Refresh history" where supported.
-- Fill-for-review must be visually separated, and true auto-submit should stay out of the primary UI until final-submit confirmation exists.
+- Fill-for-review must be visually separated, and true auto-submit should stay out of the primary UI until a real-submit pilot is explicitly approved.
 
 ### Application History
 

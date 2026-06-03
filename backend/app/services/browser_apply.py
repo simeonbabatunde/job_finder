@@ -10,12 +10,21 @@ from langchain_core.output_parsers import JsonOutputParser
 
 class BrowserApplyService:
     @staticmethod
+    def true_submit_enabled() -> bool:
+        return os.getenv("ENABLE_TRUE_AUTO_SUBMIT", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
     async def apply_to_job(job_url: str, profile: Profile, resume_bytes: bytes, resume_filename: str, cover_letter: Optional[str] = None, submit: bool = False) -> Dict[str, Any]:
         """
         Main entry point for autonomous job application.
         """
         if not profile:
             return {"status": "failed", "message": "User profile is required for auto-apply."}
+        if submit and not BrowserApplyService.true_submit_enabled():
+            return {
+                "status": "blocked",
+                "message": "Automated final submit is disabled. Set ENABLE_TRUE_AUTO_SUBMIT=true only for an approved pilot.",
+            }
 
         async with async_playwright() as p:
             # Launch browser with sandbox args for Docker
@@ -109,7 +118,7 @@ class BrowserApplyService:
                     await page.fill(mapping[field], value)
                     print(f"Filled {field}")
 
-            # Submit if enabled
+            # Submit only when the outer service has passed the explicit pilot gate.
             if submit and "submit_button" in mapping:
                 print(f"Clicking submit button: {mapping['submit_button']}")
                 await page.click(mapping["submit_button"])

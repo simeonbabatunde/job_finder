@@ -9,6 +9,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Product promise: a smart career operations workspace that finds, scores, prepares, tracks, and optionally applies to matching jobs.
 - Core audience: job seekers who want a repeatable application workflow with AI-assisted resume matching, tailored application materials, and application tracking.
 - Reference UI direction: use the same calm, dense, research-dashboard language as the Influence Chart project.
+- Security checklist: `docs/SECURITY_CHECKLIST.md`.
 
 ## Current Repository State
 
@@ -77,7 +78,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Database startup can run an Alembic current-schema baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to `create_all` plus the lightweight versioned `schema_migrations` runner.
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
-- Browser fill-for-review is gated to pro/admin users; true auto-submit remains future work until stronger final confirmation rules exist.
+- Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
@@ -110,21 +111,28 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-05-31 | Use signed bearer tokens before introducing external auth infrastructure | Removes the email-header trust model without adding a new dependency during this pass. |
 | 2026-05-31 | Keep migrations lightweight for now | A versioned startup runner covers current local evolution without adding Alembic setup before tests exist. |
 | 2026-06-02 | Use a conservative pre-screen before expensive matching work | Saves AI/package cost while keeping uncertain jobs eligible for full review. |
+| 2026-06-03 | Keep true final submit behind an explicit pilot flag | Current flows are useful as fill-for-review, but real submission needs explicit approval, fixture coverage, auditability, and rollback. |
 
 ## Open Questions
 
 - Should the user-facing brand be "Job Finder", "Job Hunter", or another name?
 - Should auth be custom JWT/session auth, Supabase Auth, Clerk, or another provider?
-- Should true auto-submit ever submit without a final human confirmation per job?
-- Should long-running agent work move to a worker/queue before staging?
+- Should true auto-submit ever submit without a final human confirmation per job? Current answer: no.
 - Should sensitive voluntary self-identification answers be stored at all, or should the product always default to decline/self-review?
 
 ## Latest Handoff Entry
 
-Date: 2026-06-02
+Date: 2026-06-03
 
 Completed:
 
+- Verified the Docker Compose stack end to end: register, refresh token, save preferences/profile/application answers, save submission settings, upload resume, load user status, queue an agent run, retrieve the queued run, and logout.
+- Verified the Alembic opt-in baseline with `alembic upgrade head` against a fresh temporary SQLite database in the uv Python 3.11 container.
+- Added `app.time_utils.utc_now()` and replaced app-side `datetime.utcnow()` usage while preserving naive UTC storage compatibility.
+- Added `ENABLE_TRUE_AUTO_SUBMIT=false` to `.env.example` and Docker Compose backend/worker environments.
+- Added an explicit legacy `BrowserApplyService` guard that blocks `submit=True` unless `ENABLE_TRUE_AUTO_SUBMIT=true`.
+- Added API-contract coverage proving browser final submit is blocked by default.
+- Added `docs/SECURITY_CHECKLIST.md` covering private `.env` handling, key rotation, production auth secrets, artifact privacy, true-submit gating, and deployment checks.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -219,7 +227,9 @@ Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 31 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 32 tests after the UTC cleanup and true-submit guard.
+- Docker Compose E2E smoke passed against `http://127.0.0.1:8000` and `http://localhost:5173`.
+- Alembic `upgrade head` passed in an isolated uv Python 3.11 container against a temporary SQLite database.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, `job_pre_screen.py`, and `persistence.py`.
 - Alembic baseline upgrade was verified in the uv Python 3.11 container against a temporary SQLite database.
 - `git diff --check` passed.
@@ -228,4 +238,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
+- Enable Alembic in staging, validate the baseline against a copy of existing data, then add encryption/retention controls for sensitive answers and automation artifacts before production.

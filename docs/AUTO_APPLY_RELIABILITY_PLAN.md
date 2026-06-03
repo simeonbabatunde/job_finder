@@ -177,7 +177,7 @@ Each adapter should own:
 - Final submit detection.
 - Success page / confirmation detection.
 
-The current `BrowserApplyService` can remain as a fallback only for `Fill for review`, never for final auto-submit.
+The current `BrowserApplyService` can remain as a fallback only for `Fill for review` unless a tightly scoped real-submit pilot is explicitly approved.
 
 ### Phase 4: Submission State Machine
 
@@ -397,6 +397,49 @@ Before enabling real auto-submit:
 - Set retention windows for traces and screenshots.
 - Avoid logging sensitive answers in plaintext.
 - Avoid sending sensitive self-ID answers to LLM providers.
+
+## Current Submit Boundary
+
+The current implementation is intentionally a fill-for-review system, not a true auto-submit system.
+
+Implemented boundary:
+
+- The deterministic ATS services fill supported forms and stop before final submit.
+- `POST /applications/{app_id}/submit-readiness` evaluates policy and readiness but returns `can_submit=false`.
+- `POST /applications/{app_id}/submit-confirmation` detects the final submit control without clicking it and returns `can_submit=false`.
+- The legacy `BrowserApplyService` blocks `submit=True` unless `ENABLE_TRUE_AUTO_SUBMIT=true`.
+- `.env.example` and Docker Compose default `ENABLE_TRUE_AUTO_SUBMIT=false`.
+
+Do not enable `ENABLE_TRUE_AUTO_SUBMIT=true` for normal development, demos, or staging smoke tests.
+
+## True Auto-Submit Pilot Gates
+
+A real-submit pilot should be treated as a controlled release, not a normal feature toggle.
+
+Required before enabling the flag:
+
+- Written user approval for the pilot scope and supported ATS list.
+- A small allowlist of test users and companies/domains.
+- `APP_ENV=production` or a named staging environment with production-like secrets and logging.
+- Alembic enabled and validated against a copy of existing data.
+- Encryption at rest for sensitive application answers and artifact metadata.
+- Retention windows for screenshots, traces, and fill-review artifacts.
+- Fixture coverage for every supported ATS final-submit path, including ready, blocked, ambiguous, login-gated, captcha-gated, and multi-step cases.
+- A dry-run record for each attempted application showing filled fields, missing fields, blockers, submit-control selector, confidence, and final URL.
+- A per-job confirmation screen that shows the exact final action and requires explicit user confirmation.
+- A rollback plan that can disable true submit immediately by setting `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Monitoring for submit attempts, blocked attempts, external navigation failures, captchas, account/login gates, and unexpected redirects.
+
+First pilot constraints:
+
+- Keep final submit pro/admin-only.
+- Keep human confirmation required per job.
+- Only allow direct supported ATS URLs, not unresolved aggregators.
+- Only allow high-confidence submit-control detection.
+- Stop on any sensitive self-ID question without a decline option.
+- Stop on missing required work authorization, sponsorship, or profile answers.
+- Stop on captcha, login, payment, assessment, or external account creation gates.
+- Keep the daily submit cap low.
 
 ## Worker Architecture
 

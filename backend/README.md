@@ -82,6 +82,7 @@ FILL_REVIEW_ARTIFACT_DIR=storage/fill_review_artifacts
 AGENT_RUNNER_MODE=background
 AGENT_WORKER_POLL_SECONDS=2
 AGENT_RUN_STALE_MINUTES=120
+ENABLE_TRUE_AUTO_SUBMIT=false
 ```
 
 Docker Compose also expects:
@@ -178,7 +179,7 @@ The agent currently:
 - analyzes pass/maybe jobs in a batch LLM call
 - persists job records incrementally, including review-only screened-out records with reasons
 - selects jobs above the minimum match score
-- optionally fills or submits application forms through Playwright
+- optionally prepares supported application forms for review through Playwright
 
 `GET /applications` also accepts `match_bucket=strong|below_threshold|screened_out|all`.
 The dashboard uses `strong` by default so below-threshold and screened-out jobs stay out of
@@ -200,16 +201,16 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - The previous README contained a plaintext OpenRouter key. It has been removed; rotate the key if it was real.
 - Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight `schema_migrations` runner.
 - Core public write endpoints use Pydantic request schemas, and the main app/API responses now have explicit response models.
-- Daily agent-run quotas are enforced for free/pro tiers, and auto-submit is gated to pro/admin users.
+- Daily agent-run quotas are enforced for free/pro tiers, and browser fill-for-review is gated to pro/admin users.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
-- Browser auto-apply has persisted audit records, but still needs stronger confirmation rules and safer production constraints.
+- Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - LLM calls are live by default and need test doubles for repeatable automated tests.
 
 ## Backend Implementation Priorities
 
 1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
-2. Replace `datetime.utcnow()` usage with timezone-aware UTC values to clear Python 3.14 deprecation warnings.
-3. Keep true auto-submit behind final-confirmation guardrails until a real submit pilot is explicitly approved.
+2. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
+3. Add encryption-at-rest and retention policy enforcement for sensitive application answers and automation artifacts before production.
 
 ## Product Notes Preserved
 

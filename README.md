@@ -8,7 +8,7 @@ Job Finder is a smart job search assistant that helps remove the repetitive part
 - Backend: FastAPI, SQLModel, PostgreSQL, LangGraph, LangChain
 - Job discovery: python-jobspy plus custom scrapers
 - LLM providers: OpenAI, OpenRouter, Gemini, Ollama support through `backend/app/agent/llm_factory.py`
-- Browser automation: Playwright for form filling and optional submission
+- Browser automation: Playwright for supported-ATS fill-for-review; true submit is disabled by default
 - Local orchestration: Docker Compose
 - Python dependency manager: uv through `backend/pyproject.toml` and `backend/uv.lock`
 
@@ -20,7 +20,7 @@ The current app already supports the main workflow:
 2. Upload a resume.
 3. Fill a personal profile for application forms and cover letters.
 4. Set job preferences and target companies.
-5. Run the search assistant to search, score, and optionally auto-submit.
+5. Run the search assistant to search, score, and prepare supported applications for review.
 6. Review best-fit jobs and application status.
 7. Generate a cover letter, tailored summary, Q&A answers, interview prep, and company brief for a selected job.
 
@@ -45,6 +45,8 @@ Detailed UI direction is in [docs/UI_UX_DIRECTION.md](./docs/UI_UX_DIRECTION.md)
 
 - [Implementation Plan](./docs/IMPLEMENTATION_PLAN.md)
 - [UI/UX Direction](./docs/UI_UX_DIRECTION.md)
+- [Auto-Apply Reliability Plan](./docs/AUTO_APPLY_RELIABILITY_PLAN.md)
+- [Security Checklist](./docs/SECURITY_CHECKLIST.md)
 - [Handoff](./docs/HANDOFF.md)
 - [Frontend README](./frontend/README.md)
 - [Backend README](./backend/README.md)
@@ -85,7 +87,8 @@ Default URLs:
 - Resume and preferences are scoped to the active user in the core backend flows.
 - Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight versioned migration table.
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but the key should be rotated if it was real.
-- Daily agent-run quotas, pro/admin auto-submit gating, persisted agent run logs, and auto-apply audit records are implemented.
+- Daily agent-run quotas, pro/admin fill-for-review gating, persisted agent run logs, and auto-apply audit records are implemented.
+- True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - The focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 See [docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) for the staged fix plan.
