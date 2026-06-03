@@ -97,6 +97,13 @@ export interface AutoApplyAttemptRecord {
     blockers: string[];
     readiness_snapshot: Record<string, unknown>;
     submit_control: Record<string, unknown>;
+    steps: Array<{
+        name: string;
+        status: string;
+        message?: string | null;
+        details?: Record<string, unknown>;
+        at: string;
+    }>;
     screenshot_url?: string | null;
     trace_url?: string | null;
     submitted_at?: string | null;

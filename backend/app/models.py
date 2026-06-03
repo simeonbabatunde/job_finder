@@ -92,6 +92,7 @@ class AutoApplyAttempt(SQLModel, table=True):
     blockers: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     readiness_snapshot: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     submit_control: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    steps: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     screenshot_path: Optional[str] = Field(default=None)
     trace_path: Optional[str] = Field(default=None)
     submitted_at: Optional[datetime] = Field(default=None)

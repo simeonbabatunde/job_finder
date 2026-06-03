@@ -69,7 +69,7 @@ function scoreTone(score: number): 'neutral' | 'accent' | 'success' | 'warning' 
 }
 
 function attemptTone(status: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
-    if (status.includes('ready')) return 'success';
+    if (status.includes('ready') || status.includes('success') || status.includes('detected') || status.includes('completed')) return 'success';
     if (status.includes('blocked')) return 'warning';
     if (status.includes('failed')) return 'danger';
     if (status.includes('filling') || status.includes('confirming')) return 'accent';
@@ -607,6 +607,27 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                                     {attempt.blocked_reason}
                                                 </p>
                                             )}
+                                            {attempt.steps?.length ? (
+                                                <div className="mt-2 space-y-1 border-t border-[var(--line)] pt-2">
+                                                    {attempt.steps.slice(-3).map(step => (
+                                                        <div key={`${attempt.id}-${step.name}-${step.at}`} className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-xs font-semibold text-[var(--ink)]">
+                                                                    {step.name.replaceAll('_', ' ')}
+                                                                </p>
+                                                                {step.message && (
+                                                                    <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+                                                                        {step.message}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            <StatusChip tone={attemptTone(step.status)} className="min-h-6 shrink-0 px-2">
+                                                                {step.status.replaceAll('_', ' ')}
+                                                            </StatusChip>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : null}
                                         </div>
                                     ))}
                                 </div>

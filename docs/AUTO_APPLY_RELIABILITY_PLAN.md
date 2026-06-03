@@ -213,6 +213,7 @@ Recommended model:
 - `status`
 - `confidence_score`
 - `blocked_reason`
+- `steps` JSON
 - `filled_fields` JSON
 - `missing_fields` JSON
 - `custom_questions` JSON
@@ -229,7 +230,8 @@ Current implementation:
 - `AutoApplyAttempt` exists as the workflow record for fill-review and final-confirmation checks.
 - Fill-review creates an attempt and links the saved `ApplicationFillReview` plus screenshot/trace artifact paths.
 - Final confirmation updates the latest attempt with readiness and submit-control snapshots and links the audit event back to the attempt.
-- The dashboard shows an automation timeline in the fill-review modal.
+- Each attempt now stores compact step transitions such as `attempt_created`, `inputs_validated`, `browser_fill_started`, `fill_review_completed`, `readiness_checked`, `submit_control_detection`, and `final_confirmation_prepared`.
+- The dashboard shows an automation timeline in the fill-review modal, including the latest step transitions for each attempt.
 
 ## Pre-Screen Cost Gate
 

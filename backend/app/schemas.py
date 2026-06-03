@@ -360,6 +360,7 @@ class AutoApplyAttemptResponse(BaseModel):
     blockers: List[str] = Field(default_factory=list)
     readiness_snapshot: Dict[str, Any] = Field(default_factory=dict)
     submit_control: Dict[str, Any] = Field(default_factory=dict)
+    steps: List[Dict[str, Any]] = Field(default_factory=list)
     screenshot_url: Optional[str] = None
     trace_url: Optional[str] = None
     submitted_at: Optional[datetime] = None

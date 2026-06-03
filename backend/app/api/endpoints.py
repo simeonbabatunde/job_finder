@@ -436,6 +436,7 @@ def serialize_auto_apply_attempt(attempt: AutoApplyAttempt):
         "blockers": attempt.blockers or [],
         "readiness_snapshot": attempt.readiness_snapshot or {},
         "submit_control": attempt.submit_control or {},
+        "steps": attempt.steps or [],
         "screenshot_url": fill_review_artifact_url(
             attempt.application_id,
             attempt.fill_review_id,
@@ -460,6 +461,35 @@ def blocked_reason_from_lists(blockers: list[str], missing_fields: Optional[list
         return f"Missing required field: {missing_fields[0]}"
     return None
 
+def build_attempt_step(name: str, status: str, message: Optional[str] = None, details: Optional[dict] = None):
+    return jsonable_encoder({
+        "name": name,
+        "status": status,
+        "message": message,
+        "details": details or {},
+        "at": datetime.utcnow(),
+    })
+
+def append_attempt_step(
+    session: Session,
+    attempt: AutoApplyAttempt,
+    name: str,
+    status: str,
+    message: Optional[str] = None,
+    details: Optional[dict] = None,
+    *,
+    commit: bool = True,
+):
+    steps = list(attempt.steps or [])
+    steps.append(build_attempt_step(name, status, message, details))
+    attempt.steps = steps[-50:]
+    attempt.updated_at = datetime.utcnow()
+    session.add(attempt)
+    if commit:
+        session.commit()
+        session.refresh(attempt)
+    return attempt
+
 def create_auto_apply_attempt(
     session: Session,
     *,
@@ -480,6 +510,13 @@ def create_auto_apply_attempt(
         mode=mode,
         status=status,
         updated_at=datetime.utcnow(),
+        steps=[
+            build_attempt_step(
+                "attempt_created",
+                status,
+                f"{mode.replace('_', ' ')} attempt created.",
+            )
+        ],
     )
     session.add(attempt)
     session.commit()
@@ -514,6 +551,17 @@ def update_attempt_from_fill_review(
     attempt.screenshot_path = review_record.screenshot_path
     attempt.trace_path = review_record.trace_path
     attempt.updated_at = datetime.utcnow()
+    attempt.steps = (list(attempt.steps or []) + [
+        build_attempt_step(
+            "fill_review_completed",
+            attempt.status,
+            review_record.message or "Fill-for-review completed.",
+            {
+                "fields_filled_count": len(review_record.fields_filled or []),
+                "needs_review_count": len(review_record.fields_missing or []) + len(review_record.blockers or []),
+            },
+        )
+    ])[-50:]
     session.add(attempt)
     session.commit()
     session.refresh(attempt)
@@ -533,6 +581,18 @@ def update_attempt_from_confirmation(
     attempt.readiness_snapshot = jsonable_encoder(response.get("readiness") or {})
     attempt.submit_control = jsonable_encoder(submit_control)
     attempt.updated_at = datetime.utcnow()
+    attempt.steps = (list(attempt.steps or []) + [
+        build_attempt_step(
+            "final_confirmation_prepared",
+            attempt.status,
+            response.get("message"),
+            {
+                "ready": bool(response.get("ready")),
+                "submit_control_status": submit_control.get("status"),
+                "submit_control_confidence": submit_control.get("confidence"),
+            },
+        )
+    ])[-50:]
     session.add(attempt)
     session.commit()
     session.refresh(attempt)
@@ -1594,6 +1654,25 @@ async def fill_application_for_review(
         mode="fill_for_review",
         status="filling",
     )
+    attempt = append_attempt_step(
+        session,
+        attempt,
+        "inputs_validated",
+        "success",
+        "Resume, profile, application link, and ATS support were validated.",
+        {
+            "ats_type": ats_type,
+            "has_answer_profile": bool(answer_profile and answer_profile.consent_to_use_answers),
+        },
+    )
+    attempt = append_attempt_step(
+        session,
+        attempt,
+        "browser_fill_started",
+        "running",
+        "Browser fill-for-review started.",
+        {"application_url": application_url},
+    )
 
     fill_result = await ApplicationFillReviewService.fill_application_for_review(
         application_url=application_url,
@@ -1733,6 +1812,38 @@ async def create_application_submit_confirmation(
         attempt.fill_review_id = latest_review.id
         attempt.screenshot_path = latest_review.screenshot_path
         attempt.trace_path = latest_review.trace_path
+        session.add(attempt)
+        session.commit()
+        session.refresh(attempt)
+
+    attempt = append_attempt_step(
+        session,
+        attempt,
+        "readiness_checked",
+        "success" if readiness.get("ready") else "blocked",
+        readiness.get("message"),
+        {
+            "blockers_count": len(readiness.get("blockers") or []),
+            "checks_count": len(readiness.get("checks") or []),
+        },
+    )
+    if submit_control:
+        attempt = append_attempt_step(
+            session,
+            attempt,
+            "submit_control_detection",
+            submit_control.get("status", "unavailable"),
+            (
+                "Final submit control inspected without clicking."
+                if submit_control.get("detected")
+                else blocked_reason_from_lists(submit_control.get("blockers") or []) or "Final submit control was not detected."
+            ),
+            {
+                "detected": bool(submit_control.get("detected")),
+                "confidence": submit_control.get("confidence"),
+                "label": submit_control.get("label"),
+            },
+        )
     attempt = update_attempt_from_confirmation(session, attempt, response)
     response["attempt_id"] = attempt.id
     session.add(

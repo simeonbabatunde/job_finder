@@ -322,6 +322,28 @@ def migrate_application_prescreen(connection):
         )
     )
 
+def migrate_auto_apply_attempt_steps(connection):
+    """Add step-level workflow telemetry to auto-apply attempts."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "autoapplyattempt" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("autoapplyattempt")}
+    if "steps" not in columns:
+        connection.execute(text("ALTER TABLE autoapplyattempt ADD COLUMN steps JSON"))
+
+    empty_json = "'[]'::json" if connection.dialect.name == "postgresql" else "'[]'"
+    connection.execute(
+        text(
+            f"""
+            UPDATE autoapplyattempt
+            SET steps = {empty_json}
+            WHERE steps IS NULL
+            """
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -333,6 +355,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0008_application_submit_settings", migrate_application_submit_settings),
     ("0009_auto_apply_attempts", migrate_auto_apply_attempts),
     ("0010_application_prescreen", migrate_application_prescreen),
+    ("0011_auto_apply_attempt_steps", migrate_auto_apply_attempt_steps),
 )
 
 def ensure_schema_migrations_table(connection):

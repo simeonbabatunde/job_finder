@@ -645,6 +645,13 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert attempt_body[0]["status"] == "ready_for_confirmation"
         assert attempt_body[0]["filled_fields"] == body["fields_filled"]
         assert attempt_body[0]["screenshot_url"] == body["screenshot_url"]
+        assert [step["name"] for step in attempt_body[0]["steps"]] == [
+            "attempt_created",
+            "inputs_validated",
+            "browser_fill_started",
+            "fill_review_completed",
+        ]
+        assert attempt_body[0]["steps"][-1]["status"] == "ready_for_confirmation"
         assert "user_id" not in attempt_body[0]
 
         screenshot = client.get(body["screenshot_url"], headers=headers)
@@ -1266,6 +1273,14 @@ def test_submit_confirmation_endpoint_detects_final_control_without_clicking(mon
         assert attempt["confidence_score"] == 0.93
         assert attempt["submit_control"]["selector"] == "#submit_application"
         assert attempt["readiness_snapshot"]["ready"] is True
+        assert [step["name"] for step in attempt["steps"]] == [
+            "attempt_created",
+            "readiness_checked",
+            "submit_control_detection",
+            "final_confirmation_prepared",
+        ]
+        assert attempt["steps"][1]["status"] == "success"
+        assert attempt["steps"][2]["details"]["confidence"] == 0.93
 
         with Session(engine) as session:
             audit = session.exec(
@@ -1296,6 +1311,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0008_application_submit_settings",) in rows
     assert ("0009_auto_apply_attempts",) in rows
     assert ("0010_application_prescreen",) in rows
+    assert ("0011_auto_apply_attempt_steps",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

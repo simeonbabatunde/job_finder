@@ -204,6 +204,8 @@ Completed:
 - Added final-submit guardrail settings, allow/deny lists, readiness evaluation, dashboard guardrail controls, and a fill-review modal readiness check. This still does not submit applications.
 - Added no-click final confirmation via `POST /applications/{app_id}/submit-confirmation`, fixture-backed submit-control detection, audit logging, and a dashboard final-step inspection action.
 - Added persisted `AutoApplyAttempt` records, `GET /applications/{app_id}/automation-attempts`, attempt-linked audit events, and a dashboard automation timeline tying fill-review and final confirmation into one workflow.
+- Added step-level telemetry to `AutoApplyAttempt` records for fill-review and final-confirmation transitions, including `attempt_created`, `inputs_validated`, `browser_fill_started`, `fill_review_completed`, `readiness_checked`, `submit_control_detection`, and `final_confirmation_prepared`.
+- Updated the dashboard automation timeline to show the latest attempt steps inside each attempt card.
 
 Tests/checks:
 
@@ -217,4 +219,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Resume the earlier remaining auto-apply work after the pre-screen cost gate has been reviewed in the UI.
+- Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, and SmartRecruiters, starting with Workday research and fixture-driven tests.
