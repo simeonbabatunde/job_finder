@@ -32,6 +32,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Documentation was expanded on 2026-05-31 with root docs, UI/UX direction, implementation plan, and this handoff.
 - The first Influence Chart-style UI implementation pass is complete for the main dashboard, run panel, application history, package modal, auth modal, and admin settings.
 - The matching workflow now runs a conservative pre-screen before full AI analysis, persists screened-out jobs with reasons, and keeps below-threshold/screened-out jobs in separate review lanes.
+- Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 
 ## Active Technical Direction
 
@@ -80,6 +81,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
+- Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
 ## Session Start Checklist
@@ -112,6 +114,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-05-31 | Keep migrations lightweight for now | A versioned startup runner covers current local evolution without adding Alembic setup before tests exist. |
 | 2026-06-02 | Use a conservative pre-screen before expensive matching work | Saves AI/package cost while keeping uncertain jobs eligible for full review. |
 | 2026-06-03 | Keep true final submit behind an explicit pilot flag | Current flows are useful as fill-for-review, but real submission needs explicit approval, fixture coverage, auditability, and rollback. |
+| 2026-06-03 | Add public non-sensitive health checks | Staging and Docker E2E need API, database, and worker readiness signals without exposing user data. |
 
 ## Open Questions
 
@@ -137,6 +140,9 @@ Completed:
 - Added fill-review screenshot/trace retention pruning through `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` and suppressed artifact URLs when files are missing or expired.
 - Added direct API-contract coverage for answer-vault encryption at rest and artifact retention pruning.
 - Added `cryptography` as a direct backend dependency and refreshed `backend/uv.lock`.
+- Added public health endpoints: `GET /health`, `GET /health/db`, and `GET /health/worker`.
+- Added `WorkerHeartbeat` persistence, startup migration `0013_worker_heartbeat`, Alembic revision `0002_worker_heartbeat`, Docker heartbeat env vars, and worker loop heartbeat writes.
+- Added deployment-readiness documentation covering health checks, staging env, worker readiness, migration mode, Docker E2E smoke, and production gates.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -242,4 +248,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Enable Alembic in staging, validate the baseline against a copy of existing data, then add export controls and deeper audit events for sensitive answer reads before production.
+- Add export/delete controls and deeper audit events for sensitive answer-vault reads before production, then run a staging rehearsal with `USE_ALEMBIC_MIGRATIONS=true` using `docs/DEPLOYMENT_READINESS.md`.

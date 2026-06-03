@@ -110,6 +110,32 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    checked_at: datetime
+
+
+class DatabaseHealthResponse(HealthResponse):
+    database: str
+    migration_mode: str
+
+
+class WorkerHealthResponse(HealthResponse):
+    runner_mode: str
+    worker_expected: bool
+    heartbeat_status: str
+    heartbeat_age_seconds: Optional[float] = None
+    heartbeat_worker_id: Optional[str] = None
+    heartbeat_worker_status: Optional[str] = None
+    heartbeat_last_seen_at: Optional[datetime] = None
+    queued_runs: int = 0
+    running_runs: int = 0
+    stale_running_runs: int = 0
+    stale_run_ids: List[int] = Field(default_factory=list)
+    oldest_queued_at: Optional[datetime] = None
+
+
 class ResumeUploadResponse(BaseModel):
     id: Optional[int] = None
     filename: str

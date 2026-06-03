@@ -373,6 +373,38 @@ def migrate_auto_apply_attempt_steps(connection):
         )
     )
 
+def migrate_worker_heartbeat(connection):
+    """Create worker liveness records for deployment health checks."""
+    id_column = "SERIAL PRIMARY KEY" if connection.dialect.name == "postgresql" else "INTEGER PRIMARY KEY"
+    json_type = "JSON"
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS workerheartbeat (
+                id {id_column},
+                worker_id VARCHAR NOT NULL UNIQUE,
+                status VARCHAR NOT NULL DEFAULT 'starting',
+                last_seen_at TIMESTAMP NOT NULL,
+                current_agent_run_id INTEGER,
+                details {json_type},
+                FOREIGN KEY(current_agent_run_id) REFERENCES agentrun (id)
+            )
+            """
+        )
+    )
+    for index_name, columns in (
+        ("ix_workerheartbeat_worker_id", "worker_id"),
+        ("ix_workerheartbeat_status", "status"),
+        ("ix_workerheartbeat_last_seen_at", "last_seen_at"),
+        ("ix_workerheartbeat_current_agent_run_id", "current_agent_run_id"),
+    ):
+        connection.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {index_name} "
+                f"ON workerheartbeat ({columns})"
+            )
+        )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -386,6 +418,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0010_application_prescreen", migrate_application_prescreen),
     ("0011_auto_apply_attempt_steps", migrate_auto_apply_attempt_steps),
     ("0012_auth_session_refresh_tokens", migrate_auth_session_refresh_tokens),
+    ("0013_worker_heartbeat", migrate_worker_heartbeat),
 )
 
 def ensure_schema_migrations_table(connection):

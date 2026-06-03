@@ -42,5 +42,6 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Run backend tests, frontend lint/build, `docker compose config`, and an E2E Docker smoke test before staging.
 - Confirm CORS only allows the deployed frontend origin.
 - Confirm Postgres credentials are not the default local values.
+- Confirm `/health`, `/health/db`, and `/health/worker` are healthy.
 - Confirm the worker process is running when `AGENT_RUNNER_MODE=worker`.
 - Confirm backups and restore testing for the production database before storing real user data.

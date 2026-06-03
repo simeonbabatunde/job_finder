@@ -47,6 +47,7 @@ Detailed UI direction is in [docs/UI_UX_DIRECTION.md](./docs/UI_UX_DIRECTION.md)
 - [UI/UX Direction](./docs/UI_UX_DIRECTION.md)
 - [Auto-Apply Reliability Plan](./docs/AUTO_APPLY_RELIABILITY_PLAN.md)
 - [Security Checklist](./docs/SECURITY_CHECKLIST.md)
+- [Deployment Readiness](./docs/DEPLOYMENT_READINESS.md)
 - [Handoff](./docs/HANDOFF.md)
 - [Frontend README](./frontend/README.md)
 - [Backend README](./backend/README.md)
@@ -91,6 +92,7 @@ Default URLs:
 - True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted before persistence; production requires `APP_DATA_ENCRYPTION_KEY`.
 - Fill-review screenshots and traces are authenticated artifacts with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` pruning.
+- Public health checks now cover API liveness, DB reachability, and worker heartbeat freshness through `/health`, `/health/db`, and `/health/worker`.
 - The focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 See [docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) for the staged fix plan.

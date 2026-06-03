@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 import base64
@@ -7,7 +7,7 @@ import io
 import os
 import secrets
 import time
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, text
 from sqlmodel import Session, select
 from app.models import (
     AgentRun,
@@ -24,8 +24,9 @@ from app.models import (
     Resume,
     ScraperConfig,
     User,
+    WorkerHeartbeat,
 )
-from app.database import engine, get_session
+from app.database import USE_ALEMBIC_MIGRATIONS, engine, get_session
 from typing import List, Optional
 from app.services.resume_parser import ResumeService
 from app.services.job_search import JobSearchService
@@ -56,7 +57,9 @@ from app.schemas import (
     ApplicationStatusResponse,
     AuthResponse,
     AutoApplyAttemptResponse,
+    DatabaseHealthResponse,
     EmailRequest,
+    HealthResponse,
     JobAnalysisRequest,
     JobAnalysisResponse,
     JobPreferenceRequest,
@@ -72,6 +75,7 @@ from app.schemas import (
     ResetPasswordRequest,
     SocialAuthRequest,
     UserStatusResponse,
+    WorkerHealthResponse,
 )
 from app.agent.graph import agent_graph
 from datetime import datetime, timedelta
@@ -380,7 +384,8 @@ def can_auto_apply(user: User):
     return user.role == "admin" or user.subscription_tier == "pro"
 
 def get_agent_runner_mode():
-    return os.getenv("AGENT_RUNNER_MODE", "background").strip().lower()
+    mode = os.getenv("AGENT_RUNNER_MODE", "background").strip().lower()
+    return mode or "background"
 
 def should_schedule_background_agent_run():
     return get_agent_runner_mode() != "worker"
@@ -390,6 +395,12 @@ def get_agent_run_stale_minutes():
         return max(int(os.getenv("AGENT_RUN_STALE_MINUTES", "120")), 1)
     except ValueError:
         return 120
+
+def get_worker_heartbeat_stale_seconds():
+    try:
+        return max(int(os.getenv("AGENT_WORKER_HEARTBEAT_STALE_SECONDS", "30")), 5)
+    except ValueError:
+        return 30
 
 def get_agent_runs_today(session: Session, user_id: int):
     today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -492,6 +503,100 @@ async def run_next_queued_agent_run():
         claim["auto_apply"],
     )
     return True
+
+def get_worker_health_snapshot(session: Session):
+    now = utc_now()
+    runner_mode = get_agent_runner_mode()
+    worker_expected = runner_mode == "worker"
+    heartbeat_stale_before = now - timedelta(seconds=get_worker_heartbeat_stale_seconds())
+    run_stale_before = now - timedelta(minutes=get_agent_run_stale_minutes())
+
+    latest_heartbeat = session.exec(
+        select(WorkerHeartbeat).order_by(WorkerHeartbeat.last_seen_at.desc())
+    ).first()
+    queued_runs = session.exec(
+        select(AgentRun).where(AgentRun.status == "queued")
+    ).all()
+    running_runs = session.exec(
+        select(AgentRun).where(AgentRun.status == "running")
+    ).all()
+    stale_runs = [
+        run
+        for run in running_runs
+        if run.claimed_at is not None and run.claimed_at < run_stale_before
+    ]
+    oldest_queued = session.exec(
+        select(AgentRun)
+        .where(AgentRun.status == "queued")
+        .order_by(AgentRun.started_at.asc())
+    ).first()
+
+    heartbeat_status = "not_expected"
+    heartbeat_age_seconds = None
+    if latest_heartbeat:
+        heartbeat_age_seconds = max((now - latest_heartbeat.last_seen_at).total_seconds(), 0)
+        heartbeat_status = (
+            "fresh"
+            if latest_heartbeat.last_seen_at >= heartbeat_stale_before
+            else "stale"
+        )
+    elif worker_expected:
+        heartbeat_status = "missing"
+
+    overall_status = "ok"
+    if worker_expected and heartbeat_status != "fresh":
+        overall_status = "degraded"
+    if latest_heartbeat and latest_heartbeat.status == "error":
+        overall_status = "degraded"
+    if stale_runs:
+        overall_status = "degraded"
+
+    return {
+        "status": overall_status,
+        "service": "job-finder-api",
+        "checked_at": now,
+        "runner_mode": runner_mode,
+        "worker_expected": worker_expected,
+        "heartbeat_status": heartbeat_status,
+        "heartbeat_age_seconds": heartbeat_age_seconds,
+        "heartbeat_worker_id": latest_heartbeat.worker_id if latest_heartbeat else None,
+        "heartbeat_worker_status": latest_heartbeat.status if latest_heartbeat else None,
+        "heartbeat_last_seen_at": latest_heartbeat.last_seen_at if latest_heartbeat else None,
+        "queued_runs": len(queued_runs),
+        "running_runs": len(running_runs),
+        "stale_running_runs": len(stale_runs),
+        "stale_run_ids": [run.id for run in stale_runs if run.id is not None],
+        "oldest_queued_at": oldest_queued.started_at if oldest_queued else None,
+    }
+
+@router.get("/health", response_model=HealthResponse)
+def health_check():
+    return {
+        "status": "ok",
+        "service": "job-finder-api",
+        "checked_at": utc_now(),
+    }
+
+@router.get("/health/db", response_model=DatabaseHealthResponse)
+def database_health_check(session: Session = Depends(get_session)):
+    try:
+        session.exec(text("SELECT 1")).first()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database health check failed: {exc}") from exc
+    return {
+        "status": "ok",
+        "service": "job-finder-api",
+        "checked_at": utc_now(),
+        "database": "reachable",
+        "migration_mode": "alembic" if USE_ALEMBIC_MIGRATIONS else "lightweight",
+    }
+
+@router.get("/health/worker", response_model=WorkerHealthResponse)
+def worker_health_check(response: Response, session: Session = Depends(get_session)):
+    snapshot = get_worker_health_snapshot(session)
+    if snapshot["status"] != "ok":
+        response.status_code = 503
+    return snapshot
 
 def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAudit]] = None):
     return {

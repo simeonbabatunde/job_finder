@@ -77,6 +77,14 @@ class AgentRun(SQLModel, table=True):
     claimed_at: Optional[datetime] = Field(default=None, index=True)
     completed_at: Optional[datetime] = Field(default=None)
 
+class WorkerHeartbeat(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    worker_id: str = Field(unique=True, index=True)
+    status: str = Field(default="starting", index=True)
+    last_seen_at: datetime = Field(default_factory=utc_now, index=True)
+    current_agent_run_id: Optional[int] = Field(default=None, foreign_key="agentrun.id", index=True)
+    details: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+
 class AutoApplyAttempt(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)

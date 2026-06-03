@@ -416,7 +416,7 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
-2. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-3. Add export controls and deeper audit events for sensitive answer reads.
-4. Add staging deployment docs with CORS, worker, backup/restore, and provider-key rotation checks.
+1. Add export/delete controls and deeper audit events for sensitive answer-vault reads.
+2. Rehearse staging with `USE_ALEMBIC_MIGRATIONS=true` against a database copy and verify `/health`, `/health/db`, and `/health/worker`.
+3. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
+4. Use `docs/DEPLOYMENT_READINESS.md` as the staging checklist for CORS, worker, backup/restore, and provider-key rotation checks.

@@ -19,7 +19,17 @@ from app.api import endpoints
 from app.agent import nodes
 from app.agent.nodes import apply_browser, submit_application
 from app.database import engine, run_schema_migrations
-from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, AutoApplyAudit, Profile, ScraperConfig, User
+from app.models import (
+    AgentRun,
+    Application,
+    ApplicationAnswerProfile,
+    ApplicationFillReview,
+    AutoApplyAudit,
+    Profile,
+    ScraperConfig,
+    User,
+    WorkerHeartbeat,
+)
 from app.services import job_search as job_search_module
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
@@ -229,6 +239,107 @@ def test_search_jobs_returns_empty_list_when_scraper_fails(monkeypatch):
 
     assert response.status_code == 200, response.text
     assert response.json() == []
+
+
+def test_health_endpoints_report_database_and_background_worker(monkeypatch):
+    monkeypatch.setenv("AGENT_RUNNER_MODE", "background")
+
+    with TestClient(app) as client:
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM workerheartbeat"))
+
+        health = client.get("/health")
+        assert health.status_code == 200, health.text
+        assert health.json()["status"] == "ok"
+
+        database = client.get("/health/db")
+        assert database.status_code == 200, database.text
+        assert database.json()["database"] == "reachable"
+        assert database.json()["migration_mode"] in {"lightweight", "alembic"}
+
+        worker = client.get("/health/worker")
+        assert worker.status_code == 200, worker.text
+        body = worker.json()
+        assert body["status"] == "ok"
+        assert body["runner_mode"] == "background"
+        assert body["worker_expected"] is False
+        assert body["heartbeat_status"] == "not_expected"
+
+
+def test_worker_health_reports_fresh_heartbeat_and_queue_counts(monkeypatch):
+    monkeypatch.setenv("AGENT_RUNNER_MODE", "worker")
+    monkeypatch.setenv("AGENT_WORKER_HEARTBEAT_STALE_SECONDS", "30")
+    queued_run_id = None
+
+    with TestClient(app) as client:
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM workerheartbeat"))
+
+        auth, _headers = register_user(client, "worker-health")
+        with Session(engine) as session:
+            session.add(
+                WorkerHeartbeat(
+                    worker_id="test-worker",
+                    status="idle",
+                    last_seen_at=utc_now(),
+                    details={"source": "test"},
+                )
+            )
+            queued_run = AgentRun(
+                user_id=auth["user"]["id"],
+                status="queued",
+                auto_apply=False,
+                started_at=utc_now() - timedelta(minutes=2),
+            )
+            session.add(queued_run)
+            session.commit()
+            session.refresh(queued_run)
+            queued_run_id = queued_run.id
+
+        response = client.get("/health/worker")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["runner_mode"] == "worker"
+        assert body["worker_expected"] is True
+        assert body["heartbeat_status"] == "fresh"
+        assert body["heartbeat_worker_id"] == "test-worker"
+        assert body["heartbeat_worker_status"] == "idle"
+        assert body["heartbeat_age_seconds"] >= 0
+        assert body["queued_runs"] >= 1
+        assert body["oldest_queued_at"] is not None
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM agentrun WHERE id = :id"),
+                {"id": queued_run_id},
+            )
+
+
+def test_worker_health_degrades_when_expected_worker_is_stale(monkeypatch):
+    monkeypatch.setenv("AGENT_RUNNER_MODE", "worker")
+    monkeypatch.setenv("AGENT_WORKER_HEARTBEAT_STALE_SECONDS", "5")
+
+    with TestClient(app) as client:
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM workerheartbeat"))
+
+        with Session(engine) as session:
+            session.add(
+                WorkerHeartbeat(
+                    worker_id="stale-worker",
+                    status="idle",
+                    last_seen_at=utc_now() - timedelta(seconds=30),
+                )
+            )
+            session.commit()
+
+        response = client.get("/health/worker")
+        assert response.status_code == 503, response.text
+        body = response.json()
+        assert body["status"] == "degraded"
+        assert body["heartbeat_status"] == "stale"
+        assert body["heartbeat_worker_id"] == "stale-worker"
 
 
 SUBMIT_DETECTION_FIXTURES = Path(__file__).parent / "fixtures" / "submit_detection"
@@ -1639,6 +1750,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0010_application_prescreen",) in rows
     assert ("0011_auto_apply_attempt_steps",) in rows
     assert ("0012_auth_session_refresh_tokens",) in rows
+    assert ("0013_worker_heartbeat",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):
