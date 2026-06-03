@@ -45,7 +45,7 @@ class SubmitControlDetection:
 
 
 class ApplicationFillReviewService:
-    SUPPORTED_ATS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}
+    SUPPORTED_ATS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday", "bamboohr"}
     SUBMIT_LABEL_PATTERNS = (
         ("submit application", 0.55),
         ("submit your application", 0.55),
@@ -209,6 +209,16 @@ class ApplicationFillReviewService:
                             answer_profile=answer_profile,
                             cover_letter=cover_letter,
                         )
+                    elif ats_type == "bamboohr":
+                        fill_result = await cls._fill_bamboohr_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
                     else:
                         fill_result = await cls._fill_smartrecruiters_page(
                             page=page,
@@ -290,7 +300,7 @@ class ApplicationFillReviewService:
                         await cls._open_lever_apply_form(page)
                     elif ats_type == "workday":
                         await cls._open_workday_apply_form(page)
-                    elif ats_type in ("ashby", "smartrecruiters"):
+                    elif ats_type in ("ashby", "smartrecruiters", "bamboohr"):
                         await cls._open_generic_apply_form(page)
 
                     html = await page.content()
@@ -806,6 +816,77 @@ class ApplicationFillReviewService:
             fields_missing=fields_missing,
             blockers=blockers,
             message="Workday form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
+        )
+
+    @classmethod
+    async def _fill_bamboohr_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        fields_filled: list[str] = []
+        fields_missing: list[str] = []
+        blockers: list[str] = []
+
+        if not await cls._open_generic_apply_form(page):
+            blockers.append("Could not open a BambooHR application form on this page.")
+
+        contact_fields = [
+            ("First name", ["input[name*='firstName' i]", "input[name*='first_name' i]", "input[id*='first' i]"], profile.first_name),
+            ("Last name", ["input[name*='lastName' i]", "input[name*='last_name' i]", "input[id*='last' i]"], profile.last_name),
+            ("Email", ["input[name*='email' i]", "input[type='email']", "input[id*='email' i]"], profile.email),
+            ("Phone", ["input[name*='phone' i]", "input[type='tel']", "input[id*='phone' i]"], profile.phone),
+            ("LinkedIn", ["input[name*='linkedin' i]", "input[id*='linkedin' i]"], profile.linkedin_url),
+            ("Website", ["input[name*='portfolio' i]", "input[name*='website' i]", "input[name*='github' i]"], profile.portfolio_url or profile.github_url),
+        ]
+        for label, selectors, value in contact_fields:
+            if not value:
+                fields_missing.append(label)
+                continue
+            if await cls._fill_first_available(page, selectors, value):
+                fields_filled.append(label)
+            elif label in ("First name", "Last name", "Email"):
+                fields_missing.append(label)
+
+        if cover_letter:
+            if await cls._fill_first_available(
+                page,
+                ["textarea[name*='cover' i]", "textarea[name*='message' i]", "textarea[id*='cover' i]", "textarea"],
+                cover_letter,
+            ):
+                fields_filled.append("Cover letter")
+
+        if await cls._upload_resume(page, resume_bytes, resume_filename):
+            fields_filled.append("Resume")
+        else:
+            fields_missing.append("Resume upload")
+
+        if answer_profile:
+            await cls._fill_answer_profile_fields(page, answer_profile, fields_filled, fields_missing)
+        else:
+            blockers.append("Application answer consent is off or no answer profile is saved; work authorization answers were not filled.")
+
+        required_missing = await cls._detect_required_missing_fields(page)
+        for item in required_missing:
+            if item not in fields_missing:
+                fields_missing.append(item)
+
+        status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
+        return FillReviewResult(
+            status=status,
+            ats_type="bamboohr",
+            application_url=page.url or application_url,
+            fields_filled=fields_filled,
+            fields_missing=fields_missing,
+            blockers=blockers,
+            message="BambooHR form prepared for human review. Nothing was submitted.",
             screenshot_base64=screenshot_base64,
         )
 

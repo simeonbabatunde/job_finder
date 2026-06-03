@@ -475,6 +475,11 @@ def test_application_link_resolver_classifies_ats_and_aggregators():
     assert workday.resolution_status == "resolved"
     assert workday.resolved_url == "https://acme.wd1.myworkdayjobs.com/en-US/jobs/job/123"
 
+    bamboohr = ApplicationLinkResolver.classify_url("https://acme.bamboohr.com/careers/123")
+    assert bamboohr.source_type == "ats"
+    assert bamboohr.ats_type == "bamboohr"
+    assert bamboohr.resolution_status == "resolved"
+
     linkedin = ApplicationLinkResolver.classify_url("https://www.linkedin.com/jobs/view/123")
     assert linkedin.source_type == "linkedin"
     assert linkedin.ats_type is None
@@ -766,6 +771,7 @@ def test_new_supported_ats_fill_review_use_supported_adapters(monkeypatch):
 
         ats_apps = [
             ("Ashby Role", "https://jobs.ashbyhq.com/beta/123", "ashby"),
+            ("BambooHR Role", "https://acme.bamboohr.com/careers/123", "bamboohr"),
             ("SmartRecruiters Role", "https://jobs.smartrecruiters.com/acme/123", "smartrecruiters"),
             ("Workday Role", "https://acme.wd1.myworkdayjobs.com/jobs/job/123", "workday"),
         ]
@@ -793,7 +799,7 @@ def test_new_supported_ats_fill_review_use_supported_adapters(monkeypatch):
             assert response.status_code == 200, response.text
             assert response.json()["ats_type"] == app_body["ats_type"]
 
-        assert sorted(ats_type for _, ats_type in calls) == ["ashby", "smartrecruiters", "workday"]
+        assert sorted(ats_type for _, ats_type in calls) == ["ashby", "bamboohr", "smartrecruiters", "workday"]
 
 
 def test_fill_review_requires_resolved_supported_ats_link():
@@ -818,12 +824,12 @@ def test_fill_review_requires_resolved_supported_ats_link():
             session.add(
                 Application(
                     user_id=user_id,
-                    job_title="BambooHR Role",
+                    job_title="ICIMS Role",
                     company="Beta",
-                    job_url="https://acme.bamboohr.com/careers/123",
-                    resolved_url="https://acme.bamboohr.com/careers/123",
+                    job_url="https://careers-acme.icims.com/jobs/123/job",
+                    resolved_url="https://careers-acme.icims.com/jobs/123/job",
                     source_type="ats",
-                    ats_type="bamboohr",
+                    ats_type="icims",
                     resolution_status="resolved",
                     status="Analyzed",
                     fit_score=0.9,
@@ -832,16 +838,16 @@ def test_fill_review_requires_resolved_supported_ats_link():
             session.commit()
 
         apps = client.get("/applications?sort=role&direction=asc", headers=headers).json()
-        bamboohr_app = next(item for item in apps if item["job_title"] == "BambooHR Role")
+        icims_app = next(item for item in apps if item["job_title"] == "ICIMS Role")
         linkedin_app = next(item for item in apps if item["job_title"] == "LinkedIn Role")
 
         unresolved = client.post(f"/applications/{linkedin_app['id']}/fill-review", headers=headers)
         assert unresolved.status_code == 400
         assert "Resolve" in unresolved.json()["detail"]
 
-        unsupported = client.post(f"/applications/{bamboohr_app['id']}/fill-review", headers=headers)
+        unsupported = client.post(f"/applications/{icims_app['id']}/fill-review", headers=headers)
         assert unsupported.status_code == 400
-        assert "Greenhouse, Lever, Ashby, SmartRecruiters, and Workday" in unsupported.json()["detail"]
+        assert "Greenhouse, Lever, Ashby, SmartRecruiters, Workday, and BambooHR" in unsupported.json()["detail"]
 
 
 def test_submit_control_detection_uses_html_fixtures():
@@ -856,6 +862,18 @@ def test_submit_control_detection_uses_html_fixtures():
     assert ready.confidence >= 0.85
     assert ready.selector == "#submit_application"
     assert ready.label == "Submit Application"
+
+    bamboohr_ready_html = (SUBMIT_DETECTION_FIXTURES / "bamboohr_ready.html").read_text()
+    bamboohr_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        bamboohr_ready_html,
+        ats_type="bamboohr",
+        current_url="https://acme.bamboohr.com/careers/123",
+    )
+    assert bamboohr_ready.status == "detected"
+    assert bamboohr_ready.detected is True
+    assert bamboohr_ready.confidence >= 0.85
+    assert bamboohr_ready.selector == "#submitApplication"
+    assert bamboohr_ready.label == "Submit Application"
 
     workday_ready_html = (SUBMIT_DETECTION_FIXTURES / "workday_ready.html").read_text()
     workday_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(

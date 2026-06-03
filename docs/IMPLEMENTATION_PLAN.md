@@ -84,7 +84,7 @@ Issues to address:
 - Browser fill-for-review is gated to pro/admin users; true auto-submit still needs stronger confirmation boundaries before production.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
-- Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, SmartRecruiters, and Workday links via `POST /applications/{app_id}/fill-review`.
+- Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, SmartRecruiters, Workday, and BambooHR links via `POST /applications/{app_id}/fill-review`.
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
 - Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
 - Final-submit guardrails are implemented with user-scoped submission settings, per-application readiness checks, a no-click final confirmation endpoint with fixture-backed submit-control detection, and persisted `AutoApplyAttempt` records tying fill-review and confirmation into one auditable workflow. Attempts now include compact step-level telemetry for fill-review and final-confirmation transitions. Actual final submission remains disabled.
@@ -417,6 +417,6 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
-2. Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, SmartRecruiters, and Workday, starting with fixture-driven research for iCIMS or BambooHR.
+2. Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, SmartRecruiters, Workday, and BambooHR, starting with fixture-driven research for iCIMS.
 3. Expand pytest coverage for package generation, admin access, and external-service failure paths.
 4. Move schema management to Alembic if the app needs a larger production migration workflow.
