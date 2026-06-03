@@ -389,12 +389,12 @@ References:
 
 Before enabling real auto-submit:
 
-- Encrypt sensitive application response data at rest.
+- Keep sensitive application response data encrypted at rest.
 - Separate normal profile data from sensitive self-ID data.
 - Add an audit trail for reads and writes to sensitive data.
 - Add user-facing export/delete controls.
 - Keep screenshots and traces behind authenticated access.
-- Set retention windows for traces and screenshots.
+- Keep retention windows enforced for traces and screenshots.
 - Avoid logging sensitive answers in plaintext.
 - Avoid sending sensitive self-ID answers to LLM providers.
 
@@ -409,6 +409,8 @@ Implemented boundary:
 - `POST /applications/{app_id}/submit-confirmation` detects the final submit control without clicking it and returns `can_submit=false`.
 - The legacy `BrowserApplyService` blocks `submit=True` unless `ENABLE_TRUE_AUTO_SUBMIT=true`.
 - `.env.example` and Docker Compose default `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Application answer-vault string fields are encrypted before persistence.
+- Fill-review screenshots and traces are authenticated and pruned by retention policy.
 
 Do not enable `ENABLE_TRUE_AUTO_SUBMIT=true` for normal development, demos, or staging smoke tests.
 
@@ -422,8 +424,8 @@ Required before enabling the flag:
 - A small allowlist of test users and companies/domains.
 - `APP_ENV=production` or a named staging environment with production-like secrets and logging.
 - Alembic enabled and validated against a copy of existing data.
-- Encryption at rest for sensitive application answers and artifact metadata.
-- Retention windows for screenshots, traces, and fill-review artifacts.
+- Verified encryption-at-rest behavior for sensitive application answers and artifact metadata.
+- Verified retention windows for screenshots, traces, and fill-review artifacts.
 - Fixture coverage for every supported ATS final-submit path, including ready, blocked, ambiguous, login-gated, captcha-gated, and multi-step cases.
 - A dry-run record for each attempted application showing filled fields, missing fields, blockers, submit-control selector, confidence, and final URL.
 - A per-job confirmation screen that shows the exact final action and requires explicit user confirmation.

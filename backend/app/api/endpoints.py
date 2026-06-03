@@ -33,6 +33,11 @@ from app.services.email import send_reset_email
 from app.services.application_link_resolver import ApplicationLinkResolver
 from app.services.application_fill_review import ApplicationFillReviewService
 from app.services.fill_review_artifacts import FillReviewArtifactStore
+from app.services.field_encryption import (
+    data_encryption_key_is_configured,
+    decrypt_text,
+    encrypt_text,
+)
 from app.schemas import (
     AgentRunResponse,
     AgentRunRecordResponse,
@@ -119,6 +124,9 @@ def auth_secret_is_insecure(secret: str) -> bool:
 
 if APP_ENV in {"prod", "production"} and auth_secret_is_insecure(AUTH_SECRET_KEY):
     raise RuntimeError("Set a strong AUTH_SECRET_KEY before running in production.")
+
+if APP_ENV in {"prod", "production"} and not data_encryption_key_is_configured():
+    raise RuntimeError("Set APP_DATA_ENCRYPTION_KEY before running in production.")
 
 def b64url_encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
@@ -500,7 +508,7 @@ def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAud
     }
 
 def fill_review_artifact_url(app_id: int, review_id: Optional[int], kind: str, path: Optional[str]):
-    if not review_id or not path:
+    if not review_id or not FillReviewArtifactStore.is_readable(path):
         return None
     return f"/applications/{app_id}/fill-reviews/{review_id}/{kind}"
 
@@ -977,6 +985,58 @@ def build_submit_confirmation_response(app: Application, readiness: dict, submit
         "evaluated_at": utc_now(),
     }
 
+APPLICATION_ANSWER_ENCRYPTED_FIELD_DEFAULTS = {
+    "work_authorized_us": "unspecified",
+    "requires_sponsorship_now": "unspecified",
+    "requires_sponsorship_future": "unspecified",
+    "willing_to_relocate": "unspecified",
+    "remote_preference": "unspecified",
+    "earliest_start_date": None,
+    "notice_period": None,
+    "desired_salary": None,
+    "work_authorization_notes": None,
+    "gender": "prefer_not_to_answer",
+    "race_ethnicity": "prefer_not_to_answer",
+    "veteran_status": "prefer_not_to_answer",
+    "disability_status": "prefer_not_to_answer",
+}
+
+
+def encrypt_application_answer_payload(payload: dict) -> dict:
+    encrypted = dict(payload)
+    for field in APPLICATION_ANSWER_ENCRYPTED_FIELD_DEFAULTS:
+        encrypted[field] = encrypt_text(encrypted.get(field))
+    return encrypted
+
+
+def decrypt_application_answer_profile(record: Optional[ApplicationAnswerProfile]) -> Optional[ApplicationAnswerProfile]:
+    if not record:
+        return None
+
+    data = record.model_dump()
+    for field, fallback in APPLICATION_ANSWER_ENCRYPTED_FIELD_DEFAULTS.items():
+        data[field] = decrypt_text(data.get(field), fallback=fallback)
+    return ApplicationAnswerProfile(**data)
+
+
+def serialize_application_answer_profile(record: Optional[ApplicationAnswerProfile]):
+    decrypted = decrypt_application_answer_profile(record)
+    if not decrypted:
+        return None
+
+    data = {
+        field: getattr(decrypted, field)
+        for field in APPLICATION_ANSWER_ENCRYPTED_FIELD_DEFAULTS
+    }
+    data.update({
+        "id": decrypted.id,
+        "consent_to_use_answers": decrypted.consent_to_use_answers,
+        "consent_to_use_demographics": decrypted.consent_to_use_demographics,
+        "updated_at": decrypted.updated_at,
+    })
+    return data
+
+
 def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest) -> dict:
     data = payload.model_dump()
     if not data.get("consent_to_use_demographics"):
@@ -1342,7 +1402,11 @@ def update_profile(profile_data: ProfileRequest, user: User = Depends(get_curren
 
 @router.get("/application-profile", response_model=Optional[ApplicationAnswerProfileResponse])
 def get_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    return session.exec(select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)).first()
+    answer_profile_record = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+    answer_profile = decrypt_application_answer_profile(answer_profile_record)
+    return serialize_application_answer_profile(answer_profile)
 
 @router.post("/application-profile", response_model=ApplicationAnswerProfileResponse)
 def update_application_profile(
@@ -1350,7 +1414,7 @@ def update_application_profile(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    payload = sanitize_application_answer_payload(profile_data)
+    payload = encrypt_application_answer_payload(sanitize_application_answer_payload(profile_data))
     existing_profile = session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first()
@@ -1365,7 +1429,7 @@ def update_application_profile(
     session.add(answer_profile)
     session.commit()
     session.refresh(answer_profile)
-    return answer_profile
+    return serialize_application_answer_profile(answer_profile)
 
 @router.delete("/application-profile", response_model=MessageResponse)
 def delete_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -1645,7 +1709,7 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
             "years_experience": profile.years_experience,
             "expected_salary": profile.expected_salary,
         } if profile else None,
-        "application_profile": application_profile,
+        "application_profile": serialize_application_answer_profile(application_profile),
         "quota": get_agent_quota_status(session, user)
     }
 
@@ -1764,9 +1828,9 @@ async def fill_application_for_review(
 
     resume = get_latest_resume(session, user.id)
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
-    answer_profile = session.exec(
+    answer_profile = decrypt_application_answer_profile(session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
-    ).first()
+    ).first())
 
     if not resume:
         raise HTTPException(status_code=400, detail="Please upload a resume first")
@@ -1877,9 +1941,9 @@ def check_application_submit_readiness(
         raise HTTPException(status_code=404, detail="Application not found")
 
     settings = get_or_create_submit_settings(session, user.id)
-    answer_profile = session.exec(
+    answer_profile = decrypt_application_answer_profile(session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
-    ).first()
+    ).first())
     latest_review = get_latest_fill_review(session, user.id, app.id)
     submits_today_count = get_submits_today_count(session, user.id)
 
@@ -1903,9 +1967,9 @@ async def create_application_submit_confirmation(
         raise HTTPException(status_code=404, detail="Application not found")
 
     settings = get_or_create_submit_settings(session, user.id)
-    answer_profile = session.exec(
+    answer_profile = decrypt_application_answer_profile(session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
-    ).first()
+    ).first())
     latest_review = get_latest_fill_review(session, user.id, app.id)
     readiness = evaluate_submit_readiness(
         app=app,

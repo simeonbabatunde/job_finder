@@ -2,6 +2,7 @@ import base64
 import asyncio
 import os
 import tempfile
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -23,6 +24,8 @@ from app.services import job_search as job_search_module
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.browser_apply import BrowserApplyService
+from app.services.field_encryption import ENCRYPTED_VALUE_PREFIX
+from app.services.fill_review_artifacts import FillReviewArtifactStore
 from app.time_utils import utc_now
 from app.services.job_pre_screen import JobPreScreenService
 from app.services.persistence import PersistenceService
@@ -861,6 +864,23 @@ def test_greenhouse_fill_review_endpoint_updates_application_status(monkeypatch)
         assert client.get(body["trace_url"], headers=headers).status_code == 404
 
 
+def test_fill_review_artifact_store_prunes_expired_files(monkeypatch, tmp_path):
+    monkeypatch.setenv("FILL_REVIEW_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.setenv("FILL_REVIEW_ARTIFACT_RETENTION_DAYS", "1")
+
+    old_file = tmp_path / "1" / "2" / "old-trace.zip"
+    recent_file = tmp_path / "1" / "2" / "recent-trace.zip"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_bytes(b"old")
+    recent_file.write_bytes(b"recent")
+    old_timestamp = time.time() - (3 * 24 * 60 * 60)
+    os.utime(old_file, (old_timestamp, old_timestamp))
+
+    assert FillReviewArtifactStore.prune_expired() == 1
+    assert not old_file.exists()
+    assert recent_file.exists()
+
+
 def test_lever_fill_review_endpoint_uses_supported_adapter(monkeypatch):
     async def fake_fill_application_for_review(**kwargs):
         assert kwargs["application_url"] == "https://jobs.lever.co/acme/123"
@@ -1320,6 +1340,16 @@ def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answe
         assert status_response.status_code == 200, status_response.text
         assert status_response.json()["application_profile"]["work_authorized_us"] == "yes"
 
+        with Session(engine) as session:
+            stored = session.exec(
+                select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == auth["user"]["id"])
+            ).first()
+            assert stored.work_authorized_us.startswith(ENCRYPTED_VALUE_PREFIX)
+            assert stored.work_authorized_us != "yes"
+            assert stored.work_authorization_notes.startswith(ENCRYPTED_VALUE_PREFIX)
+            assert stored.gender.startswith(ENCRYPTED_VALUE_PREFIX)
+            assert stored.gender != "prefer_not_to_answer"
+
         _, other_headers = register_user(client, "answer-profile-other")
         other_response = client.get("/application-profile", headers=other_headers)
         assert other_response.status_code == 200, other_response.text
@@ -1333,7 +1363,7 @@ def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answe
 
 def test_application_answer_profile_stores_demographics_with_explicit_consent():
     with TestClient(app) as client:
-        _, headers = register_user(client, "answer-profile-consent")
+        auth, headers = register_user(client, "answer-profile-consent")
 
         response = client.post(
             "/application-profile",
@@ -1354,6 +1384,15 @@ def test_application_answer_profile_stores_demographics_with_explicit_consent():
         assert body["gender"] == "non_binary"
         assert body["veteran_status"] == "not_a_veteran"
         assert body["consent_to_use_demographics"] is True
+
+        with Session(engine) as session:
+            stored = session.exec(
+                select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == auth["user"]["id"])
+            ).first()
+            assert stored.gender.startswith(ENCRYPTED_VALUE_PREFIX)
+            assert stored.gender != "non_binary"
+            assert stored.veteran_status.startswith(ENCRYPTED_VALUE_PREFIX)
+            assert stored.veteran_status != "not_a_veteran"
 
 
 def test_submission_settings_and_readiness_contract():

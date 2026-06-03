@@ -75,10 +75,13 @@ SMTP_EMAIL=
 SMTP_PASSWORD=
 FRONTEND_URL=http://localhost:5173
 AUTH_SECRET_KEY=
-AUTH_TOKEN_TTL_SECONDS=604800
+AUTH_ACCESS_TOKEN_TTL_SECONDS=3600
+AUTH_REFRESH_TOKEN_TTL_SECONDS=2592000
+APP_DATA_ENCRYPTION_KEY=
 FREE_DAILY_AGENT_RUN_LIMIT=3
 PRO_DAILY_AGENT_RUN_LIMIT=50
 FILL_REVIEW_ARTIFACT_DIR=storage/fill_review_artifacts
+FILL_REVIEW_ARTIFACT_RETENTION_DAYS=14
 AGENT_RUNNER_MODE=background
 AGENT_WORKER_POLL_SECONDS=2
 AGENT_RUN_STALE_MINUTES=120
@@ -204,13 +207,15 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Daily agent-run quotas are enforced for free/pro tiers, and browser fill-for-review is gated to pro/admin users.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
 - Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
+- Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - LLM calls are live by default and need test doubles for repeatable automated tests.
 
 ## Backend Implementation Priorities
 
 1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
 2. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
-3. Add encryption-at-rest and retention policy enforcement for sensitive application answers and automation artifacts before production.
+3. Add export controls and deeper audit events for sensitive answer reads before production.
 
 ## Product Notes Preserved
 

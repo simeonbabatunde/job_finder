@@ -89,6 +89,8 @@ Default URLs:
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but the key should be rotated if it was real.
 - Daily agent-run quotas, pro/admin fill-for-review gating, persisted agent run logs, and auto-apply audit records are implemented.
 - True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Application answer-vault string fields are encrypted before persistence; production requires `APP_DATA_ENCRYPTION_KEY`.
+- Fill-review screenshots and traces are authenticated artifacts with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` pruning.
 - The focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
 
 See [docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) for the staged fix plan.

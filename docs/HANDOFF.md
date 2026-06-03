@@ -118,7 +118,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Should the user-facing brand be "Job Finder", "Job Hunter", or another name?
 - Should auth be custom JWT/session auth, Supabase Auth, Clerk, or another provider?
 - Should true auto-submit ever submit without a final human confirmation per job? Current answer: no.
-- Should sensitive voluntary self-identification answers be stored at all, or should the product always default to decline/self-review?
+- Should sensitive voluntary self-identification answers be stored at all? Current answer: optional only, explicit consent required, encrypted at rest, default to decline/self-review.
 
 ## Latest Handoff Entry
 
@@ -133,6 +133,10 @@ Completed:
 - Added an explicit legacy `BrowserApplyService` guard that blocks `submit=True` unless `ENABLE_TRUE_AUTO_SUBMIT=true`.
 - Added API-contract coverage proving browser final submit is blocked by default.
 - Added `docs/SECURITY_CHECKLIST.md` covering private `.env` handling, key rotation, production auth secrets, artifact privacy, true-submit gating, and deployment checks.
+- Added application answer-vault field encryption using `APP_DATA_ENCRYPTION_KEY`, with plaintext-backward-compatible reads and production startup enforcement for a dedicated key.
+- Added fill-review screenshot/trace retention pruning through `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` and suppressed artifact URLs when files are missing or expired.
+- Added direct API-contract coverage for answer-vault encryption at rest and artifact retention pruning.
+- Added `cryptography` as a direct backend dependency and refreshed `backend/uv.lock`.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -227,7 +231,7 @@ Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 32 tests after the UTC cleanup and true-submit guard.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 33 tests after answer-vault encryption and artifact retention.
 - Docker Compose E2E smoke passed against `http://127.0.0.1:8000` and `http://localhost:5173`.
 - Alembic `upgrade head` passed in an isolated uv Python 3.11 container against a temporary SQLite database.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, `job_pre_screen.py`, and `persistence.py`.
@@ -238,4 +242,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Enable Alembic in staging, validate the baseline against a copy of existing data, then add encryption/retention controls for sensitive answers and automation artifacts before production.
+- Enable Alembic in staging, validate the baseline against a copy of existing data, then add export controls and deeper audit events for sensitive answer reads before production.

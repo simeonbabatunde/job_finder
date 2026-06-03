@@ -13,18 +13,20 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 
 - Set `APP_ENV=production`.
 - Set a strong `AUTH_SECRET_KEY` with at least 32 random characters.
+- Set a strong dedicated `APP_DATA_ENCRYPTION_KEY`; production startup rejects missing keys.
 - Use `AUTH_PREVIOUS_SECRET_KEYS` only during planned key rotation.
 - Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a real-submit pilot has explicit approval and fixture coverage.
 - Set `USE_ALEMBIC_MIGRATIONS=true` in staging after validating the baseline against a copy of existing data.
+- Set `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` to the approved screenshot/trace retention window.
 - Use provider API keys with least-privilege scopes where the provider supports scoping.
 
 ## User Data
 
 - Treat resumes, profile data, application answers, screenshots, traces, and generated packages as private user data.
+- Application answer-vault string fields are encrypted at rest before persistence.
 - Store voluntary self-ID answers separately from matching preferences.
 - Default voluntary self-ID answers to `prefer_not_to_answer`.
 - Do not send voluntary self-ID answers to LLM prompts for matching, scoring, or ranking.
-- Add encryption at rest before production storage of sensitive application answers.
 - Provide export/delete/reset controls for saved application answers and automation artifacts.
 
 ## Browser Automation
@@ -32,7 +34,7 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Fill-for-review may prepare supported ATS forms, but it must stop before final submit.
 - Final-submit readiness and confirmation endpoints must keep `can_submit=false` until an approved pilot changes that behavior.
 - Screenshots and Playwright traces must remain behind authenticated endpoints.
-- Set a retention window for screenshots and traces before production.
+- Screenshots and Playwright traces are pruned according to `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Avoid logging filled field values, answers, resume text, tokens, and provider keys.
 
 ## Deployment

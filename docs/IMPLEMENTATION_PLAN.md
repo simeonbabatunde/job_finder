@@ -418,5 +418,5 @@ Acceptance criteria:
 
 1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
 2. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-3. Add encryption-at-rest and retention policy enforcement for sensitive application answers, screenshots, and traces.
+3. Add export controls and deeper audit events for sensitive answer reads.
 4. Add staging deployment docs with CORS, worker, backup/restore, and provider-key rotation checks.
