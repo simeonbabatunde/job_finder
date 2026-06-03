@@ -212,12 +212,13 @@ Completed:
 - Added guarded BambooHR fill-for-review support and fixture-backed no-click submit-control detection.
 - Added guarded iCIMS fill-for-review support and fixture-backed no-click submit-control detection.
 - Added guarded Recruitee and Taleo fill-for-review support and fixture-backed no-click submit-control detection.
+- Added focused API coverage for successful application package generation, package cover-letter persistence, admin scraper-config access/update, and graceful job-search scraper failures.
 
 Tests/checks:
 
 - `npm run build` in `frontend` passed.
 - `npm run lint` in `frontend` passed.
-- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 28 tests.
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 31 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, `job_pre_screen.py`, and `persistence.py`.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
@@ -225,4 +226,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Expand pytest coverage for package generation, admin access, and external-service failure paths.
+- Move schema management to Alembic if the app needs a larger production migration workflow.

@@ -416,5 +416,4 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Expand pytest coverage for package generation, admin access, and external-service failure paths.
-2. Move schema management to Alembic if the app needs a larger production migration workflow.
+1. Move schema management to Alembic if the app needs a larger production migration workflow.

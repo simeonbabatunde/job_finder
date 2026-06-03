@@ -18,7 +18,8 @@ from app.api import endpoints
 from app.agent import nodes
 from app.agent.nodes import apply_browser, submit_application
 from app.database import engine, run_schema_migrations
-from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, AutoApplyAudit, Profile, User
+from app.models import Application, ApplicationAnswerProfile, ApplicationFillReview, AutoApplyAudit, Profile, ScraperConfig, User
+from app.services import job_search as job_search_module
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.job_pre_screen import JobPreScreenService
@@ -212,6 +213,19 @@ def test_search_jobs_prescreens_before_ai_analysis(monkeypatch):
     assert "screened out 1 obvious non-fits" in result["logs"][-1]
 
 
+def test_search_jobs_returns_empty_list_when_scraper_fails(monkeypatch):
+    def fake_scrape_jobs(*_args, **_kwargs):
+        raise RuntimeError("jobspy unavailable")
+
+    monkeypatch.setattr(job_search_module, "scrape_jobs", fake_scrape_jobs)
+
+    with TestClient(app) as client:
+        response = client.get("/search-jobs?query=Python&location=Remote")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == []
+
+
 SUBMIT_DETECTION_FIXTURES = Path(__file__).parent / "fixtures" / "submit_detection"
 
 
@@ -275,6 +289,41 @@ def test_auth_secret_insecurity_detector_flags_dev_defaults():
     assert endpoints.auth_secret_is_insecure("change-me-in-production")
     assert endpoints.auth_secret_is_insecure("short")
     assert not endpoints.auth_secret_is_insecure("a-production-secret-with-enough-entropy")
+
+
+def test_admin_config_requires_admin_and_persists_updates():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "admin-config")
+        user_id = auth["user"]["id"]
+
+        forbidden = client.get("/admin/config", headers=headers)
+        assert forbidden.status_code == 403
+
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            user.role = "admin"
+            session.add(user)
+            session.commit()
+
+        payload = {
+            "site_names": ["linkedin", "google", "motion_recruitment"],
+            "results_wanted": 8,
+            "country_indeed": "USA",
+        }
+        update = client.put("/admin/config", json=payload, headers=headers)
+        assert update.status_code == 200, update.text
+        assert update.json()["message"] == "Configuration updated"
+
+        current = client.get("/admin/config", headers=headers)
+        assert current.status_code == 200, current.text
+        body = current.json()
+        assert body["site_names"] == payload["site_names"]
+        assert body["results_wanted"] == 8
+        assert body["country_indeed"] == "USA"
+
+        with Session(engine) as session:
+            saved = session.exec(select(ScraperConfig).order_by(ScraperConfig.updated_at.desc())).first()
+        assert saved.site_names == payload["site_names"]
 
 
 def test_resume_and_preferences_are_scoped_to_current_user():
@@ -489,6 +538,80 @@ def test_application_package_generation_requires_threshold_match():
 
         assert response.status_code == 400
         assert "below your 75% minimum match score" in response.json()["detail"]
+
+
+def test_application_package_generation_persists_cover_letter_with_fake_llm(monkeypatch):
+    class FakeChain:
+        def __init__(self, kind: str):
+            self.kind = kind
+
+        def __or__(self, _other):
+            return self
+
+        async def ainvoke(self, _payload):
+            if self.kind == "package":
+                return {
+                    "cover_letter": "Dear Hiring Manager,\n\nI am excited about Acme.\n\nSincerely,\nTest User",
+                    "tailored_summary": "Backend engineer with FastAPI and SQL experience.",
+                    "talking_points": ["FastAPI", "SQL", "Automation", "Ownership"],
+                    "qa_answers": [{"question": "Why Acme?", "answer": "Strong platform fit."}],
+                }
+            return {
+                "interview_questions": [{"question": "Tell me about yourself", "suggested_answer": "Backend builder."}],
+                "company_brief": {"overview": "Acme builds platform tools.", "questions_to_ask": ["How is success measured?"]},
+            }
+
+    def fake_from_messages(messages):
+        system_message = messages[0][1]
+        kind = "interview" if "interview coach" in system_message else "package"
+        return FakeChain(kind)
+
+    monkeypatch.setattr(endpoints, "get_llm", lambda model_type="openai": object())
+    monkeypatch.setattr(endpoints.ChatPromptTemplate, "from_messages", staticmethod(fake_from_messages))
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "package-success")
+        user_id = auth["user"]["id"]
+        prepare_agent_setup(client, headers)
+
+        with Session(engine) as session:
+            app_record = Application(
+                user_id=user_id,
+                job_title="Backend Engineer",
+                company="Acme",
+                job_url="https://example.test/backend",
+                status="Analyzed",
+                fit_score=0.91,
+                pre_screen_status="pass",
+            )
+            session.add(app_record)
+            session.commit()
+            session.refresh(app_record)
+            app_id = app_record.id
+
+        response = client.post(
+            "/agent/prepare-application",
+            json={
+                "app_id": app_id,
+                "title": "Backend Engineer",
+                "company": "Acme",
+                "description": "Build FastAPI services and SQL-backed automation.",
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["cover_letter"].startswith("Dear Hiring Manager")
+        assert body["tailored_summary"] == "Backend engineer with FastAPI and SQL experience."
+        assert body["talking_points"] == ["FastAPI", "SQL", "Automation", "Ownership"]
+        assert body["qa_answers"][0]["answer"] == "Strong platform fit."
+        assert body["interview_questions"][0]["question"] == "Tell me about yourself"
+        assert body["company_brief"]["overview"] == "Acme builds platform tools."
+
+        with Session(engine) as session:
+            saved_app = session.get(Application, app_id)
+        assert saved_app.cover_letter == body["cover_letter"]
 
 
 def test_application_link_resolver_classifies_ats_and_aggregators():
