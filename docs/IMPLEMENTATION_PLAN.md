@@ -77,7 +77,7 @@ Issues to address:
 
 - Resume and preferences are now user-scoped in the core backend flows.
 - Auth now uses signed bearer tokens with server-side session records, logout invalidation, rotating refresh tokens, replay protection, and previous-secret verification for key rotation.
-- Startup now uses `create_all` plus a lightweight versioned `schema_migrations` table.
+- Startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to `create_all` plus the lightweight `schema_migrations` table.
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
 - Agent runs are persisted as queued records, can run in local background mode, and can be processed by the Docker worker service in worker mode.
@@ -340,7 +340,7 @@ Make the backend maintainable, testable, and production safer.
 
 Deliverables:
 
-- Versioned migrations. A lightweight startup runner exists now; Alembic remains the recommended future upgrade for a larger production workflow.
+- Versioned migrations. Alembic scaffolding and a current-schema baseline exist now, with the lightweight startup runner still available as the local/dev fallback.
 - Pydantic request/response schemas for public API contracts. Implemented for the main auth, profile, preferences, agent run, application history, single-job analysis, application package, status, resume feedback, and password reset flows.
 - User ownership fields on resumes and preferences. Implemented with a versioned startup migration for existing local databases.
 - Query parameters for applications sorting, filtering, and limiting. Implemented on `GET /applications`.
@@ -416,4 +416,4 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Move schema management to Alembic if the app needs a larger production migration workflow.
+1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.

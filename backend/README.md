@@ -196,9 +196,9 @@ the main best-fit view while remaining reviewable from the full pipeline.
 
 ## Known Backend Issues
 
-- Authentication uses signed bearer tokens stored by the frontend. Move to hardened sessions/JWT infrastructure before production.
+- Authentication uses signed bearer tokens plus rotating refresh tokens, server-side session invalidation, refresh replay protection, and previous-secret verification for key rotation.
 - The previous README contained a plaintext OpenRouter key. It has been removed; rotate the key if it was real.
-- Database startup uses `SQLModel.metadata.create_all` plus a lightweight `schema_migrations` table. Alembic is still a future production upgrade.
+- Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight `schema_migrations` runner.
 - Core public write endpoints use Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily agent-run quotas are enforced for free/pro tiers, and auto-submit is gated to pro/admin users.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
@@ -207,11 +207,9 @@ the main best-fit view while remaining reviewable from the full pipeline.
 
 ## Backend Implementation Priorities
 
-1. Harden auth secrets and add refresh-token rotation if longer-lived sessions are needed.
-2. Move background agent execution to a durable worker/queue for multi-process deployments.
-3. Move schema management to Alembic if the app needs a larger production migration workflow.
-4. Add stronger browser auto-submit confirmation and allow/deny rules.
-5. Expand pytest coverage for package generation, admin access, and external-service failure paths.
+1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
+2. Replace `datetime.utcnow()` usage with timezone-aware UTC values to clear Python 3.14 deprecation warnings.
+3. Keep true auto-submit behind final-confirmation guardrails until a real submit pilot is explicitly approved.
 
 ## Product Notes Preserved
 

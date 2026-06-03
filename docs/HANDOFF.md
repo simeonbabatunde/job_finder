@@ -74,7 +74,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but rotate it if it was real.
 - Auth uses signed bearer tokens plus rotating refresh tokens stored in `localStorage`; server-side session records, logout invalidation, refresh replay protection, and previous-secret verification for key rotation are implemented.
 - Resumes and preferences are now user-scoped in the touched backend flows.
-- Database startup uses `create_all` plus a lightweight versioned `schema_migrations` runner. Alembic is still a future production upgrade.
+- Database startup can run an Alembic current-schema baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to `create_all` plus the lightweight versioned `schema_migrations` runner.
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit remains future work until stronger final confirmation rules exist.
@@ -177,6 +177,7 @@ Completed:
 - Added explicit response schemas for auth, profile, preferences, agent run, application history, single-job analysis, application package generation, application status, resume feedback, and password reset flows.
 - Updated application history responses to omit persistence-only `user_id`.
 - Replaced the one-off startup compatibility patch with a lightweight `schema_migrations` runner in `backend/app/database.py`.
+- Added Alembic scaffolding, a current-schema baseline revision, and an opt-in startup path through `USE_ALEMBIC_MIGRATIONS=true`.
 - Repaired `backend/.venv` with Python 3.14 and installed backend dependencies plus `pytest`.
 - Added `backend/app/tests/test_api_contracts.py` covering bearer auth, user-scoped resume/preferences, migration recording, application sorting/filtering/limit behavior, persisted agent runs, quota enforcement, and pro/admin browser fill-for-review gating.
 - Added `AgentRun` and `AutoApplyAudit` persistence models.
@@ -220,10 +221,11 @@ Tests/checks:
 - `npm run lint` in `frontend` passed.
 - `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/app/tests` passed with 31 tests.
 - Backend syntax compile check passed for `models.py`, `database.py`, `schemas.py`, `endpoints.py`, `state.py`, `nodes.py`, `job_pre_screen.py`, and `persistence.py`.
+- Alembic baseline upgrade was verified in the uv Python 3.11 container against a temporary SQLite database.
 - `git diff --check` passed.
 - `docker compose config` rendered successfully.
 - `npm audit --json` in `frontend` reports 0 vulnerabilities after `npm audit fix`.
 
 Next concrete step:
 
-- Move schema management to Alembic if the app needs a larger production migration workflow.
+- Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.

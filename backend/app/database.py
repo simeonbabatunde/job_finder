@@ -1,10 +1,13 @@
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, create_engine, Session
 from typing import Callable, Generator
+from pathlib import Path
 
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_hunter")
+USE_ALEMBIC_MIGRATIONS = os.getenv("USE_ALEMBIC_MIGRATIONS", "").lower() in {"1", "true", "yes"}
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 engine = create_engine(DATABASE_URL, echo=True)
 
@@ -418,7 +421,28 @@ def run_schema_migrations():
             migration(connection)
             record_migration(connection, migration_id)
 
+def run_alembic_migrations() -> bool:
+    try:
+        from alembic import command
+        from alembic.config import Config
+    except ImportError:
+        print("Alembic is not installed; falling back to lightweight startup migrations.")
+        return False
+
+    alembic_ini = BACKEND_DIR / "alembic.ini"
+    if not alembic_ini.exists():
+        print("Alembic config was not found; falling back to lightweight startup migrations.")
+        return False
+
+    config = Config(str(alembic_ini))
+    config.set_main_option("sqlalchemy.url", DATABASE_URL)
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    command.upgrade(config, "head")
+    return True
+
 def create_db_and_tables():
+    if USE_ALEMBIC_MIGRATIONS and run_alembic_migrations():
+        return
     SQLModel.metadata.create_all(engine)
     run_schema_migrations()
 

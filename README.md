@@ -81,9 +81,9 @@ Default URLs:
 
 ## Important Current Risks
 
-- Auth now uses signed bearer tokens stored in local storage. This is better than the old email header but should move to hardened sessions or JWT infrastructure before production.
+- Auth uses signed bearer tokens plus rotating refresh tokens, server-side session invalidation, refresh replay protection, and previous-secret verification for key rotation.
 - Resume and preferences are scoped to the active user in the core backend flows.
-- Database startup uses `SQLModel.metadata.create_all` plus a lightweight versioned migration table. Alembic is still a good future upgrade before production.
+- Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight versioned migration table.
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but the key should be rotated if it was real.
 - Daily agent-run quotas, pro/admin auto-submit gating, persisted agent run logs, and auto-apply audit records are implemented.
 - The focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
