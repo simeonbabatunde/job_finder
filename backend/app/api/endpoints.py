@@ -1634,7 +1634,7 @@ async def fill_application_for_review(
     if app.resolution_status != "resolved" or not application_url:
         raise HTTPException(status_code=400, detail="Resolve this application link before fill-for-review")
     if ats_type not in ApplicationFillReviewService.SUPPORTED_ATS:
-        raise HTTPException(status_code=400, detail="Fill-for-review currently supports Greenhouse, Lever, Ashby, and SmartRecruiters links only")
+        raise HTTPException(status_code=400, detail="Fill-for-review currently supports Greenhouse, Lever, Ashby, SmartRecruiters, and Workday links only")
 
     resume = get_latest_resume(session, user.id)
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()

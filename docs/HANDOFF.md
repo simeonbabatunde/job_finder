@@ -192,7 +192,7 @@ Completed:
 - Added the dashboard `Application answers` section for work authorization, sponsorship, relocation/work-setting preferences, compensation/start timing, and optional self-identification answers.
 - Added backend consent handling so sensitive self-ID values are saved as `prefer_not_to_answer` unless demographic storage consent is enabled.
 - Added `DELETE /application-profile` and a dashboard reset action for clearing saved application answers.
-- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse, Lever, Ashby, and SmartRecruiters applications.
+- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse, Lever, Ashby, SmartRecruiters, and Workday applications.
 - Added `ApplicationFillReviewService` to fill standard supported-ATS fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
@@ -206,6 +206,8 @@ Completed:
 - Added persisted `AutoApplyAttempt` records, `GET /applications/{app_id}/automation-attempts`, attempt-linked audit events, and a dashboard automation timeline tying fill-review and final confirmation into one workflow.
 - Added step-level telemetry to `AutoApplyAttempt` records for fill-review and final-confirmation transitions, including `attempt_created`, `inputs_validated`, `browser_fill_started`, `fill_review_completed`, `readiness_checked`, `submit_control_detection`, and `final_confirmation_prepared`.
 - Updated the dashboard automation timeline to show the latest attempt steps inside each attempt card.
+- Added guarded Workday fill-for-review and no-click submit-control detection support.
+- Added fixture-backed Workday submit detection coverage for a ready form and an account/sign-in gate.
 
 Tests/checks:
 
@@ -219,4 +221,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, and SmartRecruiters, starting with Workday research and fixture-driven tests.
+- Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, SmartRecruiters, and Workday, starting with fixture-driven research for iCIMS or BambooHR.

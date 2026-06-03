@@ -45,7 +45,7 @@ class SubmitControlDetection:
 
 
 class ApplicationFillReviewService:
-    SUPPORTED_ATS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
+    SUPPORTED_ATS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"}
     SUBMIT_LABEL_PATTERNS = (
         ("submit application", 0.55),
         ("submit your application", 0.55),
@@ -79,6 +79,13 @@ class ApplicationFillReviewService:
         "bot check",
         "sign in required",
         "login required",
+    )
+    WORKDAY_ACCOUNT_GATE_PATTERNS = (
+        "sign in to your account",
+        "sign into your account",
+        "already have an account",
+        "create account",
+        "create an account",
     )
 
     @classmethod
@@ -192,6 +199,16 @@ class ApplicationFillReviewService:
                             answer_profile=answer_profile,
                             cover_letter=cover_letter,
                         )
+                    elif ats_type == "workday":
+                        fill_result = await cls._fill_workday_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
                     else:
                         fill_result = await cls._fill_smartrecruiters_page(
                             page=page,
@@ -271,6 +288,8 @@ class ApplicationFillReviewService:
 
                     if ats_type == "lever":
                         await cls._open_lever_apply_form(page)
+                    elif ats_type == "workday":
+                        await cls._open_workday_apply_form(page)
                     elif ats_type in ("ashby", "smartrecruiters"):
                         await cls._open_generic_apply_form(page)
 
@@ -305,6 +324,12 @@ class ApplicationFillReviewService:
             for pattern in cls.PAGE_BLOCKER_PATTERNS
             if pattern in page_text or pattern in lowered_html
         ]
+        if ats_type == "workday":
+            page_blockers.extend(
+                pattern
+                for pattern in cls.WORKDAY_ACCOUNT_GATE_PATTERNS
+                if pattern in page_text or pattern in lowered_html
+            )
         if page_blockers:
             return SubmitControlDetection(
                 status="blocked",
@@ -649,6 +674,141 @@ class ApplicationFillReviewService:
             screenshot_base64=screenshot_base64,
         )
 
+    @classmethod
+    async def _fill_workday_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        fields_filled: list[str] = []
+        fields_missing: list[str] = []
+        blockers: list[str] = []
+
+        form_opened = await cls._open_workday_apply_form(page)
+        if await cls._detect_workday_account_gate(page):
+            blockers.append("Workday is asking the user to sign in or create an account before the application form can be prepared.")
+        elif not form_opened:
+            blockers.append("Could not open a Workday application form on this page.")
+
+        contact_fields = [
+            (
+                "First name",
+                [
+                    "input[data-automation-id='legalNameSection_firstName']",
+                    "input[data-automation-id='firstName']",
+                    "input[name*='firstName' i]",
+                    "input[name*='first_name' i]",
+                    "input[id*='first' i]",
+                ],
+                profile.first_name,
+            ),
+            (
+                "Last name",
+                [
+                    "input[data-automation-id='legalNameSection_lastName']",
+                    "input[data-automation-id='lastName']",
+                    "input[name*='lastName' i]",
+                    "input[name*='last_name' i]",
+                    "input[id*='last' i]",
+                ],
+                profile.last_name,
+            ),
+            (
+                "Email",
+                [
+                    "input[data-automation-id='email']",
+                    "input[name*='email' i]",
+                    "input[type='email']",
+                    "input[id*='email' i]",
+                ],
+                profile.email,
+            ),
+            (
+                "Phone",
+                [
+                    "input[data-automation-id*='phone' i]",
+                    "input[name*='phone' i]",
+                    "input[type='tel']",
+                    "input[id*='phone' i]",
+                ],
+                profile.phone,
+            ),
+            (
+                "LinkedIn",
+                [
+                    "input[data-automation-id*='linkedin' i]",
+                    "input[name*='linkedin' i]",
+                    "input[id*='linkedin' i]",
+                ],
+                profile.linkedin_url,
+            ),
+            (
+                "Website",
+                [
+                    "input[data-automation-id*='portfolio' i]",
+                    "input[data-automation-id*='website' i]",
+                    "input[name*='portfolio' i]",
+                    "input[name*='website' i]",
+                    "input[name*='github' i]",
+                ],
+                profile.portfolio_url or profile.github_url,
+            ),
+        ]
+        for label, selectors, value in contact_fields:
+            if not value:
+                fields_missing.append(label)
+                continue
+            if await cls._fill_first_available(page, selectors, value):
+                fields_filled.append(label)
+            elif label in ("First name", "Last name", "Email"):
+                fields_missing.append(label)
+
+        if cover_letter:
+            if await cls._fill_first_available(
+                page,
+                [
+                    "textarea[data-automation-id*='cover' i]",
+                    "textarea[name*='cover' i]",
+                    "textarea[aria-label*='cover' i]",
+                    "textarea",
+                ],
+                cover_letter,
+            ):
+                fields_filled.append("Cover letter")
+
+        if await cls._upload_resume(page, resume_bytes, resume_filename):
+            fields_filled.append("Resume")
+        else:
+            fields_missing.append("Resume upload")
+
+        if answer_profile:
+            await cls._fill_answer_profile_fields(page, answer_profile, fields_filled, fields_missing)
+        else:
+            blockers.append("Application answer consent is off or no answer profile is saved; work authorization answers were not filled.")
+
+        required_missing = await cls._detect_required_missing_fields(page)
+        for item in required_missing:
+            if item not in fields_missing:
+                fields_missing.append(item)
+
+        status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
+        return FillReviewResult(
+            status=status,
+            ats_type="workday",
+            application_url=page.url or application_url,
+            fields_filled=fields_filled,
+            fields_missing=fields_missing,
+            blockers=blockers,
+            message="Workday form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
+        )
+
     @staticmethod
     async def _open_lever_apply_form(page) -> bool:
         try:
@@ -692,6 +852,38 @@ class ApplicationFillReviewService:
             return False
         except Exception:
             return False
+
+    @staticmethod
+    async def _open_workday_apply_form(page) -> bool:
+        try:
+            if await page.locator("input[type='file'], input[type='email'], input[data-automation-id*='first' i]").first().count() > 0:
+                return True
+
+            for selector in (
+                "a[data-automation-id*='apply' i]",
+                "button[data-automation-id*='apply' i]",
+                "button:has-text('Apply Manually')",
+                "a:has-text('Apply Manually')",
+                "button:has-text('Apply')",
+                "a:has-text('Apply')",
+            ):
+                locator = page.locator(selector).first()
+                if await locator.count() == 0:
+                    continue
+                await locator.click(timeout=4000)
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                return True
+            return await page.locator("input[type='file'], input[type='email']").first().count() > 0
+        except Exception:
+            return False
+
+    @staticmethod
+    async def _detect_workday_account_gate(page) -> bool:
+        try:
+            text = (await page.locator("body").inner_text(timeout=3000)).lower()
+        except Exception:
+            return False
+        return any(marker in text for marker in ApplicationFillReviewService.WORKDAY_ACCOUNT_GATE_PATTERNS)
 
     @staticmethod
     async def _fill_first_available(page, selectors: list[str], value: str) -> bool:
@@ -967,7 +1159,7 @@ class ApplicationFillReviewService:
                 return f"#{element_id}"
             return f'{tag}[id="{ApplicationFillReviewService._css_quote(element_id)}"]'
 
-        for attr in ("data-testid", "data-test", "name", "aria-label"):
+        for attr in ("data-automation-id", "data-testid", "data-test", "name", "aria-label"):
             value = element.get(attr)
             if value:
                 return f'{tag}[{attr}="{ApplicationFillReviewService._css_quote(value)}"]'
