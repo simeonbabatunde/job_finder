@@ -57,7 +57,7 @@ Current implementation:
 - Each fill-review attempt is saved as an `ApplicationFillReview` record with filled fields, missing fields, blockers, status, and timestamp.
 - `GET /applications/{app_id}/fill-reviews` returns the signed-in user's saved review attempts for that application.
 - `DELETE /applications/{app_id}/fill-reviews` clears the signed-in user's saved review attempts for that application.
-- The first deterministic ATS adapters are Greenhouse, Lever, Ashby, SmartRecruiters, Workday, and BambooHR.
+- The first deterministic ATS adapters are Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS.
 - The supported ATS adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
 - The application is marked `Needs Review` after the fill-review attempt.
 - The dashboard shows `Fill review` for resolved supported ATS applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
@@ -157,10 +157,10 @@ Initial adapters:
 - SmartRecruiters. Initial fill-for-review adapter implemented.
 - Workday. Initial fill-for-review adapter and account-gate detection implemented.
 - BambooHR. Initial fill-for-review adapter implemented.
+- iCIMS. Initial fill-for-review adapter implemented.
 
 Later adapters:
 
-- iCIMS
 - Recruitee
 - Taleo
 
@@ -458,7 +458,7 @@ First reliable version:
 
 - `Prepare only` remains default.
 - Add `Fill for review`.
-- Support Greenhouse, Lever, Ashby, SmartRecruiters, Workday, and BambooHR first.
+- Support Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS first.
 - Add `ApplicationAnswerVault` for work authorization and common application answers.
 - Add optional sensitive self-ID fields with `Prefer not to answer` defaults.
 - Keep true auto-submit pro/admin-only.

@@ -480,6 +480,11 @@ def test_application_link_resolver_classifies_ats_and_aggregators():
     assert bamboohr.ats_type == "bamboohr"
     assert bamboohr.resolution_status == "resolved"
 
+    icims = ApplicationLinkResolver.classify_url("https://careers-acme.icims.com/jobs/123/job")
+    assert icims.source_type == "ats"
+    assert icims.ats_type == "icims"
+    assert icims.resolution_status == "resolved"
+
     linkedin = ApplicationLinkResolver.classify_url("https://www.linkedin.com/jobs/view/123")
     assert linkedin.source_type == "linkedin"
     assert linkedin.ats_type is None
@@ -772,6 +777,7 @@ def test_new_supported_ats_fill_review_use_supported_adapters(monkeypatch):
         ats_apps = [
             ("Ashby Role", "https://jobs.ashbyhq.com/beta/123", "ashby"),
             ("BambooHR Role", "https://acme.bamboohr.com/careers/123", "bamboohr"),
+            ("ICIMS Role", "https://careers-acme.icims.com/jobs/123/job", "icims"),
             ("SmartRecruiters Role", "https://jobs.smartrecruiters.com/acme/123", "smartrecruiters"),
             ("Workday Role", "https://acme.wd1.myworkdayjobs.com/jobs/job/123", "workday"),
         ]
@@ -799,7 +805,7 @@ def test_new_supported_ats_fill_review_use_supported_adapters(monkeypatch):
             assert response.status_code == 200, response.text
             assert response.json()["ats_type"] == app_body["ats_type"]
 
-        assert sorted(ats_type for _, ats_type in calls) == ["ashby", "bamboohr", "smartrecruiters", "workday"]
+        assert sorted(ats_type for _, ats_type in calls) == ["ashby", "bamboohr", "icims", "smartrecruiters", "workday"]
 
 
 def test_fill_review_requires_resolved_supported_ats_link():
@@ -824,12 +830,12 @@ def test_fill_review_requires_resolved_supported_ats_link():
             session.add(
                 Application(
                     user_id=user_id,
-                    job_title="ICIMS Role",
+                    job_title="Recruitee Role",
                     company="Beta",
-                    job_url="https://careers-acme.icims.com/jobs/123/job",
-                    resolved_url="https://careers-acme.icims.com/jobs/123/job",
+                    job_url="https://acme.recruitee.com/o/backend-engineer",
+                    resolved_url="https://acme.recruitee.com/o/backend-engineer",
                     source_type="ats",
-                    ats_type="icims",
+                    ats_type="recruitee",
                     resolution_status="resolved",
                     status="Analyzed",
                     fit_score=0.9,
@@ -838,16 +844,16 @@ def test_fill_review_requires_resolved_supported_ats_link():
             session.commit()
 
         apps = client.get("/applications?sort=role&direction=asc", headers=headers).json()
-        icims_app = next(item for item in apps if item["job_title"] == "ICIMS Role")
         linkedin_app = next(item for item in apps if item["job_title"] == "LinkedIn Role")
+        recruitee_app = next(item for item in apps if item["job_title"] == "Recruitee Role")
 
         unresolved = client.post(f"/applications/{linkedin_app['id']}/fill-review", headers=headers)
         assert unresolved.status_code == 400
         assert "Resolve" in unresolved.json()["detail"]
 
-        unsupported = client.post(f"/applications/{icims_app['id']}/fill-review", headers=headers)
+        unsupported = client.post(f"/applications/{recruitee_app['id']}/fill-review", headers=headers)
         assert unsupported.status_code == 400
-        assert "Greenhouse, Lever, Ashby, SmartRecruiters, Workday, and BambooHR" in unsupported.json()["detail"]
+        assert "Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS" in unsupported.json()["detail"]
 
 
 def test_submit_control_detection_uses_html_fixtures():
@@ -874,6 +880,18 @@ def test_submit_control_detection_uses_html_fixtures():
     assert bamboohr_ready.confidence >= 0.85
     assert bamboohr_ready.selector == "#submitApplication"
     assert bamboohr_ready.label == "Submit Application"
+
+    icims_ready_html = (SUBMIT_DETECTION_FIXTURES / "icims_ready.html").read_text()
+    icims_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        icims_ready_html,
+        ats_type="icims",
+        current_url="https://careers-acme.icims.com/jobs/123/job",
+    )
+    assert icims_ready.status == "detected"
+    assert icims_ready.detected is True
+    assert icims_ready.confidence >= 0.85
+    assert icims_ready.selector == "#submitApplication"
+    assert icims_ready.label == "Submit Application"
 
     workday_ready_html = (SUBMIT_DETECTION_FIXTURES / "workday_ready.html").read_text()
     workday_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
