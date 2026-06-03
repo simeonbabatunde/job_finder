@@ -192,7 +192,7 @@ Completed:
 - Added the dashboard `Application answers` section for work authorization, sponsorship, relocation/work-setting preferences, compensation/start timing, and optional self-identification answers.
 - Added backend consent handling so sensitive self-ID values are saved as `prefer_not_to_answer` unless demographic storage consent is enabled.
 - Added `DELETE /application-profile` and a dashboard reset action for clearing saved application answers.
-- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS applications.
+- Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo applications.
 - Added `ApplicationFillReviewService` to fill standard supported-ATS fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
@@ -210,6 +210,7 @@ Completed:
 - Added fixture-backed Workday submit detection coverage for a ready form and an account/sign-in gate.
 - Added guarded BambooHR fill-for-review support and fixture-backed no-click submit-control detection.
 - Added guarded iCIMS fill-for-review support and fixture-backed no-click submit-control detection.
+- Added guarded Recruitee and Taleo fill-for-review support and fixture-backed no-click submit-control detection.
 
 Tests/checks:
 
@@ -223,4 +224,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Expand deterministic ATS coverage beyond Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS, starting with fixture-driven research for Recruitee or Taleo.
+- Expand pytest coverage for package generation, admin access, and external-service failure paths.

@@ -45,7 +45,17 @@ class SubmitControlDetection:
 
 
 class ApplicationFillReviewService:
-    SUPPORTED_ATS = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday", "bamboohr", "icims"}
+    SUPPORTED_ATS = {
+        "greenhouse",
+        "lever",
+        "ashby",
+        "smartrecruiters",
+        "workday",
+        "bamboohr",
+        "icims",
+        "recruitee",
+        "taleo",
+    }
     SUBMIT_LABEL_PATTERNS = (
         ("submit application", 0.55),
         ("submit your application", 0.55),
@@ -229,6 +239,26 @@ class ApplicationFillReviewService:
                             answer_profile=answer_profile,
                             cover_letter=cover_letter,
                         )
+                    elif ats_type == "recruitee":
+                        fill_result = await cls._fill_recruitee_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
+                    elif ats_type == "taleo":
+                        fill_result = await cls._fill_taleo_page(
+                            page=page,
+                            application_url=application_url,
+                            profile=profile,
+                            resume_bytes=resume_bytes,
+                            resume_filename=resume_filename,
+                            answer_profile=answer_profile,
+                            cover_letter=cover_letter,
+                        )
                     else:
                         fill_result = await cls._fill_smartrecruiters_page(
                             page=page,
@@ -310,7 +340,7 @@ class ApplicationFillReviewService:
                         await cls._open_lever_apply_form(page)
                     elif ats_type == "workday":
                         await cls._open_workday_apply_form(page)
-                    elif ats_type in ("ashby", "smartrecruiters", "bamboohr", "icims"):
+                    elif ats_type in ("ashby", "smartrecruiters", "bamboohr", "icims", "recruitee", "taleo"):
                         await cls._open_generic_apply_form(page)
 
                     html = await page.content()
@@ -988,6 +1018,200 @@ class ApplicationFillReviewService:
             fields_missing=fields_missing,
             blockers=blockers,
             message="iCIMS form prepared for human review. Nothing was submitted.",
+            screenshot_base64=screenshot_base64,
+        )
+
+    @classmethod
+    async def _fill_recruitee_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        return await cls._fill_standard_generic_ats_page(
+            page=page,
+            application_url=application_url,
+            profile=profile,
+            resume_bytes=resume_bytes,
+            resume_filename=resume_filename,
+            answer_profile=answer_profile,
+            cover_letter=cover_letter,
+            ats_type="recruitee",
+            display_name="Recruitee",
+            form_blocker="Could not open a Recruitee application form on this page.",
+        )
+
+    @classmethod
+    async def _fill_taleo_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+    ) -> FillReviewResult:
+        return await cls._fill_standard_generic_ats_page(
+            page=page,
+            application_url=application_url,
+            profile=profile,
+            resume_bytes=resume_bytes,
+            resume_filename=resume_filename,
+            answer_profile=answer_profile,
+            cover_letter=cover_letter,
+            ats_type="taleo",
+            display_name="Taleo",
+            form_blocker="Could not open a Taleo application form on this page.",
+        )
+
+    @classmethod
+    async def _fill_standard_generic_ats_page(
+        cls,
+        page,
+        application_url: str,
+        profile: Profile,
+        resume_bytes: bytes,
+        resume_filename: str,
+        answer_profile: Optional[ApplicationAnswerProfile],
+        cover_letter: Optional[str],
+        ats_type: str,
+        display_name: str,
+        form_blocker: str,
+    ) -> FillReviewResult:
+        fields_filled: list[str] = []
+        fields_missing: list[str] = []
+        blockers: list[str] = []
+
+        if not await cls._open_generic_apply_form(page):
+            blockers.append(form_blocker)
+
+        contact_fields = [
+            (
+                "First name",
+                [
+                    "input[name*='firstName' i]",
+                    "input[name*='first_name' i]",
+                    "input[name*='firstname' i]",
+                    "input[id*='first' i]",
+                    "input[aria-label*='first' i]",
+                    "input[placeholder*='first' i]",
+                ],
+                profile.first_name,
+            ),
+            (
+                "Last name",
+                [
+                    "input[name*='lastName' i]",
+                    "input[name*='last_name' i]",
+                    "input[name*='lastname' i]",
+                    "input[id*='last' i]",
+                    "input[aria-label*='last' i]",
+                    "input[placeholder*='last' i]",
+                ],
+                profile.last_name,
+            ),
+            (
+                "Email",
+                [
+                    "input[name*='email' i]",
+                    "input[type='email']",
+                    "input[id*='email' i]",
+                    "input[aria-label*='email' i]",
+                    "input[placeholder*='email' i]",
+                ],
+                profile.email,
+            ),
+            (
+                "Phone",
+                [
+                    "input[name*='phone' i]",
+                    "input[type='tel']",
+                    "input[id*='phone' i]",
+                    "input[aria-label*='phone' i]",
+                    "input[placeholder*='phone' i]",
+                ],
+                profile.phone,
+            ),
+            (
+                "LinkedIn",
+                [
+                    "input[name*='linkedin' i]",
+                    "input[id*='linkedin' i]",
+                    "input[aria-label*='linkedin' i]",
+                    "input[placeholder*='linkedin' i]",
+                ],
+                profile.linkedin_url,
+            ),
+            (
+                "Website",
+                [
+                    "input[name*='portfolio' i]",
+                    "input[name*='website' i]",
+                    "input[name*='github' i]",
+                    "input[name*='url' i]",
+                    "input[id*='portfolio' i]",
+                    "input[id*='website' i]",
+                    "input[id*='github' i]",
+                    "input[aria-label*='portfolio' i]",
+                    "input[aria-label*='website' i]",
+                ],
+                profile.portfolio_url or profile.github_url,
+            ),
+        ]
+        for label, selectors, value in contact_fields:
+            if not value:
+                fields_missing.append(label)
+                continue
+            if await cls._fill_first_available(page, selectors, value):
+                fields_filled.append(label)
+            elif label in ("First name", "Last name", "Email"):
+                fields_missing.append(label)
+
+        if cover_letter:
+            if await cls._fill_first_available(
+                page,
+                [
+                    "textarea[name*='cover' i]",
+                    "textarea[name*='message' i]",
+                    "textarea[id*='cover' i]",
+                    "textarea[aria-label*='cover' i]",
+                    "textarea[placeholder*='cover' i]",
+                    "textarea",
+                ],
+                cover_letter,
+            ):
+                fields_filled.append("Cover letter")
+
+        if await cls._upload_resume(page, resume_bytes, resume_filename):
+            fields_filled.append("Resume")
+        else:
+            fields_missing.append("Resume upload")
+
+        if answer_profile:
+            await cls._fill_answer_profile_fields(page, answer_profile, fields_filled, fields_missing)
+        else:
+            blockers.append("Application answer consent is off or no answer profile is saved; work authorization answers were not filled.")
+
+        required_missing = await cls._detect_required_missing_fields(page)
+        for item in required_missing:
+            if item not in fields_missing:
+                fields_missing.append(item)
+
+        status = "ready_for_review" if not blockers else "needs_review"
+        screenshot_base64 = await cls._capture_screenshot_base64(page)
+        return FillReviewResult(
+            status=status,
+            ats_type=ats_type,
+            application_url=page.url or application_url,
+            fields_filled=fields_filled,
+            fields_missing=fields_missing,
+            blockers=blockers,
+            message=f"{display_name} form prepared for human review. Nothing was submitted.",
             screenshot_base64=screenshot_base64,
         )
 

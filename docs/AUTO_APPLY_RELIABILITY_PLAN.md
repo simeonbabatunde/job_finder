@@ -57,7 +57,7 @@ Current implementation:
 - Each fill-review attempt is saved as an `ApplicationFillReview` record with filled fields, missing fields, blockers, status, and timestamp.
 - `GET /applications/{app_id}/fill-reviews` returns the signed-in user's saved review attempts for that application.
 - `DELETE /applications/{app_id}/fill-reviews` clears the signed-in user's saved review attempts for that application.
-- The first deterministic ATS adapters are Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS.
+- The first deterministic ATS adapters are Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo.
 - The supported ATS adapters fill standard contact fields, upload the saved resume, use consented application-answer fields where possible, and never click submit.
 - The application is marked `Needs Review` after the fill-review attempt.
 - The dashboard shows `Fill review` for resolved supported ATS applications and returns filled fields, missing fields, blockers, an ephemeral screenshot preview, and the application URL.
@@ -158,11 +158,12 @@ Initial adapters:
 - Workday. Initial fill-for-review adapter and account-gate detection implemented.
 - BambooHR. Initial fill-for-review adapter implemented.
 - iCIMS. Initial fill-for-review adapter implemented.
+- Recruitee. Initial fill-for-review adapter implemented.
+- Taleo. Initial fill-for-review adapter implemented.
 
 Later adapters:
 
-- Recruitee
-- Taleo
+- Add more vendor-specific adapters as new job sources are observed.
 
 Each adapter should own:
 
@@ -458,7 +459,7 @@ First reliable version:
 
 - `Prepare only` remains default.
 - Add `Fill for review`.
-- Support Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS first.
+- Support Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo first.
 - Add `ApplicationAnswerVault` for work authorization and common application answers.
 - Add optional sensitive self-ID fields with `Prefer not to answer` defaults.
 - Keep true auto-submit pro/admin-only.

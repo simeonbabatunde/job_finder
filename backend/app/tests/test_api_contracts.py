@@ -485,6 +485,16 @@ def test_application_link_resolver_classifies_ats_and_aggregators():
     assert icims.ats_type == "icims"
     assert icims.resolution_status == "resolved"
 
+    recruitee = ApplicationLinkResolver.classify_url("https://acme.recruitee.com/o/backend-engineer")
+    assert recruitee.source_type == "ats"
+    assert recruitee.ats_type == "recruitee"
+    assert recruitee.resolution_status == "resolved"
+
+    taleo = ApplicationLinkResolver.classify_url("https://acme.taleo.net/careersection/jobdetail.ftl?job=123")
+    assert taleo.source_type == "ats"
+    assert taleo.ats_type == "taleo"
+    assert taleo.resolution_status == "resolved"
+
     linkedin = ApplicationLinkResolver.classify_url("https://www.linkedin.com/jobs/view/123")
     assert linkedin.source_type == "linkedin"
     assert linkedin.ats_type is None
@@ -778,7 +788,9 @@ def test_new_supported_ats_fill_review_use_supported_adapters(monkeypatch):
             ("Ashby Role", "https://jobs.ashbyhq.com/beta/123", "ashby"),
             ("BambooHR Role", "https://acme.bamboohr.com/careers/123", "bamboohr"),
             ("ICIMS Role", "https://careers-acme.icims.com/jobs/123/job", "icims"),
+            ("Recruitee Role", "https://acme.recruitee.com/o/backend-engineer", "recruitee"),
             ("SmartRecruiters Role", "https://jobs.smartrecruiters.com/acme/123", "smartrecruiters"),
+            ("Taleo Role", "https://acme.taleo.net/careersection/jobdetail.ftl?job=123", "taleo"),
             ("Workday Role", "https://acme.wd1.myworkdayjobs.com/jobs/job/123", "workday"),
         ]
         with Session(engine) as session:
@@ -805,7 +817,15 @@ def test_new_supported_ats_fill_review_use_supported_adapters(monkeypatch):
             assert response.status_code == 200, response.text
             assert response.json()["ats_type"] == app_body["ats_type"]
 
-        assert sorted(ats_type for _, ats_type in calls) == ["ashby", "bamboohr", "icims", "smartrecruiters", "workday"]
+        assert sorted(ats_type for _, ats_type in calls) == [
+            "ashby",
+            "bamboohr",
+            "icims",
+            "recruitee",
+            "smartrecruiters",
+            "taleo",
+            "workday",
+        ]
 
 
 def test_fill_review_requires_resolved_supported_ats_link():
@@ -830,12 +850,12 @@ def test_fill_review_requires_resolved_supported_ats_link():
             session.add(
                 Application(
                     user_id=user_id,
-                    job_title="Recruitee Role",
+                    job_title="Unsupported ATS Role",
                     company="Beta",
-                    job_url="https://acme.recruitee.com/o/backend-engineer",
-                    resolved_url="https://acme.recruitee.com/o/backend-engineer",
+                    job_url="https://jobs.unsupportedats.test/123",
+                    resolved_url="https://jobs.unsupportedats.test/123",
                     source_type="ats",
-                    ats_type="recruitee",
+                    ats_type="oracle",
                     resolution_status="resolved",
                     status="Analyzed",
                     fit_score=0.9,
@@ -845,15 +865,15 @@ def test_fill_review_requires_resolved_supported_ats_link():
 
         apps = client.get("/applications?sort=role&direction=asc", headers=headers).json()
         linkedin_app = next(item for item in apps if item["job_title"] == "LinkedIn Role")
-        recruitee_app = next(item for item in apps if item["job_title"] == "Recruitee Role")
+        unsupported_ats_app = next(item for item in apps if item["job_title"] == "Unsupported ATS Role")
 
         unresolved = client.post(f"/applications/{linkedin_app['id']}/fill-review", headers=headers)
         assert unresolved.status_code == 400
         assert "Resolve" in unresolved.json()["detail"]
 
-        unsupported = client.post(f"/applications/{recruitee_app['id']}/fill-review", headers=headers)
+        unsupported = client.post(f"/applications/{unsupported_ats_app['id']}/fill-review", headers=headers)
         assert unsupported.status_code == 400
-        assert "Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, and iCIMS" in unsupported.json()["detail"]
+        assert "Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo" in unsupported.json()["detail"]
 
 
 def test_submit_control_detection_uses_html_fixtures():
@@ -892,6 +912,30 @@ def test_submit_control_detection_uses_html_fixtures():
     assert icims_ready.confidence >= 0.85
     assert icims_ready.selector == "#submitApplication"
     assert icims_ready.label == "Submit Application"
+
+    recruitee_ready_html = (SUBMIT_DETECTION_FIXTURES / "recruitee_ready.html").read_text()
+    recruitee_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        recruitee_ready_html,
+        ats_type="recruitee",
+        current_url="https://acme.recruitee.com/o/backend-engineer",
+    )
+    assert recruitee_ready.status == "detected"
+    assert recruitee_ready.detected is True
+    assert recruitee_ready.confidence >= 0.85
+    assert recruitee_ready.selector == "#submitApplication"
+    assert recruitee_ready.label == "Submit Application"
+
+    taleo_ready_html = (SUBMIT_DETECTION_FIXTURES / "taleo_ready.html").read_text()
+    taleo_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
+        taleo_ready_html,
+        ats_type="taleo",
+        current_url="https://acme.taleo.net/careersection/jobdetail.ftl?job=123",
+    )
+    assert taleo_ready.status == "detected"
+    assert taleo_ready.detected is True
+    assert taleo_ready.confidence >= 0.85
+    assert taleo_ready.selector == "#submitApplication"
+    assert taleo_ready.label == "Submit Application"
 
     workday_ready_html = (SUBMIT_DETECTION_FIXTURES / "workday_ready.html").read_text()
     workday_ready = ApplicationFillReviewService.detect_final_submit_control_from_html(
