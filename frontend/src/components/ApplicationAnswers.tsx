@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Save, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, LoaderCircle, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import type { ApplicationAnswerProfilePayload } from '../api/client';
 import {
     deleteApplicationProfile,
+    exportApplicationProfile,
     getApplicationProfile,
     getErrorMessage,
     hasAuthSession,
@@ -96,6 +97,7 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
     const [answers, setAnswers] = useState<ApplicationAnswerProfilePayload>(buildAnswers(initialData));
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
     useEffect(() => {
@@ -199,6 +201,37 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
             setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to reset application answers') });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleExport = async () => {
+        if (!hasAuthSession()) {
+            setStatus({ type: 'error', message: 'Sign in to export application answers.' });
+            return;
+        }
+
+        setExporting(true);
+        setStatus(null);
+        try {
+            const exportData = await exportApplicationProfile();
+            if (!exportData.profile) {
+                setStatus({ type: 'error', message: exportData.message });
+                return;
+            }
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `job-finder-application-answers-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            setStatus({ type: 'success', message: 'Application answers exported.' });
+        } catch (error) {
+            setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to export application answers') });
+        } finally {
+            setExporting(false);
         }
     };
 
@@ -341,11 +374,15 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
                     </p>
                 )}
                 <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row">
-                    <Button type="button" variant="danger" onClick={handleReset} disabled={saving}>
+                    <Button type="button" variant="secondary" onClick={handleExport} disabled={saving || exporting}>
+                        {exporting ? <LoaderCircle className="animate-spin" size={16} /> : <Download size={16} />}
+                        {exporting ? 'Exporting' : 'Export answers'}
+                    </Button>
+                    <Button type="button" variant="danger" onClick={handleReset} disabled={saving || exporting}>
                         <Trash2 size={16} />
                         Reset answers
                     </Button>
-                    <Button type="submit" disabled={saving}>
+                    <Button type="submit" disabled={saving || exporting}>
                         {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}
                         {saving ? 'Saving' : 'Save application answers'}
                     </Button>

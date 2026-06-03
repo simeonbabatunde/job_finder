@@ -416,7 +416,7 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Add export/delete controls and deeper audit events for sensitive answer-vault reads.
-2. Rehearse staging with `USE_ALEMBIC_MIGRATIONS=true` against a database copy and verify `/health`, `/health/db`, and `/health/worker`.
+1. Rehearse staging with `USE_ALEMBIC_MIGRATIONS=true` against a database copy and verify `/health`, `/health/db`, and `/health/worker`.
+2. Tighten production CORS, provider-key rotation, and backup/restore checks using `docs/DEPLOYMENT_READINESS.md`.
 3. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-4. Use `docs/DEPLOYMENT_READINESS.md` as the staging checklist for CORS, worker, backup/restore, and provider-key rotation checks.
+4. Add longer-term account/data export coverage for resumes, generated packages, and automation artifacts.

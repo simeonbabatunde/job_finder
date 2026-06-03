@@ -405,6 +405,41 @@ def migrate_worker_heartbeat(connection):
             )
         )
 
+def migrate_application_answer_audit(connection):
+    """Create answer-vault access audit records without storing answer values."""
+    id_column = "SERIAL PRIMARY KEY" if connection.dialect.name == "postgresql" else "INTEGER PRIMARY KEY"
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS applicationansweraudit (
+                id {id_column},
+                user_id INTEGER NOT NULL,
+                application_id INTEGER,
+                action VARCHAR NOT NULL,
+                access_reason VARCHAR,
+                source VARCHAR,
+                fields JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES "user" (id),
+                FOREIGN KEY(application_id) REFERENCES application (id)
+            )
+            """
+        )
+    )
+    for index_name, columns in (
+        ("ix_applicationansweraudit_user_created", "user_id, created_at DESC"),
+        ("ix_applicationansweraudit_user_id", "user_id"),
+        ("ix_applicationansweraudit_application_id", "application_id"),
+        ("ix_applicationansweraudit_action", "action"),
+        ("ix_applicationansweraudit_created_at", "created_at"),
+    ):
+        connection.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {index_name} "
+                f"ON applicationansweraudit ({columns})"
+            )
+        )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -419,6 +454,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0011_auto_apply_attempt_steps", migrate_auto_apply_attempt_steps),
     ("0012_auth_session_refresh_tokens", migrate_auth_session_refresh_tokens),
     ("0013_worker_heartbeat", migrate_worker_heartbeat),
+    ("0014_application_answer_audit", migrate_application_answer_audit),
 )
 
 def ensure_schema_migrations_table(connection):

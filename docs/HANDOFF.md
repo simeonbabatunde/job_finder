@@ -33,6 +33,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - The first Influence Chart-style UI implementation pass is complete for the main dashboard, run panel, application history, package modal, auth modal, and admin settings.
 - The matching workflow now runs a conservative pre-screen before full AI analysis, persists screened-out jobs with reasons, and keeps below-threshold/screened-out jobs in separate review lanes.
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
+- The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
 
 ## Active Technical Direction
 
@@ -82,6 +83,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
+- Application answer-vault access is audited for direct views, exports, resets, dashboard preload, fill-for-review, and submit-readiness usage.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
 ## Session Start Checklist
@@ -115,6 +117,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-06-02 | Use a conservative pre-screen before expensive matching work | Saves AI/package cost while keeping uncertain jobs eligible for full review. |
 | 2026-06-03 | Keep true final submit behind an explicit pilot flag | Current flows are useful as fill-for-review, but real submission needs explicit approval, fixture coverage, auditability, and rollback. |
 | 2026-06-03 | Add public non-sensitive health checks | Staging and Docker E2E need API, database, and worker readiness signals without exposing user data. |
+| 2026-06-03 | Audit answer-vault access without values | The app needs accountability for sensitive-answer access without creating another sensitive data copy. |
 
 ## Open Questions
 
@@ -143,6 +146,8 @@ Completed:
 - Added public health endpoints: `GET /health`, `GET /health/db`, and `GET /health/worker`.
 - Added `WorkerHeartbeat` persistence, startup migration `0013_worker_heartbeat`, Alembic revision `0002_worker_heartbeat`, Docker heartbeat env vars, and worker loop heartbeat writes.
 - Added deployment-readiness documentation covering health checks, staging env, worker readiness, migration mode, Docker E2E smoke, and production gates.
+- Added `ApplicationAnswerAudit`, startup migration `0014_application_answer_audit`, Alembic revision `0003_application_answer_audit`, `GET /application-profile/export`, and `GET /application-profile/audit`.
+- Added dashboard export for application answers and audit logging for answer-vault view/export/save/delete, dashboard preload, fill-for-review, and submit-readiness access.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -248,4 +253,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Add export/delete controls and deeper audit events for sensitive answer-vault reads before production, then run a staging rehearsal with `USE_ALEMBIC_MIGRATIONS=true` using `docs/DEPLOYMENT_READINESS.md`.
+- Run a staging rehearsal with `USE_ALEMBIC_MIGRATIONS=true` using `docs/DEPLOYMENT_READINESS.md`, then tighten production CORS/secret rotation and backup/restore checks.

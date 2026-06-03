@@ -188,6 +188,24 @@ class ApplicationAnswerProfileResponse(ApplicationAnswerProfileRequest):
     updated_at: Optional[datetime] = None
 
 
+class ApplicationAnswerExportResponse(BaseModel):
+    profile: Optional[ApplicationAnswerProfileResponse] = None
+    exported_at: datetime
+    message: str
+
+
+class ApplicationAnswerAuditResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = None
+    action: str
+    access_reason: str = ""
+    source: str = ""
+    application_id: Optional[int] = None
+    fields: List[str] = Field(default_factory=list)
+    created_at: datetime
+
+
 class AgentQuotaResponse(BaseModel):
     agent_runs_used_today: int
     agent_run_limit: int

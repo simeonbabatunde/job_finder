@@ -139,6 +139,8 @@ Resume, profile, and preferences:
 - `GET /profile`
 - `POST /profile`
 - `GET /application-profile`
+- `GET /application-profile/export`
+- `GET /application-profile/audit`
 - `POST /application-profile`
 - `DELETE /application-profile`
 - `GET /submission-settings`
@@ -212,6 +214,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - `ApplicationFillReview`
 - `ApplicationSubmitSettings`
 - `ApplicationAnswerProfile`
+- `ApplicationAnswerAudit`
 - `Profile`
 - `ScraperConfig`
 - `PasswordResetToken`
@@ -226,6 +229,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
 - Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
+- Application answer-vault export, view, reset, dashboard preload, and automation-use events are audited without storing answer values in the audit log.
 - Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Health endpoints expose API liveness, DB reachability, and worker heartbeat freshness without returning user data.
 - LLM calls are live by default and need test doubles for repeatable automated tests.
@@ -234,8 +238,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 
 1. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
 2. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
-3. Add export controls and deeper audit events for sensitive answer reads before production.
-4. Follow `docs/DEPLOYMENT_READINESS.md` before sharing a hosted staging environment.
+3. Follow `docs/DEPLOYMENT_READINESS.md` before sharing a hosted staging environment.
 
 ## Product Notes Preserved
 

@@ -119,9 +119,10 @@ Then use the frontend at `http://localhost:5173`:
 1. Register or sign in.
 2. Save profile, application answers, and job preferences.
 3. Upload a resume.
-4. Run the search assistant.
-5. Open a matched job and generate the application package.
-6. Download the generated package and cover-letter PDF.
+4. Export application answers and confirm the answer-vault audit list records the export.
+5. Run the search assistant.
+6. Open a matched job and generate the application package.
+7. Download the generated package and cover-letter PDF.
 
 ## Production Gates
 
@@ -131,3 +132,4 @@ Then use the frontend at `http://localhost:5173`:
 - Confirm Postgres credentials are not local defaults.
 - Confirm backups and restore testing before storing real resumes or application answers.
 - Confirm screenshot and trace retention with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
+- Confirm answer-vault export and audit history work for the signed-in user only.

@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.models import (
     AgentRun,
     Application,
+    ApplicationAnswerAudit,
     ApplicationAnswerProfile,
     ApplicationFillReview,
     ApplicationSubmitSettings,
@@ -43,6 +44,8 @@ from app.schemas import (
     AgentRunResponse,
     AgentRunRecordResponse,
     ApplicationAnswerProfileRequest,
+    ApplicationAnswerAuditResponse,
+    ApplicationAnswerExportResponse,
     ApplicationAnswerProfileResponse,
     ApplicationFillReviewResponse,
     ApplicationFillReviewRecordResponse,
@@ -1106,6 +1109,13 @@ APPLICATION_ANSWER_ENCRYPTED_FIELD_DEFAULTS = {
     "disability_status": "prefer_not_to_answer",
 }
 
+APPLICATION_ANSWER_AUDIT_FIELDS = tuple(
+    APPLICATION_ANSWER_ENCRYPTED_FIELD_DEFAULTS.keys()
+) + (
+    "consent_to_use_answers",
+    "consent_to_use_demographics",
+)
+
 
 def encrypt_application_answer_payload(payload: dict) -> dict:
     encrypted = dict(payload)
@@ -1140,6 +1150,32 @@ def serialize_application_answer_profile(record: Optional[ApplicationAnswerProfi
         "updated_at": decrypted.updated_at,
     })
     return data
+
+
+def audit_application_answer_access(
+    session: Session,
+    *,
+    user_id: int,
+    action: str,
+    access_reason: str,
+    source: str,
+    application_id: Optional[int] = None,
+    fields: Optional[list[str]] = None,
+    commit: bool = True,
+):
+    audit = ApplicationAnswerAudit(
+        user_id=user_id,
+        application_id=application_id,
+        action=action,
+        access_reason=access_reason,
+        source=source,
+        fields=fields or list(APPLICATION_ANSWER_AUDIT_FIELDS),
+    )
+    session.add(audit)
+    if commit:
+        session.commit()
+        session.refresh(audit)
+    return audit
 
 
 def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest) -> dict:
@@ -1505,13 +1541,56 @@ def update_profile(profile_data: ProfileRequest, user: User = Depends(get_curren
     session.commit()
     return {"message": "Profile updated successfully"}
 
+@router.get("/application-profile/export", response_model=ApplicationAnswerExportResponse)
+def export_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    answer_profile_record = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
+    ).first()
+    profile = serialize_application_answer_profile(answer_profile_record)
+    if answer_profile_record:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="export",
+            access_reason="user_requested_export",
+            source="application_profile_export",
+        )
+    return {
+        "profile": profile,
+        "exported_at": utc_now(),
+        "message": "Application answers exported." if profile else "No saved application answers to export.",
+    }
+
+@router.get("/application-profile/audit", response_model=List[ApplicationAnswerAuditResponse])
+def get_application_profile_audit(
+    limit: int = 50,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    safe_limit = max(min(limit, 100), 1)
+    query = (
+        select(ApplicationAnswerAudit)
+        .where(ApplicationAnswerAudit.user_id == user.id)
+        .order_by(ApplicationAnswerAudit.created_at.desc())
+        .limit(safe_limit)
+    )
+    return session.exec(query).all()
+
 @router.get("/application-profile", response_model=Optional[ApplicationAnswerProfileResponse])
 def get_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     answer_profile_record = session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first()
-    answer_profile = decrypt_application_answer_profile(answer_profile_record)
-    return serialize_application_answer_profile(answer_profile)
+    profile = serialize_application_answer_profile(answer_profile_record)
+    if answer_profile_record:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="view",
+            access_reason="user_opened_application_answers",
+            source="application_profile",
+        )
+    return profile
 
 @router.post("/application-profile", response_model=ApplicationAnswerProfileResponse)
 def update_application_profile(
@@ -1534,7 +1613,15 @@ def update_application_profile(
     session.add(answer_profile)
     session.commit()
     session.refresh(answer_profile)
-    return serialize_application_answer_profile(answer_profile)
+    response = serialize_application_answer_profile(answer_profile)
+    audit_application_answer_access(
+        session,
+        user_id=user.id,
+        action="upsert",
+        access_reason="user_saved_application_answers",
+        source="application_profile",
+    )
+    return response
 
 @router.delete("/application-profile", response_model=MessageResponse)
 def delete_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -1542,6 +1629,14 @@ def delete_application_profile(user: User = Depends(get_current_user), session: 
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first()
     if answer_profile:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="delete",
+            access_reason="user_reset_application_answers",
+            source="application_profile",
+            commit=False,
+        )
         session.delete(answer_profile)
         session.commit()
     return {"message": "Application answers reset successfully"}
@@ -1784,6 +1879,15 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
     application_profile = session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first()
+    serialized_application_profile = serialize_application_answer_profile(application_profile)
+    if application_profile:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="view",
+            access_reason="dashboard_preload",
+            source="user_status",
+        )
 
     return {
         "user": user,
@@ -1814,7 +1918,7 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
             "years_experience": profile.years_experience,
             "expected_salary": profile.expected_salary,
         } if profile else None,
-        "application_profile": serialize_application_answer_profile(application_profile),
+        "application_profile": serialized_application_profile,
         "quota": get_agent_quota_status(session, user)
     }
 
@@ -1936,6 +2040,15 @@ async def fill_application_for_review(
     answer_profile = decrypt_application_answer_profile(session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first())
+    if answer_profile:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="automation_use",
+            access_reason="fill_for_review",
+            source="browser_fill_review",
+            application_id=app.id,
+        )
 
     if not resume:
         raise HTTPException(status_code=400, detail="Please upload a resume first")
@@ -2049,6 +2162,15 @@ def check_application_submit_readiness(
     answer_profile = decrypt_application_answer_profile(session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first())
+    if answer_profile:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="automation_read",
+            access_reason="submit_readiness",
+            source="submit_readiness",
+            application_id=app.id,
+        )
     latest_review = get_latest_fill_review(session, user.id, app.id)
     submits_today_count = get_submits_today_count(session, user.id)
 
@@ -2075,6 +2197,15 @@ async def create_application_submit_confirmation(
     answer_profile = decrypt_application_answer_profile(session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
     ).first())
+    if answer_profile:
+        audit_application_answer_access(
+            session,
+            user_id=user.id,
+            action="automation_read",
+            access_reason="submit_confirmation",
+            source="submit_confirmation",
+            application_id=app.id,
+        )
     latest_review = get_latest_fill_review(session, user.id, app.id)
     readiness = evaluate_submit_readiness(
         app=app,

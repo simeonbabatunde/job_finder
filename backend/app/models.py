@@ -189,6 +189,16 @@ class ApplicationAnswerProfile(SQLModel, table=True):
     consent_to_use_demographics: bool = Field(default=False)
     updated_at: datetime = Field(default_factory=utc_now)
 
+class ApplicationAnswerAudit(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    application_id: Optional[int] = Field(default=None, foreign_key="application.id", index=True)
+    action: str = Field(index=True)
+    access_reason: str = Field(default="")
+    source: str = Field(default="")
+    fields: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
 class ScraperConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     site_names: List[str] = Field(default=["linkedin", "indeed", "glassdoor"], sa_column=Column(JSON))

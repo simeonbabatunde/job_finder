@@ -22,6 +22,7 @@ from app.database import engine, run_schema_migrations
 from app.models import (
     AgentRun,
     Application,
+    ApplicationAnswerAudit,
     ApplicationAnswerProfile,
     ApplicationFillReview,
     AutoApplyAudit,
@@ -1451,6 +1452,13 @@ def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answe
         assert status_response.status_code == 200, status_response.text
         assert status_response.json()["application_profile"]["work_authorized_us"] == "yes"
 
+        export_response = client.get("/application-profile/export", headers=headers)
+        assert export_response.status_code == 200, export_response.text
+        exported = export_response.json()
+        assert exported["profile"]["desired_salary"] == "$140k"
+        assert exported["profile"]["work_authorization_notes"] == "US citizen"
+        assert "user_id" not in exported["profile"]
+
         with Session(engine) as session:
             stored = session.exec(
                 select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == auth["user"]["id"])
@@ -1460,6 +1468,24 @@ def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answe
             assert stored.work_authorization_notes.startswith(ENCRYPTED_VALUE_PREFIX)
             assert stored.gender.startswith(ENCRYPTED_VALUE_PREFIX)
             assert stored.gender != "prefer_not_to_answer"
+            audit_rows = session.exec(
+                select(ApplicationAnswerAudit)
+                .where(ApplicationAnswerAudit.user_id == auth["user"]["id"])
+                .order_by(ApplicationAnswerAudit.created_at.asc())
+            ).all()
+            audit_actions = [row.action for row in audit_rows]
+            assert "upsert" in audit_actions
+            assert "view" in audit_actions
+            assert "export" in audit_actions
+            assert all("$140k" not in row.fields for row in audit_rows)
+            assert any("desired_salary" in row.fields for row in audit_rows)
+
+        audit_response = client.get("/application-profile/audit?limit=10", headers=headers)
+        assert audit_response.status_code == 200, audit_response.text
+        audit_body = audit_response.json()
+        assert audit_body[0]["action"] == "export"
+        assert "desired_salary" in audit_body[0]["fields"]
+        assert "user_id" not in audit_body[0]
 
         _, other_headers = register_user(client, "answer-profile-other")
         other_response = client.get("/application-profile", headers=other_headers)
@@ -1470,6 +1496,10 @@ def test_application_answer_profile_is_user_scoped_and_sanitizes_sensitive_answe
         assert delete_response.status_code == 200, delete_response.text
         assert client.get("/application-profile", headers=headers).json() is None
         assert client.get("/user/status", headers=headers).json()["application_profile"] is None
+
+        audit_after_delete = client.get("/application-profile/audit?limit=10", headers=headers)
+        assert audit_after_delete.status_code == 200, audit_after_delete.text
+        assert audit_after_delete.json()[0]["action"] == "delete"
 
 
 def test_application_answer_profile_stores_demographics_with_explicit_consent():
@@ -1596,6 +1626,19 @@ def test_submission_settings_and_readiness_contract():
         assert body["status"] == "ready_for_confirmation"
         assert body["blockers"] == []
         assert "Fit score meets the submit threshold." in body["checks"]
+
+        with Session(engine) as session:
+            readiness_audit = session.exec(
+                select(ApplicationAnswerAudit)
+                .where(
+                    ApplicationAnswerAudit.user_id == user_id,
+                    ApplicationAnswerAudit.application_id == app_id,
+                    ApplicationAnswerAudit.action == "automation_read",
+                    ApplicationAnswerAudit.access_reason == "submit_readiness",
+                )
+            ).first()
+        assert readiness_audit is not None
+        assert "work_authorized_us" in readiness_audit.fields
 
         reset_response = client.delete("/submission-settings", headers=headers)
         assert reset_response.status_code == 200, reset_response.text
@@ -1751,6 +1794,7 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0011_auto_apply_attempt_steps",) in rows
     assert ("0012_auth_session_refresh_tokens",) in rows
     assert ("0013_worker_heartbeat",) in rows
+    assert ("0014_application_answer_audit",) in rows
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):

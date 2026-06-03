@@ -51,6 +51,22 @@ export interface ApplicationAnswerProfilePayload {
     updated_at?: string;
 }
 
+export interface ApplicationAnswerExportPayload {
+    profile: ApplicationAnswerProfilePayload | null;
+    exported_at: string;
+    message: string;
+}
+
+export interface ApplicationAnswerAuditRecord {
+    id?: number;
+    action: string;
+    access_reason: string;
+    source: string;
+    application_id?: number | null;
+    fields: string[];
+    created_at: string;
+}
+
 export interface ApplicationFillReviewResult {
     review_id?: number;
     attempt_id?: number;
@@ -327,6 +343,26 @@ export async function getApplicationProfile(): Promise<ApplicationAnswerProfileP
     });
     if (!response.ok) {
         throw new Error(await getResponseDetail(response, 'Failed to fetch application answers'));
+    }
+    return response.json();
+}
+
+export async function exportApplicationProfile(): Promise<ApplicationAnswerExportPayload> {
+    const response = await fetch(`${API_URL}/application-profile/export`, {
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to export application answers'));
+    }
+    return response.json();
+}
+
+export async function getApplicationProfileAudit(limit = 50): Promise<ApplicationAnswerAuditRecord[]> {
+    const response = await fetch(`${API_URL}/application-profile/audit?limit=${limit}`, {
+        headers: getAuthHeaders()
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch application answer audit'));
     }
     return response.json();
 }
