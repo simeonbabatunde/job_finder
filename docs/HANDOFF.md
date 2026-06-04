@@ -37,6 +37,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
 - Answer-vault data-key rotation now has a dry-run/apply re-encryption job before old previous keys are removed.
 - Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation now emit structured JSON operational events without answer/resume contents.
+- `docs/OPERATIONS_RUNBOOK.md` now covers staging launch, backup restore rehearsal, account export handling, answer-vault key rotation, operational logging, and rollback notes.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
 - `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate, including a signed-in browser dashboard smoke.
 
@@ -167,6 +168,7 @@ Completed:
 - Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
 - Added `app.smoke.frontend_dashboard` for signed-in dashboard and Applications route browser coverage in preflight.
 - Added `app.observability.log_event` and structured JSON logs for agent run queue/start/claim/complete/failure, worker claims, browser fill-review, submit-readiness, and submit-confirmation transitions.
+- Added `docs/OPERATIONS_RUNBOOK.md` for staging, backup/restore, account export handling, answer-vault key rotation, structured log event families, and rollback notes.
 - Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Added a dashboard header `Export data` action that downloads the account export as JSON.
 - Added API contract coverage proving account export is user-scoped, includes generated package and artifact references, audits answer-vault export access, and does not expose answer values in audit records.
@@ -290,4 +292,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.
+- Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.

@@ -51,3 +51,4 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Confirm `/health`, `/health/db`, and `/health/worker` are healthy.
 - Confirm the worker process is running when `AGENT_RUNNER_MODE=worker`.
 - Confirm backup and restore testing for the production database before storing real user data.
+- Follow `docs/OPERATIONS_RUNBOOK.md` for account export handling and answer-vault key rotation.

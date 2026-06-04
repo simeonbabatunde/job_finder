@@ -411,7 +411,7 @@ Deliverables:
 - Health and readiness endpoints. Implemented for API, DB, and worker.
 - Logging strategy. Implemented with structured JSON operational events for agent runs, workers, browser fill-review, and submit confirmation.
 - Background job or worker strategy for long agent runs. Implemented with worker mode and heartbeat checks.
-- Deployment guide. In progress through `docs/DEPLOYMENT_READINESS.md`.
+- Deployment guide. Implemented through `docs/DEPLOYMENT_READINESS.md` and `docs/OPERATIONS_RUNBOOK.md`.
 - CI preflight workflow. Implemented in `.github/workflows/preflight.yml`.
 
 Acceptance criteria:
@@ -423,4 +423,3 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-2. Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.

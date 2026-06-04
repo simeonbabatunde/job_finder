@@ -1,6 +1,7 @@
 # Deployment Readiness
 
 Use this checklist before sharing a hosted staging build or storing real user data.
+For step-by-step operating procedures, see `docs/OPERATIONS_RUNBOOK.md`.
 
 ## Required Services
 
@@ -33,6 +34,7 @@ It performs the current launch-readiness gate:
 - Docker Compose `up --build -d`.
 - `/health`, `/health/db`, `/health/worker`, and frontend HTTP readiness checks.
 - Answer-vault save, export, and audit smoke test with a throwaway local user.
+- Signed-in browser dashboard smoke test with a throwaway local user.
 
 By default, the command leaves the Compose stack running for browser testing at
 `http://localhost:5173`. For CI or a disposable local check, use:

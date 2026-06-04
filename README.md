@@ -118,3 +118,4 @@ Default URLs:
 - `./scripts/preflight.sh` is the repeatable local/CI gate before staging or larger feature work, including a signed-in browser smoke for the dashboard shell.
 
 See [docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) for the staged fix plan.
+See [docs/OPERATIONS_RUNBOOK.md](./docs/OPERATIONS_RUNBOOK.md) for staging, backup/restore, account export, and answer-vault key rotation procedures.
