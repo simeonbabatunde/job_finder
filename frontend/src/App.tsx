@@ -16,6 +16,7 @@ import { ResumeUpload } from './components/ResumeUpload';
 import type { ResumeUploadHandle } from './components/ResumeUpload';
 import { ResumeFeedback } from './components/ResumeFeedback';
 import { UserProfile } from './components/UserProfile';
+import { ProfileSettings } from './components/ProfileSettings';
 import { ApplicationAnswers } from './components/ApplicationAnswers';
 import { SubmissionSettings } from './components/SubmissionSettings';
 import { JobPreferences } from './components/JobPreferences';
@@ -26,7 +27,7 @@ import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { ResetPassword } from './components/ResetPassword';
 import { OAuthCallback } from './components/OAuthCallback';
-import { PageShell, Panel, SectionHeader, StatusChip } from './components/ui';
+import { Button, PageShell, Panel, SectionHeader, StatusChip } from './components/ui';
 
 interface OverviewItem {
   label: string;
@@ -220,6 +221,37 @@ function App() {
         />
         <div className="mt-5">
           <AgentDashboard key={refreshHistory} fullPage minMatchScore={prefsData?.min_match_score ?? 70} />
+        </div>
+      </PageShell>,
+    );
+  }
+
+  if (currentPath === '/settings') {
+    return shell(
+      <PageShell>
+        <SectionHeader
+          eyebrow="Account"
+          title="Account settings"
+          description="Manage the profile details, reusable application answers, and submission guardrails the assistant uses for job matching and application prep."
+        />
+        <div className="mt-5">
+          {user ? (
+            <ProfileSettings />
+          ) : (
+            <Panel className="p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <StatusChip tone="warning">Sign in required</StatusChip>
+                  <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+                    Account settings are available after you sign in or create an account.
+                  </p>
+                </div>
+                <Button onClick={() => setShowAuth('login')}>
+                  Sign in
+                </Button>
+              </div>
+            </Panel>
+          )}
         </div>
       </PageShell>,
     );

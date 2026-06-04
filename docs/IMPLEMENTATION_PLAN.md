@@ -158,7 +158,7 @@ Implementation notes:
 - Keep Tailwind primitives. Do not introduce a heavy component library.
 - Prefer simple composition over abstraction until at least two components share a pattern.
 - Use `rounded-lg` for cards and panels.
-- Remaining old-style surfaces include `ResumeFeedback`, `ResetPassword`, `OAuthCallback`, `JobSearch`, and `ProfileSettings`.
+- Remaining utility surfaces have been tokenized enough for the current UI pass; future changes should be driven by specific usability issues rather than broad restyling.
 
 ## Milestone 2: App Shell and Navigation
 
@@ -317,7 +317,7 @@ Deliverables:
   - Free: daily agent-run limit.
   - Pro: larger daily agent-run limit and browser fill-for-review access.
   - True auto-submit: keep gated server-side, blocked by default, and unavailable until an approved pilot.
-- Account settings page.
+- Account settings page. Implemented at `/settings` with profile details, saved application answers, and submission guardrails.
 
 Acceptance criteria:
 

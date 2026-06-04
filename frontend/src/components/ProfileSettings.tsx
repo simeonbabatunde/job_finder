@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { CheckCircle2, LoaderCircle, Save } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle, Save } from 'lucide-react';
 import { getAuthHeaders, API_URL, saveProfile } from '../api/client';
 import type { ProfilePayload } from '../api/client';
 import { Button, Panel, TextField } from './ui';
 import { ApplicationAnswers } from './ApplicationAnswers';
+import { SubmissionSettings } from './SubmissionSettings';
 
 const EMPTY_PROFILE: ProfilePayload = {
     first_name: '',
@@ -116,7 +117,7 @@ export const ProfileSettings = () => {
                 <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-4 sm:flex-row sm:items-center sm:justify-between">
                     {status && (
                         <p className={`flex items-center gap-2 text-sm font-semibold ${status.startsWith('Failed') ? 'text-[var(--danger)]' : 'text-[var(--positive)]'}`}>
-                            <CheckCircle2 size={16} />
+                            {status.startsWith('Failed') ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
                             {status}
                         </p>
                     )}
@@ -128,6 +129,9 @@ export const ProfileSettings = () => {
             </form>
             <div className="mt-5 border-t border-[var(--line)] pt-5">
                 <ApplicationAnswers />
+            </div>
+            <div className="mt-5 border-t border-[var(--line)] pt-5">
+                <SubmissionSettings />
             </div>
         </Panel>
     );

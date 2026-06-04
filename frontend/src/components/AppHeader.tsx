@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, Download, LoaderCircle, LogIn, LogOut, Settings } from 'lucide-react';
+import { BriefcaseBusiness, Download, LoaderCircle, LogIn, LogOut, Settings, UserRound } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Button, StatusChip } from './ui';
 
@@ -55,6 +55,18 @@ export function AppHeader({ user, currentPath, onLogin, onLogout, onExportData, 
                             {item.label}
                         </a>
                     ))}
+                    {user && (
+                        <a
+                            href="/settings"
+                            className={cn(
+                                'inline-flex items-center gap-1.5 rounded-md px-3 py-2 transition-colors hover:bg-[var(--soft)] hover:text-[var(--ink)]',
+                                isActive('/settings') && 'bg-[var(--soft)] text-[var(--ink)]',
+                            )}
+                        >
+                            <UserRound size={15} />
+                            Account
+                        </a>
+                    )}
                     {user?.role === 'admin' && (
                         <a
                             href="/admin"

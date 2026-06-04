@@ -137,6 +137,13 @@ def main() -> None:
             expect(page).to_have_url(re.compile(r".*/applications$"), timeout=10_000)
             expect(page.get_by_role("heading", name="Application pipeline").first).to_be_visible()
             expect(page.get_by_text("No strong matches yet.")).to_be_visible()
+
+            page.get_by_role("link", name="Account").click()
+            expect(page).to_have_url(re.compile(r".*/settings$"), timeout=10_000)
+            expect(page.get_by_role("heading", name="Account settings").first).to_be_visible()
+            expect(page.get_by_role("heading", name="Personal profile details").first).to_be_visible()
+            expect(page.get_by_role("heading", name="Application answers").first).to_be_visible()
+            expect(page.get_by_role("heading", name="Submission guardrails").first).to_be_visible()
         except Exception:
             page.screenshot(path="/tmp/job_finder_frontend_smoke_failure.png", full_page=True)
             raise
@@ -154,7 +161,7 @@ def main() -> None:
     if unexpected_console_errors:
         raise RuntimeError(f"Frontend console errors during smoke: {unexpected_console_errors}")
 
-    print(json.dumps({"email": email, "dashboard": "ok", "applications": "ok"}))
+    print(json.dumps({"email": email, "dashboard": "ok", "applications": "ok", "settings": "ok"}))
 
 
 if __name__ == "__main__":

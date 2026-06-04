@@ -88,6 +88,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - The dashboard fill-review action uses the same supported ATS list as the backend, with a preflight audit to catch future adapter drift.
+- Signed-in users now have an Account route for profile details, reusable application answers, and submission guardrails.
 - Submission guardrail settings now require the environment pilot flag plus an approved user/admin and optional ATS allowlist before `true_submit_enabled` can persist as true.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
@@ -215,6 +216,7 @@ Completed:
 - Removed the standalone setup readiness card; readiness now appears in the compact dashboard overview strip and in each workflow section.
 - Restored the two-column dashboard layout with Workspace Setup on the left and Run Agent/Matched Jobs on the right. The setup panel uses compact section headers instead of a left label rail, and the right-rail Matched Jobs view uses compact rows instead of a wide table to avoid signed-in overflow.
 - Restyled the remaining legacy utility surfaces: `ResumeFeedback`, `ResetPassword`, `OAuthCallback`, `JobSearch`, and `ProfileSettings`.
+- Added `/settings` to the signed-in app shell so profile settings, application answers, and submission guardrails are available outside the main dashboard workflow.
 - Added `containerClassName` support to the shared `TextField` wrapper for grid alignment.
 - Added `user_id` ownership to `Resume` and `JobPreference`.
 - Added a versioned startup migration that adds missing ownership columns and backfills only when the database has exactly one user.
