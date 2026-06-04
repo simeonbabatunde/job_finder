@@ -376,9 +376,9 @@ Deliverables:
 
 - Backend pytest suite. Implemented for API contracts through the Dockerized preflight.
 - Frontend typecheck and build checks. Implemented through `npm run build` in preflight.
-- Frontend component smoke tests where practical.
-- Playwright smoke test for the dashboard workflow. Implemented through `app.smoke.frontend_dashboard` in preflight.
-- Manual QA checklist.
+- Frontend component smoke tests where practical. Current coverage is through the signed-in Playwright dashboard smoke until a dedicated component test runner is added.
+- Playwright smoke test for the dashboard workflow. Implemented through `app.smoke.frontend_dashboard` in preflight, covering dashboard, Applications, and Account settings routes.
+- Manual QA checklist. Implemented in `docs/MANUAL_QA_CHECKLIST.md`.
 - Repeatable local/CI preflight command. Implemented through `./scripts/preflight.sh`.
 - Answer-vault export/audit smoke test. Implemented through `scripts/preflight-answer-audit.mjs`.
 - Answer-vault data-key re-encryption job. Implemented through `python -m app.jobs.reencrypt_application_answers --dry-run|--apply`.
@@ -387,13 +387,13 @@ Acceptance criteria:
 
 - `npm run build` passes in `frontend`.
 - Backend tests can run from one documented command.
-- A local smoke test verifies login/register, profile save, resume upload, preferences save, agent run with mocked external dependencies, and application history rendering.
+- Local smoke coverage verifies auth bootstrap, resume upload, preferences save, answer-vault export/audit, dashboard rendering, application history rendering, and Account settings route rendering without live LLM or scraper calls.
 
 Implementation notes:
 
 - Mock JobSpy and LLM calls in tests.
 - Keep live scraper and live LLM tests opt-in.
-- `./scripts/preflight.sh` starts Docker Compose, verifies health endpoints, uses a throwaway local user for answer-vault export/audit coverage, and runs a signed-in browser dashboard smoke without calling live LLMs.
+- `./scripts/preflight.sh` starts Docker Compose, verifies health endpoints, uses throwaway local users for answer-vault export/audit coverage, and runs a signed-in browser dashboard smoke without calling live LLMs.
 
 ## Milestone 9: Deployment Preparation
 

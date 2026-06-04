@@ -48,6 +48,7 @@ Detailed UI direction is in [docs/UI_UX_DIRECTION.md](./docs/UI_UX_DIRECTION.md)
 - [Auto-Apply Reliability Plan](./docs/AUTO_APPLY_RELIABILITY_PLAN.md)
 - [Security Checklist](./docs/SECURITY_CHECKLIST.md)
 - [Deployment Readiness](./docs/DEPLOYMENT_READINESS.md)
+- [Manual QA Checklist](./docs/MANUAL_QA_CHECKLIST.md)
 - [Handoff](./docs/HANDOFF.md)
 - [Frontend README](./frontend/README.md)
 - [Backend README](./backend/README.md)
@@ -66,7 +67,7 @@ Full launch-readiness preflight:
 ./scripts/preflight.sh
 ```
 
-The preflight command runs the Dockerized backend API contract suite, frontend
+The preflight command runs the Dockerized backend test suite, frontend
 lint/build, Compose config rendering, an isolated Alembic upgrade, Docker health
 checks, answer-vault export/audit smoke, and a browser dashboard smoke. It starts the local Compose
 stack and leaves it running so you can continue testing in the browser. To make
@@ -114,7 +115,7 @@ Default URLs:
 - Production-like startup rejects weak secrets, missing answer-vault encryption keys, wildcard CORS, and localhost CORS origins.
 - Fill-review screenshots and traces are authenticated artifacts with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` pruning.
 - Public health checks now cover API liveness, DB reachability, and worker heartbeat freshness through `/health`, `/health/db`, and `/health/worker`.
-- The focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
+- The focused backend test suite now covers auth, ownership, migrations, application queries, quotas, agent run persistence, LLM provider configuration, and structured errors.
 - `./scripts/preflight.sh` is the repeatable local/CI gate before staging or larger feature work, including a signed-in browser smoke for the dashboard shell.
 
 See [docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) for the staged fix plan.

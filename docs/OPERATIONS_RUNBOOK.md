@@ -12,7 +12,7 @@ Run the full local gate before staging changes:
 
 Expected coverage:
 
-- Dockerized backend API contracts.
+- Dockerized backend tests.
 - Frontend lint and production build.
 - Compose config rendering.
 - Isolated Alembic upgrade.

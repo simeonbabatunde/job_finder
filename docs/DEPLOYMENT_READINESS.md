@@ -2,6 +2,7 @@
 
 Use this checklist before sharing a hosted staging build or storing real user data.
 For step-by-step operating procedures, see `docs/OPERATIONS_RUNBOOK.md`.
+For hands-on product validation, use `docs/MANUAL_QA_CHECKLIST.md`.
 
 ## Required Services
 
@@ -27,7 +28,7 @@ or testing real user data:
 
 It performs the current launch-readiness gate:
 
-- Dockerized backend API contract tests.
+- Dockerized backend tests.
 - Frontend dependency install when needed, lint, and production build.
 - `docker compose config` rendering with safe development defaults.
 - Isolated Alembic `upgrade head` against a disposable SQLite database.

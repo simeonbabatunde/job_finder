@@ -91,6 +91,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Signed-in users now have an Account route for profile details, reusable application answers, and submission guardrails.
 - LLM calls now use deployment-level provider/model defaults through `LLM_PROVIDER`, `LLM_MODEL`, and provider-specific model override env vars instead of hardcoding OpenAI at each call site.
 - API error responses now preserve `detail` and include a stable `error` object with code, message, status, and path.
+- Manual product QA is captured in `docs/MANUAL_QA_CHECKLIST.md`.
 - Submission guardrail settings now require the environment pilot flag plus an approved user/admin and optional ATS allowlist before `true_submit_enabled` can persist as true.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
@@ -221,6 +222,7 @@ Completed:
 - Added `/settings` to the signed-in app shell so profile settings, application answers, and submission guardrails are available outside the main dashboard workflow.
 - Added deployment-level LLM provider/model selection in `backend/app/agent/llm_factory.py` and updated live LLM call sites to use the shared default provider.
 - Added FastAPI exception handlers for structured HTTP, validation, and unexpected error responses while preserving existing `detail` compatibility.
+- Added `docs/MANUAL_QA_CHECKLIST.md` for Docker baseline, auth/account, dashboard, pipeline, generated package, fill-for-review, true-submit gate, and admin/operations checks.
 - Added `containerClassName` support to the shared `TextField` wrapper for grid alignment.
 - Added `user_id` ownership to `Resume` and `JobPreference`.
 - Added a versioned startup migration that adds missing ownership columns and backfills only when the database has exactly one user.
@@ -298,6 +300,7 @@ Tests/checks:
 - Latest `./scripts/preflight.sh` also passes the signed-in browser dashboard smoke for the dashboard shell and Applications route.
 - Latest `./scripts/preflight.sh` passed after adding structured logging around agent and browser automation transitions.
 - Latest `./scripts/preflight.sh` passed after adding true-submit pilot scoping and dashboard lockout.
+- Latest `./scripts/preflight.sh` passed with 47 Dockerized backend tests, ATS consistency audit, frontend lint/build, Docker health checks, answer-vault export/audit smoke, and signed-in dashboard/Applications/Account browser smoke.
 - Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
 - Focused Dockerized backend tests for the answer-vault re-encryption job passed.
 - Focused Dockerized backend tests for submission settings/readiness and submit-confirmation pilot paths passed.
