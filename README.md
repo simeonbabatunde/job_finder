@@ -108,6 +108,7 @@ Default URLs:
 - True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted before persistence; production requires `APP_DATA_ENCRYPTION_KEY`.
 - Application answer-vault reads, exports, resets, and automation use are audited without storing answer values in the audit log.
+- Signed-in users can export account data, including resumes, preferences, generated package records, application history, and automation artifact links.
 - Production-like startup rejects weak secrets, missing answer-vault encryption keys, wildcard CORS, and localhost CORS origins.
 - Fill-review screenshots and traces are authenticated artifacts with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` pruning.
 - Public health checks now cover API liveness, DB reachability, and worker heartbeat freshness through `/health`, `/health/db`, and `/health/worker`.

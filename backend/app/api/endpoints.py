@@ -41,6 +41,7 @@ from app.services.field_encryption import (
     encrypt_text,
 )
 from app.schemas import (
+    AccountDataExportResponse,
     AgentRunResponse,
     AgentRunRecordResponse,
     ApplicationAnswerProfileRequest,
@@ -614,6 +615,37 @@ def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAud
         "started_at": run.started_at,
         "completed_at": run.completed_at,
         "auto_apply_audit": audit_records or [],
+    }
+
+def serialize_resume_export(record: Resume):
+    return {
+        "id": record.id,
+        "filename": record.filename,
+        "uploaded_at": record.upload_date,
+        "skills": record.skills or [],
+        "summary": record.summary,
+        "content_text": record.content,
+        "file_content_base64": (
+            base64.b64encode(record.file_content).decode("ascii")
+            if record.file_content
+            else None
+        ),
+    }
+
+def serialize_generated_package_export(app: Application):
+    return {
+        "application_id": app.id,
+        "job_title": app.job_title,
+        "company": app.company,
+        "status": app.status,
+        "fit_score": app.fit_score,
+        "cover_letter": app.cover_letter,
+        "cover_letter_pdf_url": (
+            f"/applications/{app.id}/cover-letter.pdf"
+            if app.id is not None and app.cover_letter
+            else None
+        ),
+        "created_at": app.created_at,
     }
 
 def fill_review_artifact_url(app_id: int, review_id: Optional[int], kind: str, path: Optional[str]):
@@ -1576,6 +1608,125 @@ def get_application_profile_audit(
         .limit(safe_limit)
     )
     return session.exec(query).all()
+
+@router.get("/account/export", response_model=AccountDataExportResponse)
+def export_account_data(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    if user.id is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = user.id
+    exported_at = utc_now()
+
+    resumes = session.exec(
+        select(Resume)
+        .where(Resume.user_id == user_id)
+        .order_by(Resume.upload_date.desc())
+    ).all()
+    preferences = session.exec(
+        select(JobPreference)
+        .where(JobPreference.user_id == user_id)
+        .order_by(JobPreference.created_at.desc())
+    ).all()
+    profile = session.exec(select(Profile).where(Profile.user_id == user_id)).first()
+    answer_profile_record = session.exec(
+        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user_id)
+    ).first()
+    application_profile = serialize_application_answer_profile(answer_profile_record)
+    if answer_profile_record:
+        audit_application_answer_access(
+            session,
+            user_id=user_id,
+            action="export",
+            access_reason="account_data_export",
+            source="account_export",
+        )
+
+    application_answer_audit = session.exec(
+        select(ApplicationAnswerAudit)
+        .where(ApplicationAnswerAudit.user_id == user_id)
+        .order_by(ApplicationAnswerAudit.created_at.desc())
+    ).all()
+    submission_settings = session.exec(
+        select(ApplicationSubmitSettings).where(ApplicationSubmitSettings.user_id == user_id)
+    ).first()
+    applications = session.exec(
+        select(Application)
+        .where(Application.user_id == user_id)
+        .order_by(Application.created_at.desc())
+    ).all()
+    agent_runs = session.exec(
+        select(AgentRun)
+        .where(AgentRun.user_id == user_id)
+        .order_by(AgentRun.started_at.desc())
+    ).all()
+    auto_apply_audit = session.exec(
+        select(AutoApplyAudit)
+        .where(AutoApplyAudit.user_id == user_id)
+        .order_by(AutoApplyAudit.created_at.desc())
+    ).all()
+    audit_by_run: dict[int, list[AutoApplyAudit]] = {}
+    for audit_record in auto_apply_audit:
+        if audit_record.agent_run_id is not None:
+            audit_by_run.setdefault(audit_record.agent_run_id, []).append(audit_record)
+
+    fill_reviews = session.exec(
+        select(ApplicationFillReview)
+        .where(ApplicationFillReview.user_id == user_id)
+        .order_by(ApplicationFillReview.created_at.desc())
+    ).all()
+    automation_attempts = session.exec(
+        select(AutoApplyAttempt)
+        .where(AutoApplyAttempt.user_id == user_id)
+        .order_by(AutoApplyAttempt.created_at.desc())
+    ).all()
+
+    generated_packages = [
+        serialize_generated_package_export(application)
+        for application in applications
+        if application.cover_letter
+    ]
+    serialized_fill_reviews = [
+        serialize_fill_review_record(review)
+        for review in fill_reviews
+    ]
+    serialized_attempts = [
+        serialize_auto_apply_attempt(attempt)
+        for attempt in automation_attempts
+    ]
+
+    counts = {
+        "resumes": len(resumes),
+        "preferences": len(preferences),
+        "applications": len(applications),
+        "generated_packages": len(generated_packages),
+        "agent_runs": len(agent_runs),
+        "fill_reviews": len(fill_reviews),
+        "automation_attempts": len(automation_attempts),
+        "auto_apply_audit": len(auto_apply_audit),
+        "application_answer_audit": len(application_answer_audit),
+    }
+
+    return {
+        "user": user,
+        "exported_at": exported_at,
+        "resumes": [serialize_resume_export(resume) for resume in resumes],
+        "preferences": preferences,
+        "profile": profile,
+        "application_profile": application_profile,
+        "application_answer_audit": application_answer_audit,
+        "submission_settings": serialize_submit_settings(submission_settings) if submission_settings else None,
+        "applications": applications,
+        "generated_packages": generated_packages,
+        "agent_runs": [
+            serialize_agent_run(run, audit_by_run.get(run.id or 0, []))
+            for run in agent_runs
+        ],
+        "fill_reviews": serialized_fill_reviews,
+        "automation_attempts": serialized_attempts,
+        "auto_apply_audit": auto_apply_audit,
+        "counts": counts,
+        "message": "Account data exported.",
+    }
 
 @router.get("/application-profile", response_model=Optional[ApplicationAnswerProfileResponse])
 def get_application_profile(user: User = Depends(get_current_user), session: Session = Depends(get_session)):

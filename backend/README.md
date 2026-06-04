@@ -150,6 +150,7 @@ Auth and account:
 - `POST /auth/forgot-password`
 - `POST /auth/reset-password`
 - `GET /user/status`
+- `GET /account/export`
 
 Resume, profile, and preferences:
 
@@ -249,6 +250,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
 - Application answer-vault export, view, reset, dashboard preload, and automation-use events are audited without storing answer values in the audit log.
+- `GET /account/export` returns a signed-in user's resumes, preferences, profile, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Health endpoints expose API liveness, DB reachability, and worker heartbeat freshness without returning user data.
 - LLM calls are live by default and need test doubles for repeatable automated tests.

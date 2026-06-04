@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import json
 import os
 import tempfile
 import time
@@ -27,7 +28,9 @@ from app.models import (
     ApplicationAnswerAudit,
     ApplicationAnswerProfile,
     ApplicationFillReview,
+    ApplicationSubmitSettings,
     AutoApplyAudit,
+    AutoApplyAttempt,
     Profile,
     ScraperConfig,
     User,
@@ -780,6 +783,207 @@ def test_application_package_generation_persists_cover_letter_with_fake_llm(monk
         with Session(engine) as session:
             saved_app = session.get(Application, app_id)
         assert saved_app.cover_letter == body["cover_letter"]
+
+
+def test_account_export_includes_owned_records_and_artifact_links():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "account-export")
+        user_id = auth["user"]["id"]
+        other_auth, _other_headers = register_user(client, "account-export-other")
+        other_user_id = other_auth["user"]["id"]
+        prepare_agent_setup(client, headers)
+
+        answer_response = client.post(
+            "/application-profile",
+            headers=headers,
+            json={
+                "work_authorized_us": "yes",
+                "requires_sponsorship_now": "no",
+                "requires_sponsorship_future": "no",
+                "willing_to_relocate": "yes",
+                "remote_preference": "remote",
+                "earliest_start_date": "2026-07-01",
+                "notice_period": "2 weeks",
+                "desired_salary": "$140k",
+                "work_authorization_notes": "Authorized without sponsorship.",
+                "consent_to_use_answers": True,
+                "gender": "woman",
+                "race_ethnicity": "black_or_african_american",
+                "veteran_status": "not_a_veteran",
+                "disability_status": "prefer_not_to_answer",
+                "consent_to_use_demographics": False,
+            },
+        )
+        assert answer_response.status_code == 200, answer_response.text
+
+        with Session(engine) as session:
+            agent_run = AgentRun(
+                user_id=user_id,
+                status="completed",
+                auto_apply=True,
+                logs=["queued", "completed"],
+                applications_count=1,
+                found_jobs_count=1,
+                completed_at=utc_now(),
+            )
+            session.add(agent_run)
+            app_record = Application(
+                user_id=user_id,
+                job_title="Export Role",
+                company="Acme",
+                job_url="https://boards.greenhouse.io/acme/jobs/export",
+                resolved_url="https://boards.greenhouse.io/acme/jobs/export",
+                source_type="ats",
+                ats_type="greenhouse",
+                resolution_status="resolved",
+                status="Needs Review",
+                fit_score=0.94,
+                explanation="Strong backend match.",
+                cover_letter="Dear Hiring Manager,\n\nExportable cover letter.",
+                pre_screen_status="pass",
+            )
+            other_app = Application(
+                user_id=other_user_id,
+                job_title="Other User Role",
+                company="OtherCo",
+                job_url="https://example.test/other-user-role",
+                status="Analyzed",
+                fit_score=0.99,
+            )
+            settings = ApplicationSubmitSettings(
+                user_id=user_id,
+                true_submit_enabled=True,
+                require_human_confirmation=True,
+                min_fit_score=85,
+                max_submits_per_day=3,
+                allowed_companies=["Acme"],
+                allowed_domains=["greenhouse.io"],
+                allowed_job_title_keywords=["Export"],
+                consented_at=utc_now(),
+            )
+            session.add(app_record)
+            session.add(other_app)
+            session.add(settings)
+            session.commit()
+            session.refresh(agent_run)
+            session.refresh(app_record)
+
+            review = ApplicationFillReview(
+                user_id=user_id,
+                application_id=app_record.id,
+                ats_type="greenhouse",
+                application_url=app_record.resolved_url,
+                status="ready_for_review",
+                message="Prepared in account export test.",
+                fields_filled=["First name", "Last name", "Email", "Resume"],
+                fields_missing=[],
+                blockers=[],
+            )
+            session.add(review)
+            session.commit()
+            session.refresh(review)
+
+            screenshot_path = FillReviewArtifactStore.save_base64(
+                user_id=user_id,
+                application_id=app_record.id,
+                review_id=review.id,
+                kind="screenshot",
+                payload_base64=base64.b64encode(b"export-png").decode("ascii"),
+                extension="png",
+            )
+            trace_path = FillReviewArtifactStore.save_base64(
+                user_id=user_id,
+                application_id=app_record.id,
+                review_id=review.id,
+                kind="trace",
+                payload_base64=base64.b64encode(b"export-zip").decode("ascii"),
+                extension="zip",
+            )
+            review.screenshot_path = screenshot_path
+            review.trace_path = trace_path
+            session.add(review)
+
+            attempt = AutoApplyAttempt(
+                user_id=user_id,
+                application_id=app_record.id,
+                agent_run_id=agent_run.id,
+                fill_review_id=review.id,
+                job_url=app_record.job_url,
+                job_title=app_record.job_title,
+                company=app_record.company,
+                ats_type=app_record.ats_type,
+                mode="fill_for_review",
+                status="ready_for_confirmation",
+                confidence_score=0.91,
+                filled_fields=["First name", "Last name", "Email", "Resume"],
+                missing_fields=[],
+                blockers=[],
+                readiness_snapshot={"ready": True},
+                submit_control={"detected": True, "label": "Submit Application"},
+                steps=[{"name": "fill_review_completed", "status": "ready_for_confirmation", "at": "2026-06-03T00:00:00"}],
+                screenshot_path=screenshot_path,
+                trace_path=trace_path,
+            )
+            session.add(attempt)
+            session.commit()
+            session.refresh(attempt)
+
+            session.add(
+                AutoApplyAudit(
+                    user_id=user_id,
+                    agent_run_id=agent_run.id,
+                    auto_apply_attempt_id=attempt.id,
+                    job_url=app_record.job_url,
+                    job_title=app_record.job_title,
+                    company=app_record.company,
+                    action="fill_review",
+                    status="ready_for_confirmation",
+                    message="Prepared for review.",
+                )
+            )
+            session.commit()
+
+        response = client.get("/account/export", headers=headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        body_text = json.dumps(body)
+
+        assert body["user"]["email"] == auth["user"]["email"]
+        assert body["message"] == "Account data exported."
+        assert body["counts"]["resumes"] == 1
+        assert body["counts"]["applications"] == 1
+        assert body["counts"]["generated_packages"] == 1
+        assert body["counts"]["fill_reviews"] == 1
+        assert body["counts"]["automation_attempts"] == 1
+
+        assert body["resumes"][0]["filename"] == "resume.txt"
+        assert body["resumes"][0]["content_text"] == "Python FastAPI SQL"
+        assert base64.b64decode(body["resumes"][0]["file_content_base64"]) == b"Python FastAPI SQL"
+        assert body["application_profile"]["desired_salary"] == "$140k"
+        assert body["application_profile"]["gender"] == "prefer_not_to_answer"
+        assert body["submission_settings"]["allowed_companies"] == ["Acme"]
+
+        assert [item["job_title"] for item in body["applications"]] == ["Export Role"]
+        assert body["generated_packages"][0]["cover_letter"].startswith("Dear Hiring Manager")
+        assert body["generated_packages"][0]["cover_letter_pdf_url"] == (
+            f"/applications/{body['applications'][0]['id']}/cover-letter.pdf"
+        )
+        assert body["fill_reviews"][0]["screenshot_url"] == (
+            f"/applications/{body['applications'][0]['id']}/fill-reviews/{body['fill_reviews'][0]['id']}/screenshot"
+        )
+        assert body["fill_reviews"][0]["trace_url"].endswith("/trace")
+        assert body["automation_attempts"][0]["screenshot_url"] == body["fill_reviews"][0]["screenshot_url"]
+        assert body["automation_attempts"][0]["submit_control"]["label"] == "Submit Application"
+        assert body["agent_runs"][0]["auto_apply_audit"][0]["status"] == "ready_for_confirmation"
+        assert body["auto_apply_audit"][0]["job_title"] == "Export Role"
+
+        answer_actions = {entry["action"] for entry in body["application_answer_audit"]}
+        assert {"upsert", "export"}.issubset(answer_actions)
+        assert "$140k" not in json.dumps(body["application_answer_audit"])
+        assert "Other User Role" not in body_text
+        assert "user_id" not in body_text
+
+        assert client.get("/account/export").status_code == 401
 
 
 def test_application_link_resolver_classifies_ats_and_aggregators():

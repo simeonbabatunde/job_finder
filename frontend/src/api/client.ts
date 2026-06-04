@@ -67,6 +67,25 @@ export interface ApplicationAnswerAuditRecord {
     created_at: string;
 }
 
+export interface AccountDataExportPayload {
+    user: AppUser;
+    exported_at: string;
+    resumes: Array<Record<string, unknown>>;
+    preferences: JobPreferencesPayload[];
+    profile?: ProfilePayload | null;
+    application_profile?: ApplicationAnswerProfilePayload | null;
+    application_answer_audit: ApplicationAnswerAuditRecord[];
+    submission_settings?: ApplicationSubmitSettingsPayload | null;
+    applications: Array<Record<string, unknown>>;
+    generated_packages: Array<Record<string, unknown>>;
+    agent_runs: Array<Record<string, unknown>>;
+    fill_reviews: ApplicationFillReviewRecord[];
+    automation_attempts: AutoApplyAttemptRecord[];
+    auto_apply_audit: Array<Record<string, unknown>>;
+    counts: Record<string, number>;
+    message: string;
+}
+
 export interface ApplicationFillReviewResult {
     review_id?: number;
     attempt_id?: number;
@@ -355,6 +374,35 @@ export async function exportApplicationProfile(): Promise<ApplicationAnswerExpor
         throw new Error(await getResponseDetail(response, 'Failed to export application answers'));
     }
     return response.json();
+}
+
+export async function downloadAccountDataExport(): Promise<AccountDataExportPayload> {
+    let response = await fetch(`${API_URL}/account/export`, {
+        headers: getAuthHeaders()
+    });
+    if (response.status === 401 && localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)) {
+        const refreshed = await refreshAuthSession();
+        if (refreshed) {
+            response = await fetch(`${API_URL}/account/export`, {
+                headers: getAuthHeaders()
+            });
+        }
+    }
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to export account data'));
+    }
+
+    const data: AccountDataExportPayload = await response.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `job-finder-account-export-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+    return data;
 }
 
 export async function getApplicationProfileAudit(limit = 50): Promise<ApplicationAnswerAuditRecord[]> {

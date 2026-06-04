@@ -34,6 +34,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - The matching workflow now runs a conservative pre-screen before full AI analysis, persists screened-out jobs with reasons, and keeps below-threshold/screened-out jobs in separate review lanes.
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
+- Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
 - `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate.
 
@@ -123,6 +124,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-06-03 | Audit answer-vault access without values | The app needs accountability for sensitive-answer access without creating another sensitive data copy. |
 | 2026-06-03 | Treat staging as production-like | Staging should catch weak secrets and unsafe CORS before production. |
 | 2026-06-03 | Use Dockerized preflight checks | Local and CI checks should match the Python 3.11 backend container instead of depending on a host venv. |
+| 2026-06-03 | Export account data as JSON with artifact links | User portability should cover records and authenticated artifact references without duplicating screenshot/trace files outside the protected artifact endpoints. |
 
 ## Open Questions
 
@@ -160,6 +162,9 @@ Completed:
 - Added `scripts/preflight-answer-audit.mjs` for the throwaway-user answer-vault export/audit smoke.
 - Added `.github/workflows/preflight.yml` so pushes and pull requests run the same preflight gate in CI.
 - Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
+- Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
+- Added a dashboard header `Export data` action that downloads the account export as JSON.
+- Added API contract coverage proving account export is user-scoped, includes generated package and artifact references, audits answer-vault export access, and does not expose answer values in audit records.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -265,7 +270,10 @@ Tests/checks:
 - `bash -n scripts/preflight.sh` passed.
 - `node --check scripts/preflight-answer-audit.mjs` passed.
 - `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
+- Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
+- `npm --prefix frontend run lint` passed.
+- `npm --prefix frontend run build` passed.
 
 Next concrete step:
 
-- Run `./scripts/preflight.sh`, then keep true final submit disabled while planning any controlled real-submit pilot.
+- Run `./scripts/preflight.sh`, then add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.

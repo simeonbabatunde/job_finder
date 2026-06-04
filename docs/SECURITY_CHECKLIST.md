@@ -32,6 +32,7 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Do not send voluntary self-ID answers to LLM prompts for matching, scoring, or ranking.
 - Provide export/delete/reset controls for saved application answers and automation artifacts.
 - Confirm `GET /application-profile/export` and `GET /application-profile/audit` work for the signed-in user only.
+- Confirm `GET /account/export` works for the signed-in user only and treat downloaded account-export JSON as private data.
 
 ## Browser Automation
 
@@ -43,7 +44,7 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 
 ## Deployment
 
-- Run backend tests, frontend lint/build, `docker compose config`, and an E2E Docker smoke test before staging.
+- Run `./scripts/preflight.sh` before staging.
 - Confirm CORS only allows the deployed frontend origin.
 - Confirm Postgres credentials are not the default local values.
 - Confirm `/health`, `/health/db`, and `/health/worker` are healthy.

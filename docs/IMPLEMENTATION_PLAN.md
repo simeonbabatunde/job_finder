@@ -345,6 +345,7 @@ Deliverables:
 - User ownership fields on resumes and preferences. Implemented with a versioned startup migration for existing local databases.
 - Query parameters for applications sorting, filtering, and limiting. Implemented on `GET /applications`.
 - Match buckets for the application pipeline. Implemented with `match_bucket=strong|below_threshold|screened_out|all`.
+- Account data export. Implemented with `GET /account/export` for resumes, preferences, generated package records, applications, agent runs, fill-review history, automation attempts, audits, and authenticated artifact URLs.
 - Conservative pre-screen before LLM analysis. Implemented with pass/maybe/reject buckets, persisted screened-out reasons, and dashboard review lanes.
 - Server-side action guards for match quality. Implemented so package generation and fill-for-review are blocked for screened-out jobs and jobs below the latest minimum match score.
 - Agent run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
@@ -421,6 +422,6 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-2. Add longer-term account/data export coverage for resumes, generated packages, and automation artifacts.
-3. Add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.
-4. Add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
+2. Add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.
+3. Add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
+4. Add structured logging around agent runs and browser automation transitions before staging.

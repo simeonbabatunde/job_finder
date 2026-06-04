@@ -246,9 +246,10 @@ Then use the frontend at `http://localhost:5173`:
 2. Save profile, application answers, and job preferences.
 3. Upload a resume.
 4. Export application answers and confirm the answer-vault audit list records the export.
-5. Run the search assistant.
-6. Open a matched job and generate the application package.
-7. Download the generated package and cover-letter PDF.
+5. Export account data and confirm the downloaded JSON contains only the signed-in user's records.
+6. Run the search assistant.
+7. Open a matched job and generate the application package.
+8. Download the generated package and cover-letter PDF.
 
 ## Production Gates
 
@@ -259,3 +260,4 @@ Then use the frontend at `http://localhost:5173`:
 - Confirm backups and restore testing before storing real resumes or application answers.
 - Confirm screenshot and trace retention with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Confirm answer-vault export and audit history work for the signed-in user only.
+- Confirm account data export works for the signed-in user only and is treated as private user data.

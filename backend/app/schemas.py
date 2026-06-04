@@ -206,6 +206,16 @@ class ApplicationAnswerAuditResponse(BaseModel):
     created_at: datetime
 
 
+class ResumeExportRecord(BaseModel):
+    id: Optional[int] = None
+    filename: str
+    uploaded_at: datetime
+    skills: List[str] = Field(default_factory=list)
+    summary: Optional[str] = None
+    content_text: str
+    file_content_base64: Optional[str] = None
+
+
 class AgentQuotaResponse(BaseModel):
     agent_runs_used_today: int
     agent_run_limit: int
@@ -432,6 +442,25 @@ class AgentRunRecordResponse(BaseModel):
     started_at: datetime
     completed_at: Optional[datetime] = None
     auto_apply_audit: List[AutoApplyAuditResponse] = Field(default_factory=list)
+
+
+class AccountDataExportResponse(BaseModel):
+    user: UserResponse
+    exported_at: datetime
+    resumes: List[ResumeExportRecord] = Field(default_factory=list)
+    preferences: List[JobPreferenceResponse] = Field(default_factory=list)
+    profile: Optional[ProfileResponse] = None
+    application_profile: Optional[ApplicationAnswerProfileResponse] = None
+    application_answer_audit: List[ApplicationAnswerAuditResponse] = Field(default_factory=list)
+    submission_settings: Optional[ApplicationSubmitSettingsResponse] = None
+    applications: List[ApplicationResponse] = Field(default_factory=list)
+    generated_packages: List[Dict[str, Any]] = Field(default_factory=list)
+    agent_runs: List[AgentRunRecordResponse] = Field(default_factory=list)
+    fill_reviews: List[ApplicationFillReviewRecordResponse] = Field(default_factory=list)
+    automation_attempts: List[AutoApplyAttemptResponse] = Field(default_factory=list)
+    auto_apply_audit: List[AutoApplyAuditResponse] = Field(default_factory=list)
+    counts: Dict[str, int] = Field(default_factory=dict)
+    message: str
 
 
 class ResumeFeedbackCategoryResponse(BaseModel):

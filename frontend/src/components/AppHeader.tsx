@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, LogIn, LogOut, Settings } from 'lucide-react';
+import { BriefcaseBusiness, Download, LoaderCircle, LogIn, LogOut, Settings } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Button, StatusChip } from './ui';
 
@@ -13,6 +13,8 @@ interface AppHeaderProps {
     currentPath: string;
     onLogin: () => void;
     onLogout: () => void | Promise<void>;
+    onExportData?: () => void | Promise<void>;
+    exportingData?: boolean;
 }
 
 const navItems = [
@@ -20,7 +22,7 @@ const navItems = [
     { href: '/applications', label: 'Applications' },
 ];
 
-export function AppHeader({ user, currentPath, onLogin, onLogout }: AppHeaderProps) {
+export function AppHeader({ user, currentPath, onLogin, onLogout, onExportData, exportingData = false }: AppHeaderProps) {
     const isActive = (href: string) => (href === '/' ? currentPath === '/' : currentPath.startsWith(href));
 
     return (
@@ -76,6 +78,12 @@ export function AppHeader({ user, currentPath, onLogin, onLogout }: AppHeaderPro
                             <span className="max-w-[220px] truncate text-sm text-[var(--muted)]">
                                 {user.email}
                             </span>
+                            {onExportData && (
+                                <Button variant="secondary" size="sm" onClick={onExportData} disabled={exportingData}>
+                                    {exportingData ? <LoaderCircle className="animate-spin" size={15} /> : <Download size={15} />}
+                                    {exportingData ? 'Exporting' : 'Export data'}
+                                </Button>
+                            )}
                             <Button variant="ghost" size="sm" onClick={onLogout}>
                                 <LogOut size={15} />
                                 Sign out

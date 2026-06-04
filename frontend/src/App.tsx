@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2, Circle, FileText, Play, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { clearAuthSession, getUserStatus, hasAuthSession, revokeAuthSession } from './api/client';
+import { clearAuthSession, downloadAccountDataExport, getErrorMessage, getUserStatus, hasAuthSession, revokeAuthSession } from './api/client';
 import type {
   AgentQuotaStatus,
   AppUser,
@@ -46,6 +46,7 @@ function App() {
   const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
   const [applicationProfileData, setApplicationProfileData] = useState<ApplicationAnswerProfilePayload | null>(null);
   const [quotaData, setQuotaData] = useState<AgentQuotaStatus | null>(null);
+  const [exportingAccountData, setExportingAccountData] = useState(false);
 
   const resumeRef = useRef<ResumeUploadHandle>(null);
   const prefsRef = useRef<JobPreferencesHandle>(null);
@@ -111,6 +112,17 @@ function App() {
     setUser(u);
     setShowAuth(null);
     refreshStatus();
+  };
+
+  const handleExportAccountData = async () => {
+    setExportingAccountData(true);
+    try {
+      await downloadAccountDataExport();
+    } catch (error) {
+      window.alert(getErrorMessage(error, 'Failed to export account data'));
+    } finally {
+      setExportingAccountData(false);
+    }
   };
 
   const profileComplete = useMemo(() => {
@@ -184,6 +196,8 @@ function App() {
         currentPath={currentPath}
         onLogin={() => setShowAuth('login')}
         onLogout={handleLogout}
+        onExportData={user ? handleExportAccountData : undefined}
+        exportingData={exportingAccountData}
       />
       {children}
       {showAuth && (
