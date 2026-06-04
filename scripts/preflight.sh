@@ -12,7 +12,7 @@ export POSTGRES_DB="${POSTGRES_DB:-job_hunter}"
 export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@db:5432/job_hunter}"
 export FRONTEND_URL="${FRONTEND_URL:-http://localhost:5173}"
 export VITE_API_URL="${VITE_API_URL:-http://localhost:8000}"
-export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-}"
+export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://frontend:5173}"
 export APP_ENV="${APP_ENV:-development}"
 export AUTH_SECRET_KEY="${AUTH_SECRET_KEY:-job-finder-dev-secret-change-me}"
 export AUTH_PREVIOUS_SECRET_KEYS="${AUTH_PREVIOUS_SECRET_KEYS:-}"
@@ -147,6 +147,12 @@ wait_for_http "Frontend" "$FRONTEND_HEALTH_URL" 60 2
 
 section "Answer-vault export and audit smoke"
 PREFLIGHT_API_URL="$API_URL" node "$ROOT_DIR/scripts/preflight-answer-audit.mjs"
+
+section "Frontend dashboard browser smoke"
+docker compose exec -T \
+  -e PREFLIGHT_API_URL=http://localhost:8000 \
+  -e PREFLIGHT_FRONTEND_BROWSER_URL=http://frontend:5173 \
+  backend uv run python -m app.smoke.frontend_dashboard
 
 section "Preflight complete"
 printf 'All launch-readiness checks passed.\n'

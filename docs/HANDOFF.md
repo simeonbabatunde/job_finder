@@ -37,7 +37,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
 - Answer-vault data-key rotation now has a dry-run/apply re-encryption job before old previous keys are removed.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
-- `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate.
+- `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate, including a signed-in browser dashboard smoke.
 
 ## Active Technical Direction
 
@@ -160,10 +160,11 @@ Completed:
 - Added environment-driven CORS with production-like startup rejection for wildcard and local origins, plus `CORS_ALLOWED_ORIGINS`.
 - Added previous answer-vault data-key read support through `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
 - Expanded deployment readiness docs with Alembic staging rehearsal, backup/restore rehearsal, and secret rotation steps.
-- Added `./scripts/preflight.sh` to run backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, health checks, and answer-vault export/audit smoke from one command.
+- Added `./scripts/preflight.sh` to run backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, health checks, answer-vault export/audit smoke, and browser dashboard smoke from one command.
 - Added `scripts/preflight-answer-audit.mjs` for the throwaway-user answer-vault export/audit smoke.
 - Added `.github/workflows/preflight.yml` so pushes and pull requests run the same preflight gate in CI.
 - Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
+- Added `app.smoke.frontend_dashboard` for signed-in dashboard and Applications route browser coverage in preflight.
 - Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Added a dashboard header `Export data` action that downloads the account export as JSON.
 - Added API contract coverage proving account export is user-scoped, includes generated package and artifact references, audits answer-vault export access, and does not expose answer values in audit records.
@@ -277,6 +278,7 @@ Tests/checks:
 - `node --check scripts/preflight-answer-audit.mjs` passed.
 - `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
 - Latest `./scripts/preflight.sh` passed with 41 Dockerized backend tests after adding the answer-vault re-encryption job.
+- Latest `./scripts/preflight.sh` also passes the signed-in browser dashboard smoke for the dashboard shell and Applications route.
 - Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
 - Focused Dockerized backend tests for the answer-vault re-encryption job passed.
 - `docker compose exec -T backend uv run python -m app.jobs.reencrypt_application_answers --dry-run` passed; local dev data had no unreadable rows and 4 plaintext rows eligible for re-encryption.
@@ -285,4 +287,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Run `./scripts/preflight.sh`, then add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
+- Run `./scripts/preflight.sh`, then add structured logging around agent runs and browser automation transitions before staging.

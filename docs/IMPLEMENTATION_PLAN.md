@@ -377,7 +377,7 @@ Deliverables:
 - Backend pytest suite. Implemented for API contracts through the Dockerized preflight.
 - Frontend typecheck and build checks. Implemented through `npm run build` in preflight.
 - Frontend component smoke tests where practical.
-- Playwright smoke test for the main workflow.
+- Playwright smoke test for the dashboard workflow. Implemented through `app.smoke.frontend_dashboard` in preflight.
 - Manual QA checklist.
 - Repeatable local/CI preflight command. Implemented through `./scripts/preflight.sh`.
 - Answer-vault export/audit smoke test. Implemented through `scripts/preflight-answer-audit.mjs`.
@@ -393,7 +393,7 @@ Implementation notes:
 
 - Mock JobSpy and LLM calls in tests.
 - Keep live scraper and live LLM tests opt-in.
-- `./scripts/preflight.sh` starts Docker Compose, verifies health endpoints, and uses a throwaway local user for answer-vault export/audit coverage without calling live LLMs.
+- `./scripts/preflight.sh` starts Docker Compose, verifies health endpoints, uses a throwaway local user for answer-vault export/audit coverage, and runs a signed-in browser dashboard smoke without calling live LLMs.
 
 ## Milestone 9: Deployment Preparation
 
@@ -423,6 +423,5 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-2. Add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
-3. Add structured logging around agent runs and browser automation transitions before staging.
-4. Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.
+2. Add structured logging around agent runs and browser automation transitions before staging.
+3. Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.
