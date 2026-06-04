@@ -350,7 +350,7 @@ Deliverables:
 - Server-side action guards for match quality. Implemented so package generation and fill-for-review are blocked for screened-out jobs and jobs below the latest minimum match score.
 - Agent run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
 - Safer auto-apply audit trail. Implemented with `AutoApplyAudit`; stronger confirmation rules remain.
-- LLM provider setting per run or per deployment.
+- LLM provider setting per deployment. Implemented with `LLM_PROVIDER`, `LLM_MODEL`, and provider-specific model overrides flowing through the shared LLM factory.
 - Structured error responses.
 
 Acceptance criteria:

@@ -56,7 +56,7 @@ docker run --rm \
   -v "$PWD/backend:/app" \
   -w /app \
   ghcr.io/astral-sh/uv:python3.11-bookworm \
-  uv run --frozen --group dev python -m pytest app/tests/test_api_contracts.py
+  uv run --frozen --group dev python -m pytest app/tests
 ```
 
 Full repository preflight from the root:
@@ -77,6 +77,12 @@ Important variables:
 
 ```text
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/job_hunter
+LLM_PROVIDER=openai
+LLM_MODEL=
+OPENAI_MODEL=
+OPENROUTER_MODEL=
+GOOGLE_MODEL=
+OLLAMA_MODEL=
 OPENAI_API_KEY=
 OPENROUTER_API_KEY=
 GOOGLE_API_KEY=

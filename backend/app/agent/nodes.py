@@ -29,8 +29,7 @@ async def parse_resume(state: AgentState):
         }
 
     try:
-        # Use OpenAI
-        llm = get_llm(model_type="openai")
+        llm = get_llm()
         parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([
@@ -206,9 +205,8 @@ async def analyze_fit(state: AgentState):
     
     new_logs = []
     
-    # Use OpenAI
     try:
-        llm = get_llm(model_type="openai")
+        llm = get_llm()
         parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([

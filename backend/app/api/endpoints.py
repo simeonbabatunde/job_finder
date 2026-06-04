@@ -2152,8 +2152,7 @@ async def analyze_single_job(
     if not resume:
         raise HTTPException(status_code=400, detail="Please upload a resume first")
 
-    # Use OpenAI to analyze just this job
-    llm = get_llm(model_type="openai")
+    llm = get_llm()
     parser = JsonOutputParser()
     
     # We can reuse the prompt logic from nodes.py or just implement it here for simplicity
@@ -2809,7 +2808,7 @@ async def prepare_application(
 
     import asyncio
 
-    llm = get_llm(model_type="openai")
+    llm = get_llm()
     parser = JsonOutputParser()
 
     profile_info = ""
@@ -3021,7 +3020,7 @@ async def get_resume_feedback(
     prefs = get_latest_preferences(session, user.id)
     target_roles = ", ".join(prefs.role) if prefs and prefs.role else "not specified"
 
-    llm = get_llm(model_type="openai")
+    llm = get_llm()
     parser = JsonOutputParser()
 
     prompt = ChatPromptTemplate.from_messages([

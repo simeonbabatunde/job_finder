@@ -33,6 +33,12 @@ export AGENT_RUN_STALE_MINUTES="${AGENT_RUN_STALE_MINUTES:-120}"
 export ENABLE_TRUE_AUTO_SUBMIT="${ENABLE_TRUE_AUTO_SUBMIT:-false}"
 export TRUE_SUBMIT_PILOT_USER_EMAILS="${TRUE_SUBMIT_PILOT_USER_EMAILS:-}"
 export TRUE_SUBMIT_PILOT_ATS_TYPES="${TRUE_SUBMIT_PILOT_ATS_TYPES:-}"
+export LLM_PROVIDER="${LLM_PROVIDER:-openai}"
+export LLM_MODEL="${LLM_MODEL:-}"
+export OPENAI_MODEL="${OPENAI_MODEL:-}"
+export OPENROUTER_MODEL="${OPENROUTER_MODEL:-}"
+export GOOGLE_MODEL="${GOOGLE_MODEL:-}"
+export OLLAMA_MODEL="${OLLAMA_MODEL:-}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
 export GOOGLE_API_KEY="${GOOGLE_API_KEY:-}"
@@ -109,8 +115,8 @@ require_command node
 require_command npm
 require_command curl
 
-section "Backend API contract tests"
-run_backend_uv python -m pytest app/tests/test_api_contracts.py
+section "Backend tests"
+run_backend_uv python -m pytest app/tests
 
 section "Frontend dependencies"
 if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then

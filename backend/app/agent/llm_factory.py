@@ -1,24 +1,54 @@
 import os
+from typing import Optional
+
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-def get_llm(model_type: str = "openai", model_name: str = None):
+SUPPORTED_LLM_PROVIDERS = {"openai", "openrouter", "gemini", "ollama"}
+DEFAULT_MODEL_BY_PROVIDER = {
+    "openai": "gpt-4o",
+    "openrouter": "openai/gpt-oss-120b:free",
+    "gemini": "gemini-flash-latest",
+    "ollama": "llama3",
+}
+MODEL_ENV_BY_PROVIDER = {
+    "openai": "OPENAI_MODEL",
+    "openrouter": "OPENROUTER_MODEL",
+    "gemini": "GOOGLE_MODEL",
+    "ollama": "OLLAMA_MODEL",
+}
+
+
+def resolve_llm_config(model_type: Optional[str] = None, model_name: Optional[str] = None) -> tuple[str, str]:
+    provider = (model_type or os.getenv("LLM_PROVIDER") or "openai").strip().lower()
+    if provider not in SUPPORTED_LLM_PROVIDERS:
+        supported = ", ".join(sorted(SUPPORTED_LLM_PROVIDERS))
+        raise ValueError(f"Unsupported LLM provider '{provider}'. Supported providers: {supported}.")
+
+    provider_model_env = MODEL_ENV_BY_PROVIDER[provider]
+    provider_model = os.getenv(provider_model_env, "").strip()
+    default_model = DEFAULT_MODEL_BY_PROVIDER[provider]
+    model = (model_name or provider_model or os.getenv("LLM_MODEL", "").strip() or default_model).strip()
+    return provider, model
+
+
+def get_llm(model_type: Optional[str] = None, model_name: Optional[str] = None):
     """
     Factory to return an LLM instance.
-    model_type: "openai" or "ollama"
+    model_type can be "openai", "openrouter", "gemini", or "ollama".
+    When omitted, LLM_PROVIDER and model env vars choose the deployment default.
     """
-    if model_type == "ollama":
-        name = model_name or "llama3" # Default to llama3 for Ollama
+    provider, name = resolve_llm_config(model_type, model_name)
+
+    if provider == "ollama":
         return ChatOllama(model=name)
-    elif model_type == "gemini":
-        name = model_name or "gemini-flash-latest"
+    elif provider == "gemini":
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             print("Warning: GOOGLE_API_KEY not found in .env")
         return ChatGoogleGenerativeAI(model=name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True)
-    elif model_type == "openrouter":
-        name = model_name or "openai/gpt-oss-120b:free"
+    elif provider == "openrouter":
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             print("Warning: OPENROUTER_API_KEY not found.")
@@ -34,8 +64,6 @@ def get_llm(model_type: str = "openai", model_name: str = None):
             }
         )
     else:
-        # Default to OpenAI
-        name = model_name or "gpt-4o"
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
              # Fallback or error - for now log a warning? 

@@ -8,6 +8,12 @@ services:
       - /app/.venv
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
+      - GOOGLE_MODEL=${GOOGLE_MODEL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
@@ -46,6 +52,12 @@ services:
       - /app/.venv
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
+      - GOOGLE_MODEL=${GOOGLE_MODEL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}

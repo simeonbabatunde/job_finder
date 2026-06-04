@@ -98,7 +98,7 @@ class BrowserApplyService:
         log_event("browser_apply.dom_snapshot", visible_controls_count=len(dom_snapshot))
 
         # 2. Ask LLM for Mapping
-        llm = get_llm(model_type="openai")
+        llm = get_llm()
         parser = JsonOutputParser()
         
         prompt = ChatPromptTemplate.from_messages([

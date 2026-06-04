@@ -7,7 +7,7 @@ Job Finder is a smart job search assistant that helps remove the repetitive part
 - Frontend: React 19, TypeScript, Vite, Tailwind CSS 4
 - Backend: FastAPI, SQLModel, PostgreSQL, LangGraph, LangChain
 - Job discovery: python-jobspy plus custom scrapers
-- LLM providers: OpenAI, OpenRouter, Gemini, Ollama support through `backend/app/agent/llm_factory.py`
+- LLM providers: OpenAI, OpenRouter, Gemini, and Ollama through `backend/app/agent/llm_factory.py`, selected by `LLM_PROVIDER` and model override env vars
 - Browser automation: Playwright for supported-ATS fill-for-review; true submit is disabled by default
 - Local orchestration: Docker Compose
 - Python dependency manager: uv through `backend/pyproject.toml` and `backend/uv.lock`
