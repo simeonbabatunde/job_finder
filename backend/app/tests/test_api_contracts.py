@@ -254,6 +254,36 @@ def test_search_jobs_returns_empty_list_when_scraper_fails(monkeypatch):
     assert response.json() == []
 
 
+def test_api_errors_include_structured_error_object():
+    with TestClient(app) as client:
+        response = client.get("/user/status")
+
+    assert response.status_code == 401, response.text
+    body = response.json()
+    assert body["detail"] == "Authentication required"
+    assert body["error"] == {
+        "code": "http_401",
+        "message": "Authentication required",
+        "status_code": 401,
+        "path": "/user/status",
+    }
+
+
+def test_validation_errors_include_structured_error_object():
+    with TestClient(app) as client:
+        response = client.post("/auth/register", json={"email": "missing-password@example.test"})
+
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert isinstance(body["detail"], list)
+    assert body["error"] == {
+        "code": "validation_error",
+        "message": "Request validation failed",
+        "status_code": 422,
+        "path": "/auth/register",
+    }
+
+
 def test_health_endpoints_report_database_and_background_worker(monkeypatch):
     monkeypatch.setenv("AGENT_RUNNER_MODE", "background")
 

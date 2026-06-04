@@ -351,7 +351,7 @@ Deliverables:
 - Agent run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
 - Safer auto-apply audit trail. Implemented with `AutoApplyAudit`; stronger confirmation rules remain.
 - LLM provider setting per deployment. Implemented with `LLM_PROVIDER`, `LLM_MODEL`, and provider-specific model overrides flowing through the shared LLM factory.
-- Structured error responses.
+- Structured error responses. Implemented at the FastAPI app boundary while preserving the existing `detail` field for current clients.
 
 Acceptance criteria:
 

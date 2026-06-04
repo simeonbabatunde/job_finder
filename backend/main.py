@@ -2,11 +2,15 @@ import os
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.endpoints import router as api_router
 from app.database import create_db_and_tables
+from app.observability import log_event
 
 LOCAL_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
 PRODUCTION_LIKE_ENVS = {"prod", "production", "staging"}
@@ -80,6 +84,70 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Job Hunter API", lifespan=lifespan)
+
+
+def error_payload(
+    *,
+    code: str,
+    message: str,
+    status_code: int,
+    path: str,
+    detail=None,
+) -> dict:
+    return {
+        "detail": detail if detail is not None else message,
+        "error": {
+            "code": code,
+            "message": message,
+            "status_code": status_code,
+            "path": path,
+        },
+    }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    message = exc.detail if isinstance(exc.detail, str) else "Request failed"
+    return JSONResponse(
+        status_code=exc.status_code,
+        headers=exc.headers,
+        content=error_payload(
+            code=f"http_{exc.status_code}",
+            message=message,
+            status_code=exc.status_code,
+            path=request.url.path,
+            detail=jsonable_encoder(exc.detail),
+        ),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = jsonable_encoder(exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content=error_payload(
+            code="validation_error",
+            message="Request validation failed",
+            status_code=422,
+            path=request.url.path,
+            detail=errors,
+        ),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    log_event("api.unhandled_exception", level="error", path=request.url.path, error=str(exc))
+    return JSONResponse(
+        status_code=500,
+        content=error_payload(
+            code="internal_error",
+            message="Internal server error",
+            status_code=500,
+            path=request.url.path,
+        ),
+    )
 
 app.add_middleware(
     CORSMiddleware,
