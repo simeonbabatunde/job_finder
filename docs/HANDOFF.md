@@ -35,6 +35,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
 - Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
+- Answer-vault data-key rotation now has a dry-run/apply re-encryption job before old previous keys are removed.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
 - `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate.
 
@@ -87,7 +88,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
 - Application answer-vault access is audited for direct views, exports, resets, dashboard preload, fill-for-review, and submit-readiness usage.
-- `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` can keep old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
+- `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` can keep old encrypted answer-vault rows readable during data-key rotation while new saves use the current key; run the re-encryption job and confirm a clean dry run before removing old keys.
 - The main frontend surfaces now share the tokenized visual treatment. Remaining UI polish is incremental rather than a known split-style blocker.
 
 ## Session Start Checklist
@@ -125,6 +126,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-06-03 | Treat staging as production-like | Staging should catch weak secrets and unsafe CORS before production. |
 | 2026-06-03 | Use Dockerized preflight checks | Local and CI checks should match the Python 3.11 backend container instead of depending on a host venv. |
 | 2026-06-03 | Export account data as JSON with artifact links | User portability should cover records and authenticated artifact references without duplicating screenshot/trace files outside the protected artifact endpoints. |
+| 2026-06-03 | Re-encrypt answer-vault rows before old-key removal | Previous data keys should stay configured until all readable rows have been rewritten with the current key and unreadable rows are resolved. |
 
 ## Open Questions
 
@@ -165,6 +167,10 @@ Completed:
 - Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Added a dashboard header `Export data` action that downloads the account export as JSON.
 - Added API contract coverage proving account export is user-scoped, includes generated package and artifact references, audits answer-vault export access, and does not expose answer values in audit records.
+- Added status-aware answer-vault decryption helpers that distinguish current-key, previous-key, plaintext, and unreadable fields.
+- Added `app.services.application_answer_rotation.reencrypt_application_answer_profiles` for dry-run/apply answer-vault row rewrites after data-key rotation.
+- Added `python -m app.jobs.reencrypt_application_answers --dry-run|--apply` for operational answer-vault re-encryption.
+- Added API contract coverage for previous-key/plaintext re-encryption and unreadable-row reporting without partial rewrites.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
 - Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
@@ -270,10 +276,13 @@ Tests/checks:
 - `bash -n scripts/preflight.sh` passed.
 - `node --check scripts/preflight-answer-audit.mjs` passed.
 - `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
+- Latest `./scripts/preflight.sh` passed with 41 Dockerized backend tests after adding the answer-vault re-encryption job.
 - Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
+- Focused Dockerized backend tests for the answer-vault re-encryption job passed.
+- `docker compose exec -T backend uv run python -m app.jobs.reencrypt_application_answers --dry-run` passed; local dev data had no unreadable rows and 4 plaintext rows eligible for re-encryption.
 - `npm --prefix frontend run lint` passed.
 - `npm --prefix frontend run build` passed.
 
 Next concrete step:
 
-- Run `./scripts/preflight.sh`, then add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.
+- Run `./scripts/preflight.sh`, then add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.

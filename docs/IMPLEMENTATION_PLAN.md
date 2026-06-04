@@ -381,6 +381,7 @@ Deliverables:
 - Manual QA checklist.
 - Repeatable local/CI preflight command. Implemented through `./scripts/preflight.sh`.
 - Answer-vault export/audit smoke test. Implemented through `scripts/preflight-answer-audit.mjs`.
+- Answer-vault data-key re-encryption job. Implemented through `python -m app.jobs.reencrypt_application_answers --dry-run|--apply`.
 
 Acceptance criteria:
 
@@ -422,6 +423,6 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-2. Add a dedicated answer-vault re-encryption job before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` values after data-key rotation.
-3. Add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
-4. Add structured logging around agent runs and browser automation transitions before staging.
+2. Add frontend component or Playwright smoke coverage for the dashboard workflow after the current app shell stabilizes.
+3. Add structured logging around agent runs and browser automation transitions before staging.
+4. Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.

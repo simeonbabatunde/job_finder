@@ -219,7 +219,12 @@ Answer-vault encryption supports previous data keys for reads:
 2. Set a new strong `APP_DATA_ENCRYPTION_KEY`.
 3. Deploy.
 4. New or updated answer-vault saves use the new key.
-5. Keep previous keys until old rows have been re-saved or a dedicated re-encryption job exists.
+5. Run a dry run:
+   `docker compose exec -T backend uv run python -m app.jobs.reencrypt_application_answers --dry-run`
+6. Confirm `unreadable_records` is `0`, then apply:
+   `docker compose exec -T backend uv run python -m app.jobs.reencrypt_application_answers --apply`
+7. Run the dry run again and confirm `previous_key_records`, `plaintext_records`, and `unreadable_records` are all `0`.
+8. Remove old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` only after a backup exists and the post-apply dry run is clean.
 
 Provider, SMTP, and OAuth keys should be rotated in the provider console and stored
 only in the hosting secret manager.

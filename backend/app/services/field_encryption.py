@@ -2,12 +2,13 @@ import base64
 import hashlib
 import os
 from functools import lru_cache
-from typing import Optional
+from typing import Literal, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
 
 ENCRYPTED_VALUE_PREFIX = "enc:v1:"
+DecryptionKeyStatus = Literal["none", "plaintext", "current", "previous", "unreadable"]
 
 
 def data_encryption_key_is_configured() -> bool:
@@ -38,20 +39,42 @@ def _fernet_for_material(material: str) -> Fernet:
     return Fernet(key)
 
 
-def encrypt_text(value: Optional[str]) -> Optional[str]:
-    if value is None or value.startswith(ENCRYPTED_VALUE_PREFIX):
-        return value
+def _encrypt_plain_text(value: str) -> str:
     token = _fernet_for_material(_key_material()).encrypt(value.encode("utf-8")).decode("ascii")
     return f"{ENCRYPTED_VALUE_PREFIX}{token}"
 
 
-def decrypt_text(value: Optional[str], fallback: Optional[str] = None) -> Optional[str]:
-    if value is None or not value.startswith(ENCRYPTED_VALUE_PREFIX):
+def encrypt_text(value: Optional[str]) -> Optional[str]:
+    if value is None or value.startswith(ENCRYPTED_VALUE_PREFIX):
         return value
+    return _encrypt_plain_text(value)
+
+
+def encrypt_text_with_current_key(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return _encrypt_plain_text(value)
+
+
+def decrypt_text_with_key_status(
+    value: Optional[str],
+    fallback: Optional[str] = None,
+) -> tuple[Optional[str], DecryptionKeyStatus]:
+    if value is None:
+        return None, "none"
+    if not value.startswith(ENCRYPTED_VALUE_PREFIX):
+        return value, "plaintext"
+
     token = value[len(ENCRYPTED_VALUE_PREFIX):].encode("ascii")
-    for material in (_key_material(), *_previous_key_materials()):
+    for index, material in enumerate((_key_material(), *_previous_key_materials())):
         try:
-            return _fernet_for_material(material).decrypt(token).decode("utf-8")
+            decrypted = _fernet_for_material(material).decrypt(token).decode("utf-8")
+            return decrypted, "current" if index == 0 else "previous"
         except (InvalidToken, ValueError):
             continue
-    return fallback
+    return fallback, "unreadable"
+
+
+def decrypt_text(value: Optional[str], fallback: Optional[str] = None) -> Optional[str]:
+    decrypted, _status = decrypt_text_with_key_status(value, fallback=fallback)
+    return decrypted

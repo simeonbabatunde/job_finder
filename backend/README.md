@@ -249,6 +249,9 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
+- After data-key rotation, run the answer-vault re-encryption job before removing old previous keys:
+  - `uv run python -m app.jobs.reencrypt_application_answers --dry-run`
+  - `uv run python -m app.jobs.reencrypt_application_answers --apply`
 - Application answer-vault export, view, reset, dashboard preload, and automation-use events are audited without storing answer values in the audit log.
 - `GET /account/export` returns a signed-in user's resumes, preferences, profile, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
@@ -259,8 +262,9 @@ the main best-fit view while remaining reviewable from the full pipeline.
 
 1. Run `./scripts/preflight.sh` before staging pushes or broad feature branches.
 2. Enable Alembic in staging, validate the baseline against an existing database, then retire the lightweight runner when production migration history is trusted.
-3. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
-4. Follow `docs/DEPLOYMENT_READINESS.md` before sharing a hosted staging environment.
+3. Run the answer-vault re-encryption job and confirm a clean dry run before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
+4. Keep true final submit disabled by default until a real-submit pilot is explicitly approved.
+5. Follow `docs/DEPLOYMENT_READINESS.md` before sharing a hosted staging environment.
 
 ## Product Notes Preserved
 

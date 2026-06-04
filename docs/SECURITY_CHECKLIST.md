@@ -27,6 +27,7 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Treat resumes, profile data, application answers, screenshots, traces, and generated packages as private user data.
 - Application answer-vault string fields are encrypted at rest before persistence.
 - Answer-vault read/export/reset/automation-use audit rows must not store answer values.
+- Run the answer-vault re-encryption job and confirm a clean dry run before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
 - Store voluntary self-ID answers separately from matching preferences.
 - Default voluntary self-ID answers to `prefer_not_to_answer`.
 - Do not send voluntary self-ID answers to LLM prompts for matching, scoring, or ranking.

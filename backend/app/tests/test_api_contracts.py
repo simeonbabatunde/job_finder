@@ -40,7 +40,13 @@ from app.services import job_search as job_search_module
 from app.services.application_fill_review import ApplicationFillReviewService, FillReviewResult, SubmitControlDetection
 from app.services.application_link_resolver import ApplicationLinkResolver, LinkResolutionResult
 from app.services.browser_apply import BrowserApplyService
-from app.services.field_encryption import ENCRYPTED_VALUE_PREFIX, decrypt_text, encrypt_text
+from app.services.application_answer_rotation import reencrypt_application_answer_profiles
+from app.services.field_encryption import (
+    ENCRYPTED_VALUE_PREFIX,
+    decrypt_text,
+    decrypt_text_with_key_status,
+    encrypt_text,
+)
 from app.services.fill_review_artifacts import FillReviewArtifactStore
 from app.time_utils import utc_now
 from app.services.job_pre_screen import JobPreScreenService
@@ -460,6 +466,100 @@ def test_answer_encryption_supports_previous_key_rotation(monkeypatch):
     monkeypatch.setenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", "older-key,old-answer-key")
     assert decrypt_text(encrypted, fallback="unreadable") == "yes"
     assert encrypt_text("yes") != encrypted
+
+
+def test_answer_reencryption_job_rotates_previous_key_and_plaintext_values(monkeypatch):
+    with TestClient(app):
+        pass
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM applicationanswerprofile"))
+
+    monkeypatch.setenv("APP_DATA_ENCRYPTION_KEY", "old-answer-key")
+    monkeypatch.delenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", raising=False)
+    old_authorization = encrypt_text("yes")
+    old_salary = encrypt_text("$150k")
+    assert decrypt_text_with_key_status(old_authorization)[1] == "current"
+
+    monkeypatch.setenv("APP_DATA_ENCRYPTION_KEY", "new-answer-key")
+    monkeypatch.setenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", "old-answer-key")
+
+    with Session(engine) as session:
+        user = User(email=unique_email("reencrypt"), subscription_tier="free")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        answer_profile = ApplicationAnswerProfile(
+            user_id=user.id,
+            work_authorized_us=old_authorization,
+            requires_sponsorship_now="no",
+            desired_salary=old_salary,
+            consent_to_use_answers=True,
+        )
+        session.add(answer_profile)
+        session.commit()
+        session.refresh(answer_profile)
+
+        dry_run = reencrypt_application_answer_profiles(session, dry_run=True)
+        assert dry_run["scanned_records"] == 1
+        assert dry_run["previous_key_records"] == 1
+        assert dry_run["plaintext_records"] == 1
+        assert dry_run["reencrypted_records"] == 1
+        session.refresh(answer_profile)
+        assert answer_profile.work_authorized_us == old_authorization
+
+        applied = reencrypt_application_answer_profiles(session, dry_run=False)
+        assert applied["scanned_records"] == 1
+        assert applied["reencrypted_records"] == 1
+        session.refresh(answer_profile)
+        new_authorization = answer_profile.work_authorized_us
+        new_salary = answer_profile.desired_salary
+        new_sponsorship = answer_profile.requires_sponsorship_now
+
+    assert new_authorization != old_authorization
+    assert new_salary != old_salary
+
+    monkeypatch.setenv("APP_DATA_ENCRYPTION_KEY", "new-answer-key")
+    monkeypatch.delenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", raising=False)
+    assert decrypt_text(new_authorization, fallback="unreadable") == "yes"
+    assert decrypt_text(new_salary, fallback="unreadable") == "$150k"
+    assert decrypt_text(new_sponsorship, fallback="unreadable") == "no"
+    assert decrypt_text_with_key_status(new_authorization)[1] == "current"
+
+
+def test_answer_reencryption_job_reports_unreadable_rows_without_partial_update(monkeypatch):
+    with TestClient(app):
+        pass
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM applicationanswerprofile"))
+
+    monkeypatch.setenv("APP_DATA_ENCRYPTION_KEY", "new-answer-key")
+    monkeypatch.delenv("APP_DATA_PREVIOUS_ENCRYPTION_KEYS", raising=False)
+
+    with Session(engine) as session:
+        user = User(email=unique_email("reencrypt-unreadable"), subscription_tier="free")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        answer_profile = ApplicationAnswerProfile(
+            user_id=user.id,
+            work_authorized_us=f"{ENCRYPTED_VALUE_PREFIX}not-a-valid-token",
+            desired_salary="$150k",
+            consent_to_use_answers=True,
+        )
+        session.add(answer_profile)
+        session.commit()
+        session.refresh(answer_profile)
+
+        result = reencrypt_application_answer_profiles(session, dry_run=False)
+        assert result["scanned_records"] == 1
+        assert result["unreadable_records"] == 1
+        assert result["reencrypted_records"] == 0
+        assert result["unreadable_fields"][0]["fields"] == ["work_authorized_us"]
+
+        session.refresh(answer_profile)
+        assert answer_profile.desired_salary == "$150k"
 
 
 def test_admin_config_requires_admin_and_persists_updates():
