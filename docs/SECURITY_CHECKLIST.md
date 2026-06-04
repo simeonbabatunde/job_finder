@@ -17,6 +17,7 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Use `AUTH_PREVIOUS_SECRET_KEYS` only during planned key rotation.
 - Use `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` only during planned answer-vault data-key rotation.
 - Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a real-submit pilot has explicit approval and fixture coverage.
+- Keep `TRUE_SUBMIT_PILOT_USER_EMAILS` and `TRUE_SUBMIT_PILOT_ATS_TYPES` empty unless a controlled pilot is approved.
 - Set `USE_ALEMBIC_MIGRATIONS=true` in staging after validating the baseline against a copy of existing data.
 - Set `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` to the approved screenshot/trace retention window.
 - Set `CORS_ALLOWED_ORIGINS` or `FRONTEND_URL` to deployed HTTPS origins only; production-like startup rejects localhost and wildcard CORS origins.

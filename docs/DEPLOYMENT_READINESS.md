@@ -105,6 +105,8 @@ CORS_ALLOWED_ORIGINS=<staging frontend origin>
 VITE_API_URL=<staging api origin>
 USE_ALEMBIC_MIGRATIONS=true
 ENABLE_TRUE_AUTO_SUBMIT=false
+TRUE_SUBMIT_PILOT_USER_EMAILS=
+TRUE_SUBMIT_PILOT_ATS_TYPES=
 ```
 
 Also set provider and email keys only in the hosting secret manager:
@@ -260,7 +262,7 @@ Then use the frontend at `http://localhost:5173`:
 
 ## Production Gates
 
-- Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled pilot is approved.
+- Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled pilot is approved; when a pilot is approved, scope it with `TRUE_SUBMIT_PILOT_USER_EMAILS` and optionally `TRUE_SUBMIT_PILOT_ATS_TYPES`.
 - Confirm `/health/worker` is healthy before relying on queued agent runs.
 - Confirm CORS allows only the deployed frontend origin.
 - Confirm Postgres credentials are not local defaults.

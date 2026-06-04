@@ -100,6 +100,8 @@ AGENT_WORKER_HEARTBEAT_STALE_SECONDS=30
 AGENT_WORKER_ID=
 AGENT_RUN_STALE_MINUTES=120
 ENABLE_TRUE_AUTO_SUBMIT=false
+TRUE_SUBMIT_PILOT_USER_EMAILS=
+TRUE_SUBMIT_PILOT_ATS_TYPES=
 ```
 
 Docker Compose also expects:
@@ -247,7 +249,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Daily agent-run quotas are enforced for free/pro tiers, and browser fill-for-review is gated to pro/admin users.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
 - Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation emit structured JSON operational logs. Set `STRUCTURED_LOG_LEVEL` to tune verbosity.
-- Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`; future readiness settings require approved pilot users or admins and optional ATS allowlisting.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
 - After data-key rotation, run the answer-vault re-encryption job before removing old previous keys:

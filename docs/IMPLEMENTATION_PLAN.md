@@ -81,7 +81,7 @@ Issues to address:
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
 - Agent runs are persisted as queued records, can run in local background mode, and can be processed by the Docker worker service in worker mode.
-- Browser fill-for-review is gated to pro/admin users; true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Browser fill-for-review is gated to pro/admin users; true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`, and future readiness settings require an approved pilot user/admin plus optional ATS allowlisting.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
 - Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo links via `POST /applications/{app_id}/fill-review`.
@@ -422,4 +422,4 @@ Acceptance criteria:
 
 ## Immediate Next Implementation Order
 
-1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
+1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures; keep pilot user/ATS allowlists empty outside that pilot.

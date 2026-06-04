@@ -929,10 +929,55 @@ def normalize_policy_list(values: Optional[list[str]]) -> list[str]:
             normalized.append(item)
     return normalized[:50]
 
-def serialize_submit_settings(settings: ApplicationSubmitSettings):
+def truthy_env(name: str) -> bool:
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+def split_env_list(name: str) -> list[str]:
+    return [
+        item.strip().lower()
+        for item in os.getenv(name, "").split(",")
+        if item.strip()
+    ]
+
+def get_true_submit_pilot_status(user: Optional[User], app: Optional[Application] = None):
+    global_enabled = truthy_env("ENABLE_TRUE_AUTO_SUBMIT")
+    pilot_emails = split_env_list("TRUE_SUBMIT_PILOT_USER_EMAILS")
+    pilot_ats_types = split_env_list("TRUE_SUBMIT_PILOT_ATS_TYPES")
+    blockers: list[str] = []
+
+    if not global_enabled:
+        blockers.append("True-submit pilot flag is off for this environment.")
+
+    user_allowed = False
+    if user:
+        user_email = (user.email or "").lower()
+        user_allowed = user.role == "admin" or user_email in pilot_emails
+    if global_enabled and not user_allowed:
+        blockers.append("This account is not approved for the true-submit pilot.")
+
+    ats_allowed = True
+    if app and pilot_ats_types:
+        ats_allowed = (app.ats_type or "").lower() in pilot_ats_types
+        if not ats_allowed:
+            blockers.append("This ATS is not approved for the true-submit pilot.")
+
+    return {
+        "global_enabled": global_enabled,
+        "user_allowed": user_allowed,
+        "ats_allowed": ats_allowed,
+        "approved": global_enabled and user_allowed and ats_allowed,
+        "blockers": blockers,
+        "allowed_ats_types": pilot_ats_types,
+    }
+
+def serialize_submit_settings(settings: ApplicationSubmitSettings, user: Optional[User] = None):
+    pilot_status = get_true_submit_pilot_status(user)
     return {
         "id": settings.id,
         "true_submit_enabled": settings.true_submit_enabled,
+        "true_submit_pilot_enabled": pilot_status["global_enabled"],
+        "true_submit_pilot_approved": pilot_status["approved"],
+        "true_submit_pilot_blockers": pilot_status["blockers"],
         "require_human_confirmation": settings.require_human_confirmation,
         "min_fit_score": settings.min_fit_score,
         "max_submits_per_day": settings.max_submits_per_day,
@@ -962,8 +1007,10 @@ def update_submit_settings_from_payload(
     session: Session,
     settings: ApplicationSubmitSettings,
     payload: ApplicationSubmitSettingsRequest,
+    user: User,
 ):
-    settings.true_submit_enabled = payload.true_submit_enabled and payload.consent_to_submit
+    pilot_status = get_true_submit_pilot_status(user)
+    settings.true_submit_enabled = payload.true_submit_enabled and payload.consent_to_submit and pilot_status["approved"]
     settings.require_human_confirmation = payload.require_human_confirmation
     settings.min_fit_score = min(max(payload.min_fit_score, 0), 100)
     settings.max_submits_per_day = min(max(payload.max_submits_per_day, 0), 50)
@@ -977,6 +1024,13 @@ def update_submit_settings_from_payload(
     session.add(settings)
     session.commit()
     session.refresh(settings)
+    if payload.true_submit_enabled and payload.consent_to_submit and not settings.true_submit_enabled:
+        log_event(
+            "true_submit_pilot.setting_blocked",
+            level="warning",
+            user_id=user.id,
+            blockers=pilot_status["blockers"],
+        )
     return settings
 
 def domain_matches(hostname: str, patterns: list[str]) -> bool:
@@ -1037,7 +1091,10 @@ def evaluate_submit_readiness(
     else:
         checks.append("Plan allows advanced submission workflows.")
 
-    if not settings.true_submit_enabled:
+    pilot_status = get_true_submit_pilot_status(user, app)
+    if not pilot_status["approved"]:
+        blockers.extend(pilot_status["blockers"])
+    elif not settings.true_submit_enabled:
         blockers.append("True submit mode is off in submission settings.")
     else:
         checks.append("True submit mode has explicit user consent.")
@@ -1804,7 +1861,7 @@ def export_account_data(user: User = Depends(get_current_user), session: Session
         "profile": profile,
         "application_profile": application_profile,
         "application_answer_audit": application_answer_audit,
-        "submission_settings": serialize_submit_settings(submission_settings) if submission_settings else None,
+        "submission_settings": serialize_submit_settings(submission_settings, user) if submission_settings else None,
         "applications": applications,
         "generated_packages": generated_packages,
         "agent_runs": [
@@ -1886,7 +1943,7 @@ def delete_application_profile(user: User = Depends(get_current_user), session: 
 @router.get("/submission-settings", response_model=ApplicationSubmitSettingsResponse)
 def get_submission_settings(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     settings = get_or_create_submit_settings(session, user.id)
-    return serialize_submit_settings(settings)
+    return serialize_submit_settings(settings, user)
 
 @router.post("/submission-settings", response_model=ApplicationSubmitSettingsResponse)
 def update_submission_settings(
@@ -1895,8 +1952,8 @@ def update_submission_settings(
     session: Session = Depends(get_session)
 ):
     settings = get_or_create_submit_settings(session, user.id)
-    updated = update_submit_settings_from_payload(session, settings, payload)
-    return serialize_submit_settings(updated)
+    updated = update_submit_settings_from_payload(session, settings, payload, user)
+    return serialize_submit_settings(updated, user)
 
 @router.delete("/submission-settings", response_model=ApplicationSubmitSettingsResponse)
 def reset_submission_settings(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -1907,7 +1964,7 @@ def reset_submission_settings(user: User = Depends(get_current_user), session: S
         session.delete(existing)
         session.commit()
     settings = get_or_create_submit_settings(session, user.id)
-    return serialize_submit_settings(settings)
+    return serialize_submit_settings(settings, user)
 
 @router.post("/agent/run", response_model=AgentRunResponse)
 async def run_agent(

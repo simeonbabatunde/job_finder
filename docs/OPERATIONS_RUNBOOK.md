@@ -25,7 +25,7 @@ Do not proceed if this fails.
 ## Staging Launch
 
 1. Set production-like staging secrets in the hosting secret manager, not in `.env`.
-2. Set `APP_ENV=staging`, `USE_ALEMBIC_MIGRATIONS=true`, `ENABLE_TRUE_AUTO_SUBMIT=false`, and HTTPS-only `FRONTEND_URL`/`CORS_ALLOWED_ORIGINS`.
+2. Set `APP_ENV=staging`, `USE_ALEMBIC_MIGRATIONS=true`, `ENABLE_TRUE_AUTO_SUBMIT=false`, empty `TRUE_SUBMIT_PILOT_USER_EMAILS`/`TRUE_SUBMIT_PILOT_ATS_TYPES`, and HTTPS-only `FRONTEND_URL`/`CORS_ALLOWED_ORIGINS`.
 3. Deploy API and worker together so Alembic startup locking protects migration order.
 4. Verify `/health`, `/health/db`, and `/health/worker`.
 5. Register a staging-only user and verify resume upload, preferences save, application answers save/export/audit, dashboard load, and account export.
@@ -111,6 +111,18 @@ Useful event families:
 - `auto_apply_attempt.*`: persisted attempt steps and state transitions.
 
 Set `STRUCTURED_LOG_LEVEL` only when the hosting logger needs a different verbosity.
+
+## True-Submit Pilot Gate
+
+Do not enable true-submit behavior for normal staging or demos. If a controlled pilot is explicitly approved:
+
+1. Keep `require_human_confirmation=true` in user submission settings.
+2. Set `ENABLE_TRUE_AUTO_SUBMIT=true` only in the target pilot environment.
+3. Add the approved users to `TRUE_SUBMIT_PILOT_USER_EMAILS`.
+4. Optionally limit ATS scope with `TRUE_SUBMIT_PILOT_ATS_TYPES`, for example `greenhouse,lever`.
+5. Confirm non-pilot users still see the submission guardrail as locked.
+6. Confirm `POST /applications/{app_id}/submit-confirmation` still returns `can_submit=false` until a separate final-click endpoint is deliberately implemented.
+7. Roll back immediately by setting `ENABLE_TRUE_AUTO_SUBMIT=false`.
 
 ## Rollback Notes
 

@@ -335,6 +335,9 @@ class ApplicationSubmitSettingsResponse(BaseModel):
 
     id: Optional[int] = None
     true_submit_enabled: bool
+    true_submit_pilot_enabled: bool = False
+    true_submit_pilot_approved: bool = False
+    true_submit_pilot_blockers: List[str] = Field(default_factory=list)
     require_human_confirmation: bool
     min_fit_score: int
     max_submits_per_day: int

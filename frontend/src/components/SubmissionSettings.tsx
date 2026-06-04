@@ -14,6 +14,9 @@ import { Button, StatusChip, TextField } from './ui';
 
 const EMPTY_SETTINGS: ApplicationSubmitSettingsPayload = {
     true_submit_enabled: false,
+    true_submit_pilot_enabled: false,
+    true_submit_pilot_approved: false,
+    true_submit_pilot_blockers: [],
     require_human_confirmation: true,
     min_fit_score: 80,
     max_submits_per_day: 5,
@@ -76,6 +79,8 @@ export function SubmissionSettings() {
         if (settings.allowed_companies.length || settings.allowed_domains.length || settings.denied_companies.length || settings.denied_domains.length) score += 25;
         return score;
     }, [settings]);
+    const pilotApproved = Boolean(settings.true_submit_pilot_approved);
+    const pilotBlocker = settings.true_submit_pilot_blockers?.[0] || 'True-submit readiness requires an approved pilot.';
 
     const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = event.target;
@@ -83,8 +88,8 @@ export function SubmissionSettings() {
             const next = { ...prev };
             if (type === 'checkbox') {
                 if (name === 'true_submit_enabled') {
-                    next.true_submit_enabled = checked;
-                    next.consent_to_submit = checked ? next.consent_to_submit : false;
+                    next.true_submit_enabled = pilotApproved && checked;
+                    next.consent_to_submit = pilotApproved && checked ? next.consent_to_submit : false;
                 } else {
                     (next as Record<string, unknown>)[name] = checked;
                 }
@@ -149,8 +154,8 @@ export function SubmissionSettings() {
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip tone={settings.true_submit_enabled ? 'warning' : 'neutral'}>
-                        {settings.true_submit_enabled ? 'Submit mode armed' : 'Submit mode off'}
+                    <StatusChip tone={settings.true_submit_enabled ? 'warning' : pilotApproved ? 'neutral' : 'danger'}>
+                        {settings.true_submit_enabled ? 'Submit mode armed' : pilotApproved ? 'Submit mode off' : 'Pilot locked'}
                     </StatusChip>
                     <StatusChip tone={readiness >= 75 ? 'success' : 'warning'}>{readiness}% guarded</StatusChip>
                 </div>
@@ -244,8 +249,9 @@ export function SubmissionSettings() {
                         type="checkbox"
                         name="true_submit_enabled"
                         checked={settings.true_submit_enabled}
+                        disabled={!pilotApproved}
                         onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 rounded border-[var(--line)] text-[var(--warning)]"
+                        className="mt-1 h-4 w-4 rounded border-[var(--line)] text-[var(--warning)] disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span>
                         <span className="flex items-center gap-2 text-sm font-semibold text-[var(--warning)]">
@@ -253,7 +259,9 @@ export function SubmissionSettings() {
                             Allow future true-submit readiness
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-[var(--warning)]">
-                            This does not submit applications. It only lets readiness checks confirm whether a job could reach a future final-confirm step.
+                            {pilotApproved
+                                ? 'This does not submit applications. It only lets readiness checks confirm whether a job could reach a future final-confirm step.'
+                                : pilotBlocker}
                         </span>
                     </span>
                 </label>

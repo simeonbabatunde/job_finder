@@ -1891,7 +1891,7 @@ def test_application_answer_profile_stores_demographics_with_explicit_consent():
             assert stored.veteran_status != "not_a_veteran"
 
 
-def test_submission_settings_and_readiness_contract():
+def test_submission_settings_and_readiness_contract(monkeypatch):
     with TestClient(app) as client:
         auth, headers = register_user(client, "submit-settings")
         user_id = auth["user"]["id"]
@@ -1949,7 +1949,7 @@ def test_submission_settings_and_readiness_contract():
         readiness_blocked = client.post(f"/applications/{app_id}/submit-readiness", headers=headers)
         assert readiness_blocked.status_code == 200, readiness_blocked.text
         assert readiness_blocked.json()["ready"] is False
-        assert "True submit mode is off" in readiness_blocked.json()["blockers"][0]
+        assert "True-submit pilot flag is off" in readiness_blocked.json()["blockers"][0]
 
         settings_response = client.post(
             "/submission-settings",
@@ -1969,7 +1969,36 @@ def test_submission_settings_and_readiness_contract():
         )
         assert settings_response.status_code == 200, settings_response.text
         settings_body = settings_response.json()
+        assert settings_body["true_submit_enabled"] is False
+        assert settings_body["true_submit_pilot_enabled"] is False
+        assert settings_body["true_submit_pilot_approved"] is False
+        assert "True-submit pilot flag is off" in settings_body["true_submit_pilot_blockers"][0]
+        assert settings_body["consented_at"] is None
+
+        monkeypatch.setenv("ENABLE_TRUE_AUTO_SUBMIT", "true")
+        monkeypatch.setenv("TRUE_SUBMIT_PILOT_USER_EMAILS", auth["user"]["email"])
+        monkeypatch.setenv("TRUE_SUBMIT_PILOT_ATS_TYPES", "greenhouse")
+        settings_response = client.post(
+            "/submission-settings",
+            headers=headers,
+            json={
+                "true_submit_enabled": True,
+                "require_human_confirmation": True,
+                "min_fit_score": 85,
+                "max_submits_per_day": 3,
+                "allowed_companies": ["Acme"],
+                "denied_companies": ["Nope"],
+                "allowed_domains": ["greenhouse.io"],
+                "denied_domains": [],
+                "allowed_job_title_keywords": ["Backend"],
+                "consent_to_submit": True,
+            },
+        )
+        assert settings_response.status_code == 200, settings_response.text
+        settings_body = settings_response.json()
         assert settings_body["true_submit_enabled"] is True
+        assert settings_body["true_submit_pilot_enabled"] is True
+        assert settings_body["true_submit_pilot_approved"] is True
         assert settings_body["consented_at"] is not None
         assert settings_body["allowed_companies"] == ["Acme"]
 
@@ -2024,6 +2053,9 @@ def test_submit_confirmation_endpoint_detects_final_control_without_clicking(mon
     with TestClient(app) as client:
         auth, headers = register_user(client, "submit-confirmation")
         user_id = auth["user"]["id"]
+        monkeypatch.setenv("ENABLE_TRUE_AUTO_SUBMIT", "true")
+        monkeypatch.setenv("TRUE_SUBMIT_PILOT_USER_EMAILS", auth["user"]["email"])
+        monkeypatch.setenv("TRUE_SUBMIT_PILOT_ATS_TYPES", "greenhouse")
         prepare_agent_setup(client, headers)
 
         with Session(engine) as session:

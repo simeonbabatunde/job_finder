@@ -87,6 +87,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- Submission guardrail settings now require the environment pilot flag plus an approved user/admin and optional ATS allowlist before `true_submit_enabled` can persist as true.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
 - Application answer-vault access is audited for direct views, exports, resets, dashboard preload, fill-for-review, and submit-readiness usage.
@@ -147,7 +148,10 @@ Completed:
 - Verified the Alembic opt-in baseline with `alembic upgrade head` against a fresh temporary SQLite database in the uv Python 3.11 container.
 - Added `app.time_utils.utc_now()` and replaced app-side `datetime.utcnow()` usage while preserving naive UTC storage compatibility.
 - Added `ENABLE_TRUE_AUTO_SUBMIT=false` to `.env.example` and Docker Compose backend/worker environments.
+- Added `TRUE_SUBMIT_PILOT_USER_EMAILS` and `TRUE_SUBMIT_PILOT_ATS_TYPES` so future true-submit readiness can be scoped even when the global pilot flag is on.
 - Added an explicit legacy `BrowserApplyService` guard that blocks `submit=True` unless `ENABLE_TRUE_AUTO_SUBMIT=true`.
+- Added server-side pilot enforcement so submission settings cannot persist `true_submit_enabled=true` unless the environment flag, pilot user/admin approval, and optional ATS allowlist pass.
+- Updated the dashboard submission guardrails panel to show the true-submit readiness path as locked unless the server reports pilot approval.
 - Added API-contract coverage proving browser final submit is blocked by default.
 - Added `docs/SECURITY_CHECKLIST.md` covering private `.env` handling, key rotation, production auth secrets, artifact privacy, true-submit gating, and deployment checks.
 - Added application answer-vault field encryption using `APP_DATA_ENCRYPTION_KEY`, with plaintext-backward-compatible reads and production startup enforcement for a dedicated key.
@@ -284,8 +288,10 @@ Tests/checks:
 - Latest `./scripts/preflight.sh` passed with 41 Dockerized backend tests after adding the answer-vault re-encryption job.
 - Latest `./scripts/preflight.sh` also passes the signed-in browser dashboard smoke for the dashboard shell and Applications route.
 - Latest `./scripts/preflight.sh` passed after adding structured logging around agent and browser automation transitions.
+- Latest `./scripts/preflight.sh` passed after adding true-submit pilot scoping and dashboard lockout.
 - Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
 - Focused Dockerized backend tests for the answer-vault re-encryption job passed.
+- Focused Dockerized backend tests for submission settings/readiness and submit-confirmation pilot paths passed.
 - `docker compose exec -T backend uv run python -m app.jobs.reencrypt_application_answers --dry-run` passed; local dev data had no unreadable rows and 4 plaintext rows eligible for re-encryption.
 - `npm --prefix frontend run lint` passed.
 - `npm --prefix frontend run build` passed.

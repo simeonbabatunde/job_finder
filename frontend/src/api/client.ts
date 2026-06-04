@@ -152,6 +152,9 @@ export interface AutoApplyAttemptRecord {
 export interface ApplicationSubmitSettingsPayload {
     id?: number;
     true_submit_enabled: boolean;
+    true_submit_pilot_enabled?: boolean;
+    true_submit_pilot_approved?: boolean;
+    true_submit_pilot_blockers?: string[];
     require_human_confirmation: boolean;
     min_fit_score: number;
     max_submits_per_day: number;

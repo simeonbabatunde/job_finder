@@ -106,7 +106,7 @@ Default URLs:
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but the key should be rotated if it was real.
 - Daily agent-run quotas, pro/admin fill-for-review gating, persisted agent run logs, and auto-apply audit records are implemented.
 - Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation now emit structured JSON operational events without answer/resume contents.
-- True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`; readiness settings can only be armed for approved pilot users/ATS types.
 - Application answer-vault string fields are encrypted before persistence; production requires `APP_DATA_ENCRYPTION_KEY`.
 - Application answer-vault reads, exports, resets, and automation use are audited without storing answer values in the audit log.
 - Answer-vault data-key rotation has a dry-run/apply re-encryption job before old keys are removed.
