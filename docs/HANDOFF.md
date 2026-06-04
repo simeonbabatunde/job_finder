@@ -87,6 +87,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
+- The dashboard fill-review action uses the same supported ATS list as the backend, with a preflight audit to catch future adapter drift.
 - Submission guardrail settings now require the environment pilot flag plus an approved user/admin and optional ATS allowlist before `true_submit_enabled` can persist as true.
 - Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
@@ -252,6 +253,7 @@ Completed:
 - Added the first deterministic fill-for-review endpoint, `POST /applications/{app_id}/fill-review`, for resolved Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo applications.
 - Added `ApplicationFillReviewService` to fill standard supported-ATS fields, upload the saved resume, use consented answer-vault fields where possible, and stop before submit.
 - Added dashboard `Fill review` actions and a review summary modal for filled fields, missing fields, blockers, and the application URL.
+- Updated the dashboard fill-review action to include every backend-supported ATS adapter and added a preflight consistency audit for backend/frontend ATS support drift.
 - Added `ApplicationFillReview` persistence and `GET /applications/{app_id}/fill-reviews` so fill-review attempts are auditable per application.
 - Updated the fill-review modal to show recent saved review attempts after a run.
 - Added `DELETE /applications/{app_id}/fill-reviews` and a modal clear action for saved fill-review attempts.
@@ -284,6 +286,7 @@ Tests/checks:
 - `npm audit --json` in `frontend` reports 0 vulnerabilities after `npm audit fix`.
 - `bash -n scripts/preflight.sh` passed.
 - `node --check scripts/preflight-answer-audit.mjs` passed.
+- `node scripts/preflight-supported-ats-audit.mjs` validates frontend fill-review ATS support against the backend service list.
 - `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
 - Latest `./scripts/preflight.sh` passed with 41 Dockerized backend tests after adding the answer-vault re-encryption job.
 - Latest `./scripts/preflight.sh` also passes the signed-in browser dashboard smoke for the dashboard shell and Applications route.

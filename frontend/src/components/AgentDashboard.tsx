@@ -13,6 +13,7 @@ import {
     resolveApplicationLink,
 } from '../api/client';
 import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitConfirmation, ApplicationSubmitReadiness, AutoApplyAttemptRecord } from '../api/client';
+import { isSupportedFillReviewAts } from '../lib/supportedAts';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
 import { Button, EmptyState, IconButton, StatusChip } from './ui';
 
@@ -114,7 +115,7 @@ function canResolveLink(app: Application) {
 
 function canFillReview(app: Application) {
     return app.resolution_status === 'resolved'
-        && ['greenhouse', 'lever', 'ashby', 'smartrecruiters'].includes(app.ats_type || '');
+        && isSupportedFillReviewAts(app.ats_type);
 }
 
 function isScreenedOut(app: Application) {

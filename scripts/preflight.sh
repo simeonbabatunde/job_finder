@@ -117,6 +117,9 @@ if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
   npm --prefix "$ROOT_DIR/frontend" ci
 fi
 
+section "Supported ATS consistency audit"
+node "$ROOT_DIR/scripts/preflight-supported-ats-audit.mjs"
+
 section "Frontend lint"
 npm --prefix "$ROOT_DIR/frontend" run lint
 
