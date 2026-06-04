@@ -40,6 +40,7 @@ from app.services.field_encryption import (
     decrypt_text,
     encrypt_text,
 )
+from app.observability import log_event, url_host
 from app.schemas import (
     AccountDataExportResponse,
     AgentRunResponse,
@@ -470,6 +471,14 @@ def fail_stale_agent_runs(session: Session):
         run.logs = (run.logs or []) + [run.error]
         run.completed_at = utc_now()
         session.add(run)
+        log_event(
+            "agent_run.stale_failed",
+            level="warning",
+            agent_run_id=run.id,
+            user_id=run.user_id,
+            claimed_at=run.claimed_at,
+            stale_minutes=get_agent_run_stale_minutes(),
+        )
     if stale_runs:
         session.commit()
     return len(stale_runs)
@@ -491,6 +500,12 @@ def claim_next_queued_agent_run():
         session.add(run)
         session.commit()
         session.refresh(run)
+        log_event(
+            "agent_run.claimed",
+            agent_run_id=run.id,
+            user_id=run.user_id,
+            auto_apply=run.auto_apply,
+        )
         return {
             "agent_run_id": run.id,
             "user_id": run.user_id,
@@ -750,6 +765,16 @@ def append_attempt_step(
     if commit:
         session.commit()
         session.refresh(attempt)
+    log_event(
+        "auto_apply_attempt.step",
+        user_id=attempt.user_id,
+        application_id=attempt.application_id,
+        auto_apply_attempt_id=attempt.id,
+        step_name=name,
+        step_status=status,
+        message=message,
+        details=details or {},
+    )
     return attempt
 
 def create_auto_apply_attempt(
@@ -783,6 +808,17 @@ def create_auto_apply_attempt(
     session.add(attempt)
     session.commit()
     session.refresh(attempt)
+    log_event(
+        "auto_apply_attempt.created",
+        user_id=user_id,
+        application_id=app.id,
+        auto_apply_attempt_id=attempt.id,
+        agent_run_id=agent_run_id,
+        mode=mode,
+        status=status,
+        ats_type=app.ats_type,
+        source_host=url_host(app.resolved_url or app.job_url),
+    )
     return attempt
 
 def get_latest_auto_apply_attempt(session: Session, user_id: int, application_id: int):
@@ -827,6 +863,18 @@ def update_attempt_from_fill_review(
     session.add(attempt)
     session.commit()
     session.refresh(attempt)
+    log_event(
+        "auto_apply_attempt.fill_review_completed",
+        user_id=attempt.user_id,
+        application_id=attempt.application_id,
+        auto_apply_attempt_id=attempt.id,
+        fill_review_id=review_record.id,
+        status=attempt.status,
+        ats_type=review_record.ats_type,
+        fields_filled_count=len(review_record.fields_filled or []),
+        missing_fields_count=len(review_record.fields_missing or []),
+        blockers_count=len(review_record.blockers or []),
+    )
     return attempt
 
 def update_attempt_from_confirmation(
@@ -858,6 +906,17 @@ def update_attempt_from_confirmation(
     session.add(attempt)
     session.commit()
     session.refresh(attempt)
+    log_event(
+        "auto_apply_attempt.submit_confirmation_prepared",
+        user_id=attempt.user_id,
+        application_id=attempt.application_id,
+        auto_apply_attempt_id=attempt.id,
+        status=attempt.status,
+        ready=bool(response.get("ready")),
+        submit_control_status=submit_control.get("status"),
+        submit_control_confidence=submit_control.get("confidence"),
+        blockers_count=len(response.get("blockers") or []),
+    )
     return attempt
 
 def normalize_policy_list(values: Optional[list[str]]) -> list[str]:
@@ -1233,6 +1292,13 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
             agent_run.logs = ["Agent workflow started"]
             session.add(agent_run)
             session.commit()
+            log_event(
+                "agent_run.started",
+                agent_run_id=agent_run.id,
+                user_id=user_id,
+                auto_apply=auto_apply,
+                runner_mode=get_agent_runner_mode(),
+            )
 
             resume = get_latest_resume(session, user_id)
             prefs = get_latest_preferences(session, user_id)
@@ -1275,6 +1341,22 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
             persist_auto_apply_audit(session, user_id, agent_run.id, result.get("auto_apply_audit", []))
             session.add(agent_run)
             session.commit()
+            duration_seconds = (
+                (agent_run.completed_at - agent_run.claimed_at).total_seconds()
+                if agent_run.completed_at and agent_run.claimed_at
+                else None
+            )
+            log_event(
+                "agent_run.completed",
+                agent_run_id=agent_run.id,
+                user_id=user_id,
+                auto_apply=auto_apply,
+                status=agent_run.status,
+                applications_count=agent_run.applications_count,
+                found_jobs_count=agent_run.found_jobs_count,
+                duration_seconds=duration_seconds,
+                audit_records_count=len(result.get("auto_apply_audit", [])),
+            )
         except Exception as e:
             agent_run.status = "failed"
             agent_run.error = str(e)
@@ -1282,6 +1364,14 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
             agent_run.completed_at = utc_now()
             session.add(agent_run)
             session.commit()
+            log_event(
+                "agent_run.failed",
+                level="error",
+                agent_run_id=agent_run.id,
+                user_id=user_id,
+                auto_apply=auto_apply,
+                error=str(e),
+            )
 
 @router.post("/auth/login", response_model=AuthResponse)
 def login(payload: LoginRequest, session: Session = Depends(get_session)):
@@ -1852,6 +1942,15 @@ async def run_agent(
     session.add(agent_run)
     session.commit()
     session.refresh(agent_run)
+    log_event(
+        "agent_run.queued",
+        agent_run_id=agent_run.id,
+        user_id=user.id,
+        auto_apply=auto_apply,
+        runner_mode=get_agent_runner_mode(),
+        quota_limit=quota_limit,
+        quota_remaining=max(quota_remaining_before_run - 1, 0),
+    )
 
     if should_schedule_background_agent_run():
         background_tasks.add_task(execute_agent_run, agent_run.id, user.id, auto_apply)
@@ -2176,6 +2275,14 @@ async def fill_application_for_review(
     application_url = app.resolved_url or app.job_url
     link_resolution = ApplicationLinkResolver.classify_url(application_url)
     ats_type = app.ats_type or link_resolution.ats_type
+    log_event(
+        "browser_fill_review.requested",
+        user_id=user.id,
+        application_id=app.id,
+        ats_type=ats_type,
+        source_host=url_host(application_url),
+        resolution_status=app.resolution_status,
+    )
     if app.resolution_status != "resolved" or not application_url:
         raise HTTPException(status_code=400, detail="Resolve this application link before fill-for-review")
     if ats_type not in ApplicationFillReviewService.SUPPORTED_ATS:
@@ -2298,6 +2405,21 @@ async def fill_application_for_review(
         review_record.trace_path,
     )
     response.pop("trace_base64", None)
+    log_event(
+        "browser_fill_review.completed",
+        user_id=user.id,
+        application_id=app.id,
+        auto_apply_attempt_id=attempt.id,
+        fill_review_id=review_record.id,
+        status=fill_result.status,
+        application_status=fill_result.application_status,
+        ats_type=fill_result.ats_type,
+        fields_filled_count=len(fill_result.fields_filled or []),
+        missing_fields_count=len(fill_result.fields_missing or []),
+        blockers_count=len(fill_result.blockers or []),
+        screenshot_saved=bool(review_record.screenshot_path),
+        trace_saved=bool(review_record.trace_path),
+    )
     return response
 
 @router.post("/applications/{app_id}/submit-readiness", response_model=ApplicationSubmitReadinessResponse)
@@ -2309,6 +2431,13 @@ def check_application_submit_readiness(
     app = session.get(Application, app_id)
     if not app or app.user_id != user.id:
         raise HTTPException(status_code=404, detail="Application not found")
+    log_event(
+        "submit_readiness.requested",
+        user_id=user.id,
+        application_id=app.id,
+        ats_type=app.ats_type,
+        source_host=url_host(app.resolved_url or app.job_url),
+    )
 
     settings = get_or_create_submit_settings(session, user.id)
     answer_profile = decrypt_application_answer_profile(session.exec(
@@ -2326,7 +2455,7 @@ def check_application_submit_readiness(
     latest_review = get_latest_fill_review(session, user.id, app.id)
     submits_today_count = get_submits_today_count(session, user.id)
 
-    return evaluate_submit_readiness(
+    readiness = evaluate_submit_readiness(
         app=app,
         user=user,
         settings=settings,
@@ -2334,6 +2463,17 @@ def check_application_submit_readiness(
         latest_review=latest_review,
         submits_today_count=submits_today_count,
     )
+    log_event(
+        "submit_readiness.completed",
+        user_id=user.id,
+        application_id=app.id,
+        ready=readiness.get("ready"),
+        can_submit=readiness.get("can_submit"),
+        blockers_count=len(readiness.get("blockers") or []),
+        warnings_count=len(readiness.get("warnings") or []),
+        checks_count=len(readiness.get("checks") or []),
+    )
+    return readiness
 
 @router.post("/applications/{app_id}/submit-confirmation", response_model=ApplicationSubmitConfirmationResponse)
 async def create_application_submit_confirmation(
@@ -2344,6 +2484,13 @@ async def create_application_submit_confirmation(
     app = session.get(Application, app_id)
     if not app or app.user_id != user.id:
         raise HTTPException(status_code=404, detail="Application not found")
+    log_event(
+        "submit_confirmation.requested",
+        user_id=user.id,
+        application_id=app.id,
+        ats_type=app.ats_type,
+        source_host=url_host(app.resolved_url or app.job_url),
+    )
 
     settings = get_or_create_submit_settings(session, user.id)
     answer_profile = decrypt_application_answer_profile(session.exec(
@@ -2437,6 +2584,17 @@ async def create_application_submit_confirmation(
         )
     )
     session.commit()
+    log_event(
+        "submit_confirmation.completed",
+        user_id=user.id,
+        application_id=app.id,
+        auto_apply_attempt_id=attempt.id,
+        ready=response.get("ready"),
+        can_submit=response.get("can_submit"),
+        submit_control_status=submit_control.get("status"),
+        blockers_count=len(response.get("blockers") or []),
+        warnings_count=len(response.get("warnings") or []),
+    )
     return response
 
 @router.get("/applications/{app_id}/fill-reviews", response_model=List[ApplicationFillReviewRecordResponse])

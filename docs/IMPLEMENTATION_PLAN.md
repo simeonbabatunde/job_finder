@@ -409,7 +409,7 @@ Deliverables:
 - Environment templates.
 - CORS and frontend URL settings documented.
 - Health and readiness endpoints. Implemented for API, DB, and worker.
-- Logging strategy.
+- Logging strategy. Implemented with structured JSON operational events for agent runs, workers, browser fill-review, and submit confirmation.
 - Background job or worker strategy for long agent runs. Implemented with worker mode and heartbeat checks.
 - Deployment guide. In progress through `docs/DEPLOYMENT_READINESS.md`.
 - CI preflight workflow. Implemented in `.github/workflows/preflight.yml`.
@@ -423,5 +423,4 @@ Acceptance criteria:
 ## Immediate Next Implementation Order
 
 1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
-2. Add structured logging around agent runs and browser automation transitions before staging.
-3. Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.
+2. Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.

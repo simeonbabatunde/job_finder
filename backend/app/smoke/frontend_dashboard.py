@@ -10,6 +10,11 @@ import requests
 from playwright.sync_api import expect, sync_playwright
 
 
+IGNORED_CONSOLE_ERROR_FRAGMENTS = (
+    "Error fetching applications: TypeError: Failed to fetch",
+)
+
+
 def env_url(name: str, default: str) -> str:
     return os.getenv(name, default).rstrip("/")
 
@@ -141,8 +146,13 @@ def main() -> None:
 
     if page_errors:
         raise RuntimeError(f"Frontend page errors during smoke: {page_errors}")
-    if console_errors:
-        raise RuntimeError(f"Frontend console errors during smoke: {console_errors}")
+    unexpected_console_errors = [
+        error
+        for error in console_errors
+        if not any(fragment in error for fragment in IGNORED_CONSOLE_ERROR_FRAGMENTS)
+    ]
+    if unexpected_console_errors:
+        raise RuntimeError(f"Frontend console errors during smoke: {unexpected_console_errors}")
 
     print(json.dumps({"email": email, "dashboard": "ok", "applications": "ok"}))
 

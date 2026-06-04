@@ -36,6 +36,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
 - Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
 - Answer-vault data-key rotation now has a dry-run/apply re-encryption job before old previous keys are removed.
+- Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation now emit structured JSON operational events without answer/resume contents.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
 - `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate, including a signed-in browser dashboard smoke.
 
@@ -165,6 +166,7 @@ Completed:
 - Added `.github/workflows/preflight.yml` so pushes and pull requests run the same preflight gate in CI.
 - Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
 - Added `app.smoke.frontend_dashboard` for signed-in dashboard and Applications route browser coverage in preflight.
+- Added `app.observability.log_event` and structured JSON logs for agent run queue/start/claim/complete/failure, worker claims, browser fill-review, submit-readiness, and submit-confirmation transitions.
 - Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Added a dashboard header `Export data` action that downloads the account export as JSON.
 - Added API contract coverage proving account export is user-scoped, includes generated package and artifact references, audits answer-vault export access, and does not expose answer values in audit records.
@@ -279,6 +281,7 @@ Tests/checks:
 - `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
 - Latest `./scripts/preflight.sh` passed with 41 Dockerized backend tests after adding the answer-vault re-encryption job.
 - Latest `./scripts/preflight.sh` also passes the signed-in browser dashboard smoke for the dashboard shell and Applications route.
+- Latest `./scripts/preflight.sh` passed after adding structured logging around agent and browser automation transitions.
 - Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
 - Focused Dockerized backend tests for the answer-vault re-encryption job passed.
 - `docker compose exec -T backend uv run python -m app.jobs.reencrypt_application_answers --dry-run` passed; local dev data had no unreadable rows and 4 plaintext rows eligible for re-encryption.
@@ -287,4 +290,4 @@ Tests/checks:
 
 Next concrete step:
 
-- Run `./scripts/preflight.sh`, then add structured logging around agent runs and browser automation transitions before staging.
+- Add production/staging runbook notes for backup restore rehearsal, account export handling, and answer-vault key rotation.

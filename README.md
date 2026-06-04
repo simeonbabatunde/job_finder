@@ -105,6 +105,7 @@ Default URLs:
 - Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight versioned migration table.
 - The previous backend README contained a plaintext OpenRouter key. It has been removed from docs, but the key should be rotated if it was real.
 - Daily agent-run quotas, pro/admin fill-for-review gating, persisted agent run logs, and auto-apply audit records are implemented.
+- Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation now emit structured JSON operational events without answer/resume contents.
 - True final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted before persistence; production requires `APP_DATA_ENCRYPTION_KEY`.
 - Application answer-vault reads, exports, resets, and automation use are audited without storing answer values in the audit log.

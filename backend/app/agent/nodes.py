@@ -11,6 +11,7 @@ from app.services.browser_apply import BrowserApplyService
 from app.services.persistence import PersistenceService
 from app.services.application_link_resolver import ApplicationLinkResolver
 from app.services.job_pre_screen import JobPreScreenService
+from app.observability import log_event, url_host
 
 async def parse_resume(state: AgentState):
     """
@@ -46,8 +47,13 @@ async def parse_resume(state: AgentState):
         summary = response.get("summary", "")
         skills = response.get("skills", [])
         
-        print(f"Resume Summary: {summary}")
-        print(f"Extracted Skills: {skills}")
+        log_event(
+            "agent_node.resume_parsed",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            skills_count=len(skills),
+            summary_present=bool(summary),
+        )
         
         # We don't have session here easily to update the DB, 
         # but we can return it in the state and let the next node or endpoint handle it.
@@ -56,7 +62,13 @@ async def parse_resume(state: AgentState):
         log_msg = f"Resume parsed: {len(skills)} skills found."
         
     except Exception as e:
-        print(f"Resume Parsing Error: {e}")
+        log_event(
+            "agent_node.resume_parse_failed",
+            level="error",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            error=str(e),
+        )
         summary = "Error parsing resume."
         skills = []
         log_msg = f"Error parsing resume: {e}"
@@ -87,7 +99,14 @@ async def search_jobs(state: AgentState):
     search_query = f"{exp} {base_role} {jtype}".strip()
     search_loc = location[0] if location else "Remote"
     
-    print(f"Searching for: '{search_query}' in '{search_loc}'")
+    log_event(
+        "agent_node.search_started",
+        agent_run_id=state.get("agent_run_id"),
+        user_id=state.get("user_id"),
+        search_role=base_role,
+        search_location=search_loc,
+        posted_within_days=days,
+    )
     
     # Call Real Service
     jobs = JobSearchService.search_jobs(search_query, search_loc, posted_within_days=days)
@@ -97,9 +116,20 @@ async def search_jobs(state: AgentState):
     if target_companies:
         from app.services.ats_scraper import AtsScraper
         for company in target_companies:
-            print(f"Direct ATS Scraping for target company: {company}")
+            log_event(
+                "agent_node.target_company_scrape_started",
+                agent_run_id=state.get("agent_run_id"),
+                user_id=state.get("user_id"),
+                company=company,
+            )
             ats_jobs = AtsScraper.scrape_company(company, target_roles=query_roles)
-            print(f"Found {len(ats_jobs)} ATS jobs for {company}")
+            log_event(
+                "agent_node.target_company_scrape_completed",
+                agent_run_id=state.get("agent_run_id"),
+                user_id=state.get("user_id"),
+                company=company,
+                jobs_count=len(ats_jobs),
+            )
             jobs.extend(ats_jobs)
     
     # Persist jobs incrementally, but only send pass/maybe jobs to expensive AI analysis.
@@ -122,6 +152,16 @@ async def search_jobs(state: AgentState):
         f"Pre-screen kept {len(jobs_for_analysis)} for AI analysis "
         f"({pre_screen_counts['pass']} pass, {pre_screen_counts['maybe']} maybe) "
         f"and screened out {pre_screen_counts['reject']} obvious non-fits."
+    )
+    log_event(
+        "agent_node.search_completed",
+        agent_run_id=state.get("agent_run_id"),
+        user_id=user_id,
+        found_jobs_count=len(jobs),
+        jobs_for_analysis_count=len(jobs_for_analysis),
+        pre_screen_pass_count=pre_screen_counts["pass"],
+        pre_screen_maybe_count=pre_screen_counts["maybe"],
+        pre_screen_reject_count=pre_screen_counts["reject"],
     )
     
     return {
@@ -178,7 +218,12 @@ async def analyze_fit(state: AgentState):
         
         chain = prompt | llm | parser
         
-        print(f"Analyzing {len(inputs)} jobs in batch...")
+        log_event(
+            "agent_node.analysis_started",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            jobs_count=len(inputs),
+        )
         results = await chain.abatch(inputs)
         
         # Map results back to jobs
@@ -203,9 +248,22 @@ async def analyze_fit(state: AgentState):
             PersistenceService.save_job(state.get("user_id"), jobs[i], "Analyzed")
             
             new_logs.append(f"Analyzed {jobs[i]['title']}: {score:.2f}")
+        log_event(
+            "agent_node.analysis_completed",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            jobs_count=len(results),
+        )
 
     except Exception as e:
-        print(f"LLM Error: {e}. Check OPENAI_API_KEY in .env.")
+        log_event(
+            "agent_node.analysis_failed",
+            level="error",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            jobs_count=len(jobs),
+            error=str(e),
+        )
         new_logs.append(f"Error analyzing jobs: {e}")
         for job in jobs:
             job["fit_score"] = 0.0
@@ -256,12 +314,28 @@ async def submit_application(state: AgentState):
                             "status": link_resolution.resolution_status,
                             "message": review_message,
                         })
+                        log_event(
+                            "agent_node.fill_review_held",
+                            agent_run_id=state.get("agent_run_id"),
+                            user_id=state.get("user_id"),
+                            source_host=url_host(job.get("url")),
+                            resolution_status=link_resolution.resolution_status,
+                            ats_type=link_resolution.ats_type,
+                        )
                         continue
 
                     job["application_url"] = link_resolution.resolved_url or job["url"]
 
                 new_submitted.append(job["url"])
                 new_logs.append(f"Ready to apply to {job['title']} at {job['company']}")
+                log_event(
+                    "agent_node.application_ready",
+                    agent_run_id=state.get("agent_run_id"),
+                    user_id=state.get("user_id"),
+                    source_host=url_host(job.get("url")),
+                    auto_apply=state.get("auto_apply"),
+                    fit_score=fit_score,
+                )
     
     submitted_urls = current_submitted + new_submitted
 
@@ -281,6 +355,13 @@ async def apply_browser(state: AgentState):
 
     profile = state.get("profile")
     if not profile:
+        log_event(
+            "agent_node.browser_fill_skipped",
+            level="warning",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            reason="missing_profile",
+        )
         return {"logs": state.get("logs", []) + ["Auto-apply skipped: No profile found."]}
 
     submitted_urls = state.get("applications_submitted", [])
@@ -291,6 +372,12 @@ async def apply_browser(state: AgentState):
     new_logs = []
     applied_successfully = []
     audit_records = []
+    log_event(
+        "agent_node.browser_fill_started",
+        agent_run_id=state.get("agent_run_id"),
+        user_id=state.get("user_id"),
+        submitted_urls_count=len(submitted_urls),
+    )
 
     # Only apply to jobs in 'submitted_urls' that aren't already applied in DB?
     # (Actually, endpoints.py handles DB sync from state['applications_submitted'])
@@ -313,9 +400,25 @@ async def apply_browser(state: AgentState):
                 "status": "needs_review",
                 "message": message,
             })
+            log_event(
+                "agent_node.browser_fill_skipped",
+                level="warning",
+                agent_run_id=state.get("agent_run_id"),
+                user_id=state.get("user_id"),
+                source_host=url_host(application_url),
+                reason="unsupported_or_unresolved_link",
+                resolution_status=link_resolution.resolution_status,
+                ats_type=link_resolution.ats_type,
+            )
             continue
         
-        print(f"Preparing {job['title']} for review...")
+        log_event(
+            "agent_node.browser_fill_job_started",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            source_host=url_host(application_url),
+            ats_type=link_resolution.ats_type,
+        )
         result = await BrowserApplyService.apply_to_job(
             job_url=application_url,
             profile=profile,
@@ -332,6 +435,13 @@ async def apply_browser(state: AgentState):
             PersistenceService.save_job(state.get("user_id"), job, "Needs Review")
         else:
             new_logs.append(f"Fill-for-review failed for {job['title']}: {result['message']}")
+        log_event(
+            "agent_node.browser_fill_job_completed",
+            agent_run_id=state.get("agent_run_id"),
+            user_id=state.get("user_id"),
+            source_host=url_host(application_url),
+            status=result.get("status", "failed"),
+        )
 
         audit_records.append({
             "job_url": job.get("url", job_url),
@@ -342,6 +452,13 @@ async def apply_browser(state: AgentState):
             "message": result.get("message"),
         })
 
+    log_event(
+        "agent_node.browser_fill_completed",
+        agent_run_id=state.get("agent_run_id"),
+        user_id=state.get("user_id"),
+        attempted_jobs_count=len(audit_records),
+        prepared_jobs_count=len(applied_successfully),
+    )
     return {
         "application_status": "completed",
         "logs": state.get("logs", []) + new_logs,

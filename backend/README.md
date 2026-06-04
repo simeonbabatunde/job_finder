@@ -246,6 +246,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - Core public write endpoints use Pydantic request schemas, and the main app/API responses now have explicit response models.
 - Daily agent-run quotas are enforced for free/pro tiers, and browser fill-for-review is gated to pro/admin users.
 - Agent runs are queued through FastAPI background tasks and persisted for polling.
+- Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation emit structured JSON operational logs. Set `STRUCTURED_LOG_LEVEL` to tune verbosity.
 - Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.

@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.api.endpoints import claim_next_queued_agent_run, execute_agent_run
 from app.database import create_db_and_tables, engine
 from app.models import WorkerHeartbeat
+from app.observability import log_event
 from app.time_utils import utc_now
 
 
@@ -52,7 +53,7 @@ def record_worker_heartbeat(
             session.add(heartbeat)
             session.commit()
     except Exception as exc:
-        print(f"Agent worker heartbeat failed: {exc}")
+        log_event("agent_worker.heartbeat_failed", level="error", worker_id=worker_id, error=str(exc))
 
 
 async def maintain_running_heartbeat(
@@ -80,7 +81,12 @@ async def run_worker_loop():
         "starting",
         details={"poll_seconds": poll_seconds, "heartbeat_seconds": heartbeat_seconds},
     )
-    print(f"Agent worker {worker_id} started; polling every {poll_seconds:g}s")
+    log_event(
+        "agent_worker.started",
+        worker_id=worker_id,
+        poll_seconds=poll_seconds,
+        heartbeat_seconds=heartbeat_seconds,
+    )
 
     while True:
         record_worker_heartbeat(
@@ -99,6 +105,13 @@ async def run_worker_loop():
             continue
 
         agent_run_id = claim["agent_run_id"]
+        log_event(
+            "agent_worker.run_claimed",
+            worker_id=worker_id,
+            agent_run_id=agent_run_id,
+            user_id=claim["user_id"],
+            auto_apply=claim["auto_apply"],
+        )
         record_worker_heartbeat(
             worker_id,
             "running",
@@ -114,12 +127,24 @@ async def run_worker_loop():
                 claim["user_id"],
                 claim["auto_apply"],
             )
+            log_event(
+                "agent_worker.run_completed",
+                worker_id=worker_id,
+                agent_run_id=agent_run_id,
+            )
             record_worker_heartbeat(
                 worker_id,
                 "idle",
                 details={"last_agent_run_id": agent_run_id},
             )
         except Exception as exc:
+            log_event(
+                "agent_worker.run_failed",
+                level="error",
+                worker_id=worker_id,
+                agent_run_id=agent_run_id,
+                error=str(exc),
+            )
             record_worker_heartbeat(
                 worker_id,
                 "error",
