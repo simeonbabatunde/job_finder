@@ -1094,6 +1094,7 @@ def test_account_export_includes_owned_records_and_artifact_links():
         assert body["submission_settings"]["allowed_companies"] == ["Acme"]
 
         assert [item["job_title"] for item in body["applications"]] == ["Export Role"]
+        assert body["applications"][0]["pre_screen_reasons"] == []
         assert body["generated_packages"][0]["cover_letter"].startswith("Dear Hiring Manager")
         assert body["generated_packages"][0]["cover_letter_pdf_url"] == (
             f"/applications/{body['applications'][0]['id']}/cover-letter.pdf"
@@ -1114,6 +1115,31 @@ def test_account_export_includes_owned_records_and_artifact_links():
         assert "user_id" not in body_text
 
         assert client.get("/account/export").status_code == 401
+
+
+def test_applications_normalize_legacy_null_pre_screen_reasons():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "legacy-prescreen")
+        user_id = auth["user"]["id"]
+        with Session(engine) as session:
+            session.add(
+                Application(
+                    user_id=user_id,
+                    job_title="Legacy Null Reason Role",
+                    company="Acme",
+                    job_url="https://example.test/legacy-null-reason",
+                    status="Analyzed",
+                    fit_score=0.92,
+                    pre_screen_status="not_screened",
+                )
+            )
+            session.commit()
+
+        response = client.get("/applications?match_bucket=all", headers=headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body[0]["job_title"] == "Legacy Null Reason Role"
+        assert body[0]["pre_screen_reasons"] == []
 
 
 def test_application_link_resolver_classifies_ats_and_aggregators():
@@ -1975,6 +2001,20 @@ def test_submission_settings_and_readiness_contract(monkeypatch):
         default_settings = client.get("/submission-settings", headers=headers)
         assert default_settings.status_code == 200, default_settings.text
         assert default_settings.json()["true_submit_enabled"] is False
+
+        with Session(engine) as session:
+            legacy_settings = session.exec(
+                select(ApplicationSubmitSettings).where(ApplicationSubmitSettings.user_id == user_id)
+            ).first()
+            legacy_settings.true_submit_enabled = True
+            legacy_settings.consented_at = utc_now()
+            session.add(legacy_settings)
+            session.commit()
+
+        legacy_settings_response = client.get("/submission-settings", headers=headers)
+        assert legacy_settings_response.status_code == 200, legacy_settings_response.text
+        assert legacy_settings_response.json()["true_submit_enabled"] is False
+        assert legacy_settings_response.json()["true_submit_pilot_approved"] is False
 
         readiness_blocked = client.post(f"/applications/{app_id}/submit-readiness", headers=headers)
         assert readiness_blocked.status_code == 200, readiness_blocked.text

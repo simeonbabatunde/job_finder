@@ -663,6 +663,27 @@ def serialize_generated_package_export(app: Application):
         "created_at": app.created_at,
     }
 
+def serialize_application_response(app: Application):
+    return {
+        "id": app.id,
+        "job_title": app.job_title,
+        "company": app.company,
+        "job_url": app.job_url,
+        "source_url": app.source_url,
+        "resolved_url": app.resolved_url,
+        "source_type": app.source_type,
+        "ats_type": app.ats_type,
+        "resolution_status": app.resolution_status or "unresolved",
+        "resolution_notes": app.resolution_notes,
+        "status": app.status,
+        "fit_score": app.fit_score,
+        "explanation": app.explanation,
+        "cover_letter": app.cover_letter,
+        "pre_screen_status": app.pre_screen_status or "not_screened",
+        "pre_screen_reasons": app.pre_screen_reasons or [],
+        "created_at": app.created_at,
+    }
+
 def fill_review_artifact_url(app_id: int, review_id: Optional[int], kind: str, path: Optional[str]):
     if not review_id or not FillReviewArtifactStore.is_readable(path):
         return None
@@ -972,9 +993,10 @@ def get_true_submit_pilot_status(user: Optional[User], app: Optional[Application
 
 def serialize_submit_settings(settings: ApplicationSubmitSettings, user: Optional[User] = None):
     pilot_status = get_true_submit_pilot_status(user)
+    effective_true_submit_enabled = bool(settings.true_submit_enabled and pilot_status["approved"])
     return {
         "id": settings.id,
-        "true_submit_enabled": settings.true_submit_enabled,
+        "true_submit_enabled": effective_true_submit_enabled,
         "true_submit_pilot_enabled": pilot_status["global_enabled"],
         "true_submit_pilot_approved": pilot_status["approved"],
         "true_submit_pilot_blockers": pilot_status["blockers"],
@@ -1862,7 +1884,7 @@ def export_account_data(user: User = Depends(get_current_user), session: Session
         "application_profile": application_profile,
         "application_answer_audit": application_answer_audit,
         "submission_settings": serialize_submit_settings(submission_settings, user) if submission_settings else None,
-        "applications": applications,
+        "applications": [serialize_application_response(application) for application in applications],
         "generated_packages": generated_packages,
         "agent_runs": [
             serialize_agent_run(run, audit_by_run.get(run.id or 0, []))
@@ -2107,7 +2129,7 @@ def get_applications(
     if limit and limit > 0:
         query = query.limit(min(limit, 100))
 
-    return session.exec(query).all()
+    return [serialize_application_response(application) for application in session.exec(query).all()]
 
 @router.post("/applications/{app_id}/resolve-link", response_model=ApplicationResponse)
 async def resolve_application_link(
@@ -2130,7 +2152,7 @@ async def resolve_application_link(
     session.add(app)
     session.commit()
     session.refresh(app)
-    return app
+    return serialize_application_response(app)
 
 @router.delete("/applications", response_model=MessageResponse)
 def clear_applications(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
