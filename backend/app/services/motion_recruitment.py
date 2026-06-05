@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from typing import List, Dict
 import re
 
+from app.observability import log_event
 
 BASE_URL = "https://motionrecruitment.com/tech-jobs"
 
@@ -34,7 +35,7 @@ def scrape_motion_recruitment(query: str, location: str, results_wanted: int = 2
     Returns:
         List of job dicts matching the standard format used by JobSearchService.
     """
-    print(f"Motion Recruitment: Scraping jobs for '{query}' in '{location}'...")
+    log_event("motion_recruitment.search_started", query=query, location=location, results_wanted=results_wanted)
     all_jobs: List[Dict] = []
 
     # Scrape multiple pages until we have enough results
@@ -49,7 +50,7 @@ def scrape_motion_recruitment(query: str, location: str, results_wanted: int = 2
             response = requests.get(url, headers=HEADERS, timeout=15)
             response.raise_for_status()
         except requests.RequestException as e:
-            print(f"Motion Recruitment: Error fetching page {page + 1}: {e}")
+            log_event("motion_recruitment.page_failed", level="warning", page=page + 1, error=str(e))
             break
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -66,7 +67,11 @@ def scrape_motion_recruitment(query: str, location: str, results_wanted: int = 2
     # Filter by query and location
     filtered = _filter_jobs(all_jobs, query, location)
 
-    print(f"Motion Recruitment: Found {len(filtered)} matching jobs (out of {len(all_jobs)} scraped).")
+    log_event(
+        "motion_recruitment.search_completed",
+        matched_jobs_count=len(filtered),
+        scraped_jobs_count=len(all_jobs),
+    )
     return filtered[:results_wanted]
 
 

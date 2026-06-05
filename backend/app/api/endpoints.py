@@ -1557,7 +1557,7 @@ def google_callback(code: str, session: Session = Depends(get_session)):
         params = urlencode({"token": auth["access_token"], "refresh_token": auth["refresh_token"], "email": email})
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?{params}")
     except Exception as e:
-        print(f"Error in Google callback: {e}")
+        log_event("oauth.google_callback_failed", level="error", error=str(e))
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=Internal server error during Google login")
 
 @router.get("/auth/linkedin/login")
@@ -1624,7 +1624,7 @@ def linkedin_callback(code: str, session: Session = Depends(get_session)):
         params = urlencode({"token": auth["access_token"], "refresh_token": auth["refresh_token"], "email": email})
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?{params}")
     except Exception as e:
-        print(f"Error in LinkedIn callback: {e}")
+        log_event("oauth.linkedin_callback_failed", level="error", error=str(e))
         return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=Internal server error during LinkedIn login")
 
 @router.post("/auth/social", response_model=AuthResponse)

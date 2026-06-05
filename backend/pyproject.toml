@@ -1,7 +1,7 @@
 [project]
 name = "job-finder"
 version = "0.1.0"
-description = "Job Hunter application"
+description = "Job Finder application"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import os
 
+from app.observability import log_event
+
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_hunter")
 USE_ALEMBIC_MIGRATIONS = os.getenv("USE_ALEMBIC_MIGRATIONS", "").lower() in {"1", "true", "yes"}
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -496,12 +498,12 @@ def run_alembic_migrations() -> bool:
         from alembic import command
         from alembic.config import Config
     except ImportError:
-        print("Alembic is not installed; falling back to lightweight startup migrations.")
+        log_event("database.alembic_unavailable", level="warning", reason="import_error")
         return False
 
     alembic_ini = BACKEND_DIR / "alembic.ini"
     if not alembic_ini.exists():
-        print("Alembic config was not found; falling back to lightweight startup migrations.")
+        log_event("database.alembic_unavailable", level="warning", reason="missing_config")
         return False
 
     config = Config(str(alembic_ini))

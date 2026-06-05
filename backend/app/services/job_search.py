@@ -4,6 +4,7 @@ from typing import List, Dict
 from sqlmodel import Session, select
 from app.database import engine
 from app.models import ScraperConfig
+from app.observability import log_event
 from app.services.motion_recruitment import scrape_motion_recruitment
 
 class JobSearchService:
@@ -12,7 +13,12 @@ class JobSearchService:
         """
         Searches for jobs using python-jobspy across multiple sites (Indeed, LinkedIn, Glassdoor).
         """
-        print(f"JobSpy: Scraping jobs for '{query}' in '{location}' (Last {posted_within_days} days)...")
+        log_event(
+            "job_search.started",
+            query=query,
+            location=location,
+            posted_within_days=posted_within_days,
+        )
         results = []
         
         try:
@@ -32,7 +38,7 @@ class JobSearchService:
                         results_wanted = config.results_wanted
                         country_indeed = config.country_indeed
             except Exception as e:
-                print(f"Error fetching scraper config: {e}")
+                log_event("job_search.config_load_failed", level="warning", error=str(e))
 
             # Separate custom scrapers from jobspy-supported sites
             CUSTOM_SCRAPERS = {'motion_recruitment'}
@@ -44,9 +50,9 @@ class JobSearchService:
                 try:
                     motion_jobs = scrape_motion_recruitment(query, location, results_wanted)
                     results.extend(motion_jobs)
-                    print(f"Motion Recruitment: Added {len(motion_jobs)} jobs to results.")
+                    log_event("job_search.motion_results_added", jobs_count=len(motion_jobs))
                 except Exception as e:
-                    print(f"Motion Recruitment scraper error: {e}")
+                    log_event("job_search.motion_failed", level="warning", error=str(e))
 
             # Run jobspy for standard sites (if any remain)
             if not jobspy_sites:
@@ -64,10 +70,10 @@ class JobSearchService:
             )
             
             if jobs.empty:
-                print("JobSpy: No jobs found.")
+                log_event("job_search.jobspy_completed", jobs_count=0)
                 return results
             
-            print(f"JobSpy: Found {len(jobs)} jobs. \n Details: {jobs}")
+            log_event("job_search.jobspy_completed", jobs_count=len(jobs))
             
             # Convert to our format
             for _, row in jobs.iterrows():
@@ -103,5 +109,5 @@ class JobSearchService:
             return results
 
         except Exception as e:
-            print(f"JobSpy Error: {e}")
+            log_event("job_search.failed", level="error", error=str(e))
             return results

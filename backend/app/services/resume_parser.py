@@ -2,6 +2,8 @@ import io
 from pypdf import PdfReader
 from docx import Document
 
+from app.observability import log_event
+
 class ResumeService:
     @staticmethod
     def extract_text_from_pdf(file_content: bytes) -> str:
@@ -12,7 +14,7 @@ class ResumeService:
                 text += page.extract_text() + "\n"
             return text.strip()
         except Exception as e:
-            print(f"Error reading PDF: {e}")
+            log_event("resume_parser.pdf_failed", level="warning", error=str(e))
             return ""
 
     @staticmethod
@@ -22,7 +24,7 @@ class ResumeService:
             text = "\n".join([para.text for para in doc.paragraphs])
             return text.strip()
         except Exception as e:
-            print(f"Error reading DOCX: {e}")
+            log_event("resume_parser.docx_failed", level="warning", error=str(e))
             return ""
 
     @staticmethod

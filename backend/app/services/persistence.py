@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 from app.database import engine
 from app.models import Application
+from app.observability import log_event
 from app.services.application_link_resolver import ApplicationLinkResolver
 from typing import Dict, Any
 import re
@@ -23,12 +24,12 @@ class PersistenceService:
           3. Neither match → insert a new record.
         """
         if not user_id:
-            print("Warning: No user_id provided to save_job. Skipping persistence.")
+            log_event("application_persistence.skipped", level="warning", reason="missing_user_id")
             return
 
         job_url = job_data.get("url")
         if not job_url:
-            print("Warning: No job_url provided. Skipping persistence.")
+            log_event("application_persistence.skipped", level="warning", user_id=user_id, reason="missing_job_url")
             return
         link_resolution = ApplicationLinkResolver.classify_url(job_url)
 
@@ -117,4 +118,4 @@ class PersistenceService:
                     session.commit()
 
         except Exception as e:
-            print(f"Error persisting job {job_url}: {e}")
+            log_event("application_persistence.failed", level="error", user_id=user_id, job_url=job_url, error=str(e))

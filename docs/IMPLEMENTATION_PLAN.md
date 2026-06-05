@@ -37,13 +37,13 @@ Strengths:
 - The application package modal is feature-rich and valuable.
 - The dashboard has useful state surfaces: resume skills, resume summary, profile completeness, application statuses, and fit scores.
 
-Issues to address:
+Resolved and residual notes:
 
-- The UI is currently a mix of dark hero, indigo/violet gradients, emoji controls, inline SVGs, and plain gray fields.
+- The main UI has been moved onto the Job Finder token system with a dashboard-first shell.
 - `src/App.css` previously contained Vite template styles; those have been replaced with a minimal note.
-- There is no shared app shell or component system.
+- Shared UI primitives now cover the app shell, panels, headers, buttons, chips, progress bars, fields, and empty states.
 - Manual routing in `App.tsx` will get brittle as pages grow.
-- The "View all applications" behavior is inline instead of a true route.
+- Applications now have a real `/applications` route.
 - Auth uses signed bearer tokens and rotating refresh tokens stored in `localStorage`; server-side invalidation, refresh replay protection, and previous-secret verification for key rotation are implemented.
 - Frontend state uses `any` in several places, which hides API contract drift.
 
@@ -73,7 +73,7 @@ Strengths:
 - The application package endpoint already produces high-value artifacts.
 - Admin scraper configuration exists.
 
-Issues to address:
+Resolved and residual notes:
 
 - Resume and preferences are now user-scoped in the core backend flows.
 - Auth now uses signed bearer tokens with server-side session records, logout invalidation, rotating refresh tokens, replay protection, and previous-secret verification for key rotation.
@@ -88,7 +88,7 @@ Issues to address:
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
 - Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
 - Final-submit guardrails are implemented with user-scoped submission settings, per-application readiness checks, a no-click final confirmation endpoint with fixture-backed submit-control detection, and persisted `AutoApplyAttempt` records tying fill-review and confirmation into one auditable workflow. Attempts now include compact step-level telemetry for fill-review and final-confirmation transitions. Actual final submission remains disabled.
-- A focused backend API contract suite now covers auth, ownership, migrations, application queries, quotas, and agent run persistence.
+- A focused backend test suite now covers auth, ownership, migrations, application queries, quotas, agent run persistence, LLM provider configuration, and structured errors.
 
 ## Milestone 0: Repository Hygiene and Documentation
 
@@ -112,18 +112,18 @@ Deliverables:
 
 Acceptance criteria:
 
-- A future session can understand the app, current risks, UI direction, and next tasks from docs alone.
+- A maintainer can understand the app, current risks, UI direction, and deployment gates from docs alone.
 - Generated files such as `__pycache__`, `.env`, `node_modules`, and build output are ignored.
 
 Implementation notes:
 
 - Added root `.gitignore` and `.env.example`.
 - Added `docs/AUTO_APPLY_RELIABILITY_PLAN.md` for the reliability path before production auto-submit.
-- Decide later whether to keep the displayed brand as "Job Hunter" or rename all UI copy to "Job Finder". The current shell uses "Job Finder".
+- User-facing brand is standardized as "Job Finder"; historical database names may still use `job_hunter`.
 
 ## Milestone 1: Design System Foundation
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -162,7 +162,7 @@ Implementation notes:
 
 ## Milestone 2: App Shell and Navigation
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -194,7 +194,7 @@ Implementation notes:
 
 ## Milestone 3: Main Dashboard Redesign
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -220,15 +220,11 @@ Acceptance criteria:
 Implementation notes:
 
 - Dashboard shell, compact overview strip, consolidated setup workflow, right-rail search assistant panel, and compact recent matches were restyled in the UI pass.
-
-Implementation notes:
-
-- Keep the current refs-based save/upload flow for the first restyle if needed.
-- After visual parity is reached, replace refs with a clearer parent state machine.
+- The current refs-based save/upload flow remains acceptable for the compact dashboard scope; revisit only if the workflow becomes multi-step or harder to reason about.
 
 ## Milestone 4: Application Pipeline and History
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -270,7 +266,7 @@ Implementation notes:
 
 ## Milestone 5: Application Package UX
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -302,7 +298,7 @@ Implementation notes:
 
 ## Milestone 6: Auth, Account, and Subscription Readiness
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -327,12 +323,11 @@ Acceptance criteria:
 
 Implementation notes:
 
-- This should happen before production deployment.
-- It can be implemented without external billing first, then wired to Stripe later.
+- The internal free/pro/admin behavior is implemented without external billing; Stripe or another billing provider can be added later without blocking guarded staging deployment.
 
 ## Milestone 7: Backend Data and API Hardening
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -366,7 +361,7 @@ Implementation notes:
 
 ## Milestone 8: Testing and QA
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -374,7 +369,7 @@ Create a repeatable confidence loop.
 
 Deliverables:
 
-- Backend pytest suite. Implemented for API contracts through the Dockerized preflight.
+- Backend pytest suite. Implemented through the Dockerized preflight.
 - Frontend typecheck and build checks. Implemented through `npm run build` in preflight.
 - Frontend component smoke tests where practical. Current coverage is through the signed-in Playwright dashboard smoke until a dedicated component test runner is added.
 - Playwright smoke test for the dashboard workflow. Implemented through `app.smoke.frontend_dashboard` in preflight, covering dashboard, Applications, and Account settings routes.
@@ -397,7 +392,7 @@ Implementation notes:
 
 ## Milestone 9: Deployment Preparation
 
-Status: In progress
+Status: Done
 
 Goal:
 
@@ -420,6 +415,8 @@ Acceptance criteria:
 - Hosted staging can be configured from docs.
 - Long agent runs do not block the API request indefinitely.
 
-## Immediate Next Implementation Order
+## Deployment Gate
 
-1. Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures; keep pilot user/ATS allowlists empty outside that pilot.
+- No open implementation tasks remain for a guarded staging deployment.
+- Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures; keep pilot user/ATS allowlists empty outside that pilot.
+- Before any hosted launch, run `./scripts/preflight.sh`, follow `docs/DEPLOYMENT_READINESS.md`, and complete `docs/MANUAL_QA_CHECKLIST.md`.

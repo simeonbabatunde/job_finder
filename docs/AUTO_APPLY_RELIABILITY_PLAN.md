@@ -42,7 +42,7 @@ Deliverables:
 - Stop before final submit.
 - Save filled-field summary, missing-field summary, and blocker reason.
 - Return an ephemeral screenshot preview for the current review session.
-- Persist authenticated screenshots and traces before production auto-submit.
+- Persist authenticated screenshots and traces.
 - Mark the application as `Needs Review`.
 
 Acceptance criteria:
@@ -376,7 +376,7 @@ Recommendation:
 - Never send these answers to matching/scoring prompts.
 - Never use these answers for ranking, filtering, or deciding which applications to submit.
 - Store separately from profile and preferences.
-- Encrypt at rest before production.
+- Encrypt at rest.
 - Record explicit consent before using them to fill applications.
 - Let users delete or reset them independently.
 
@@ -449,7 +449,7 @@ First pilot constraints:
 
 ## Worker Architecture
 
-Browser automation should move out of the API process before production.
+Long-running agent work now runs through the worker. Future true-submit attempts should also stay worker-owned rather than running as unrestricted API request work.
 
 Recommended architecture:
 

@@ -5,7 +5,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 ## Product Snapshot
 
 - Product: Job Finder
-- Current UI label in code: Job Finder
+- Current user-facing label in code: Job Finder
 - Product promise: a smart career operations workspace that finds, scores, prepares, tracks, and optionally applies to matching jobs.
 - Core audience: job seekers who want a repeatable application workflow with AI-assisted resume matching, tailored application materials, and application tracking.
 - Reference UI direction: use the same calm, dense, research-dashboard language as the Influence Chart project.
@@ -48,7 +48,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - Use Tailwind plus a small local component layer.
 - Use `lucide-react` for consistent icons.
 - Keep the first screen as a real dashboard, not a hero or landing page.
-- Prioritize user scoping, auth hardening, migrations, and tests before production deployment.
+- Preserve the current user scoping, auth hardening, migrations, and preflight gates before production deployment.
 
 ## UI/UX Target
 
@@ -136,19 +136,24 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 | 2026-06-03 | Export account data as JSON with artifact links | User portability should cover records and authenticated artifact references without duplicating screenshot/trace files outside the protected artifact endpoints. |
 | 2026-06-03 | Re-encrypt answer-vault rows before old-key removal | Previous data keys should stay configured until all readable rows have been rewritten with the current key and unreadable rows are resolved. |
 
-## Open Questions
+## Resolved Decisions And Open Questions
 
-- Should the user-facing brand be "Job Finder", "Job Hunter", or another name?
-- Should auth be custom JWT/session auth, Supabase Auth, Clerk, or another provider?
+- User-facing brand is standardized as "Job Finder"; historical database names may still use `job_hunter`.
+- Custom signed bearer tokens with server-side sessions are the current auth system. External auth can be reconsidered later as a product/platform decision, not as a deployment blocker.
 - Should true auto-submit ever submit without a final human confirmation per job? Current answer: no.
 - Should sensitive voluntary self-identification answers be stored at all? Current answer: optional only, explicit consent required, encrypted at rest, default to decline/self-review.
 
 ## Latest Handoff Entry
 
-Date: 2026-06-03
+Date: 2026-06-05
 
 Completed:
 
+- Completed a final deployment-readiness sweep across docs, backend services, and frontend shell metadata.
+- Standardized remaining user-facing legacy app labels to "Job Finder" while leaving historical internal database names such as `job_hunter` untouched.
+- Replaced deployment-path backend standard output calls with structured `log_event(...)` records, while preserving intentional CLI/smoke stdout output.
+- Confirmed local secret handling: only `.env.example` is tracked, local `.env` files are ignored, and Docker Compose reads provider keys from environment variables instead of committed values.
+- Updated implementation and handoff docs so completed milestones read as done, and the remaining true-submit work is represented as an explicit pilot/deployment gate rather than an unfinished default feature.
 - Verified the Docker Compose stack end to end: register, refresh token, save preferences/profile/application answers, save submission settings, upload resume, load user status, queue an agent run, retrieve the queued run, and logout.
 - Verified the Alembic opt-in baseline with `alembic upgrade head` against a fresh temporary SQLite database in the uv Python 3.11 container.
 - Added `app.time_utils.utc_now()` and replaced app-side `datetime.utcnow()` usage while preserving naive UTC storage compatibility.
@@ -171,7 +176,7 @@ Completed:
 - Added environment-driven CORS with production-like startup rejection for wildcard and local origins, plus `CORS_ALLOWED_ORIGINS`.
 - Added previous answer-vault data-key read support through `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
 - Expanded deployment readiness docs with Alembic staging rehearsal, backup/restore rehearsal, and secret rotation steps.
-- Added `./scripts/preflight.sh` to run backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, health checks, answer-vault export/audit smoke, and browser dashboard smoke from one command.
+- Added `./scripts/preflight.sh` to run backend tests, frontend lint/build, Compose config, isolated Alembic upgrade, health checks, answer-vault export/audit smoke, and browser dashboard smoke from one command.
 - Added `scripts/preflight-answer-audit.mjs` for the throwaway-user answer-vault export/audit smoke.
 - Added `.github/workflows/preflight.yml` so pushes and pull requests run the same preflight gate in CI.
 - Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
@@ -295,12 +300,13 @@ Tests/checks:
 - `bash -n scripts/preflight.sh` passed.
 - `node --check scripts/preflight-answer-audit.mjs` passed.
 - `node scripts/preflight-supported-ats-audit.mjs` validates frontend fill-review ATS support against the backend service list.
-- `./scripts/preflight.sh` passed end to end: Dockerized backend API contracts, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
+- `./scripts/preflight.sh` passed end to end: Dockerized backend tests, frontend lint/build, Compose config, isolated Alembic upgrade, Docker health checks, and answer-vault export/audit smoke.
 - Latest `./scripts/preflight.sh` passed with 41 Dockerized backend tests after adding the answer-vault re-encryption job.
 - Latest `./scripts/preflight.sh` also passes the signed-in browser dashboard smoke for the dashboard shell and Applications route.
 - Latest `./scripts/preflight.sh` passed after adding structured logging around agent and browser automation transitions.
 - Latest `./scripts/preflight.sh` passed after adding true-submit pilot scoping and dashboard lockout.
 - Latest `./scripts/preflight.sh` passed with 47 Dockerized backend tests, ATS consistency audit, frontend lint/build, Docker health checks, answer-vault export/audit smoke, and signed-in dashboard/Applications/Account browser smoke.
+- Latest `./scripts/preflight.sh` passed on 2026-06-05 after the final readiness sweep, including Docker build, API/DB/worker/frontend health checks, answer-vault export/audit smoke, and signed-in dashboard/Applications/Account browser smoke.
 - Focused Dockerized backend test for `test_account_export_includes_owned_records_and_artifact_links` passed.
 - Focused Dockerized backend tests for the answer-vault re-encryption job passed.
 - Focused Dockerized backend tests for submission settings/readiness and submit-confirmation pilot paths passed.
@@ -308,6 +314,8 @@ Tests/checks:
 - `npm --prefix frontend run lint` passed.
 - `npm --prefix frontend run build` passed.
 
-Next concrete step:
+Deployment gate:
 
+- No open implementation tasks remain for a guarded staging deployment.
 - Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled real-submit pilot has explicit approval, fixture coverage, and rollback procedures.
+- Before any hosted launch, run `./scripts/preflight.sh` and complete `docs/MANUAL_QA_CHECKLIST.md`.

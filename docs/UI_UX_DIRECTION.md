@@ -56,7 +56,7 @@ Use these CSS variables in `frontend/src/index.css`:
 }
 ```
 
-Current indigo/violet classes should be replaced with this system:
+Use this token system instead of one-off indigo/violet classes:
 
 | Current pattern | Replacement |
 | --- | --- |
@@ -81,11 +81,11 @@ Current indigo/violet classes should be replaced with this system:
 
 ### App Shell
 
-Replace the current large centered container and dark hero with a product shell:
+The app shell should stay dashboard-first:
 
 - Top app header, white background, bottom border.
 - Brand block: small domain or app label, then "Job Finder".
-- Navigation: Dashboard, Applications, Resume, Profile, Preferences, Admin when permitted.
+- Navigation: Dashboard, Applications, Account, and Admin when permitted.
 - Account actions: plan chip, email, sign out.
 - Main background: `var(--page)`.
 - Content max width: `max-w-7xl`, horizontal padding `px-5`, vertical rhythm `py-6`.
@@ -130,15 +130,15 @@ Use the Influence Chart table language:
 - Soft header row.
 - Columns: Role, Company, Fit, Status, Updated, Actions.
 - Status chips should map to a stable palette.
-- Default display remains most recent 5, but the "View all" path should become a real route instead of only expanding inline.
+- Default display remains the most recent 5 matches, with the full history available through the `/applications` route.
 
 ### Application Package Modal
 
 Keep the modal, but make it more utilitarian:
 
-- Header should use ink/accent, not an indigo gradient.
+- Header uses ink/accent, not an indigo gradient.
 - Tabs should be compact segmented controls.
-- Replace emoji tab icons with lucide icons after adding `lucide-react`.
+- Tabs use lucide icons.
 - Use document-like panels for cover letters and summaries.
 - Status pipeline should use consistent status chips.
 - Copy/PDF/Open Job should be icon buttons with labels or tooltips.
@@ -155,7 +155,7 @@ The login/register modal should use the same product shell and tokens:
 
 ### Admin
 
-The admin panel should become a normal route inside the shell:
+The admin panel should stay aligned with the app shell:
 
 - Same header and max-width container.
 - Board selection as check rows.
@@ -199,7 +199,7 @@ Add `lucide-react` for:
 - BriefcaseBusiness
 - Settings
 
-Replace emoji indicators with icons or text-only status chips.
+Use icons or text-only status chips rather than emoji indicators.
 
 ## Responsive Behavior
 

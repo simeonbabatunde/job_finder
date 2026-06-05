@@ -26,7 +26,7 @@ The current app already supports the main workflow:
 
 ## Design Direction
 
-The next UI pass should follow the same practical, research-dashboard design language used in the Influence Chart project:
+The UI follows the same practical, research-dashboard design language used in the Influence Chart project:
 
 - Light operational surface: `#f6f8fb`
 - Primary ink: `#172033`

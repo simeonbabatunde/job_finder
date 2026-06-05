@@ -2,6 +2,8 @@ import requests
 import re
 from typing import List, Dict, Any
 
+from app.observability import log_event
+
 class AtsScraper:
     """
     Direct ATS scraper for Greenhouse and Lever.
@@ -31,7 +33,7 @@ class AtsScraper:
                     })
                 return jobs
         except Exception as e:
-            print(f"Greenhouse scrape failed for {slug}: {e}")
+            log_event("ats_scraper.greenhouse_failed", level="warning", slug=slug, error=str(e))
         return []
 
     @staticmethod
@@ -53,7 +55,7 @@ class AtsScraper:
                     })
                 return jobs
         except Exception as e:
-            print(f"Lever scrape failed for {slug}: {e}")
+            log_event("ats_scraper.lever_failed", level="warning", slug=slug, error=str(e))
         return []
 
     @staticmethod

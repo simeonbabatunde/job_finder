@@ -115,7 +115,7 @@ class ApplicationFillReviewService:
                 status="unsupported",
                 ats_type=ats_type,
                 application_url=application_url,
-                blockers=[f"{ats_type} fill-for-review is not implemented yet."],
+                blockers=[f"{ats_type} fill-for-review is not supported yet."],
                 message="This ATS is not supported for fill-for-review yet.",
             )
 
@@ -302,7 +302,7 @@ class ApplicationFillReviewService:
             return SubmitControlDetection(
                 status="blocked",
                 current_url=application_url,
-                blockers=[f"{ats_type} final-submit detection is not implemented yet."],
+                blockers=[f"{ats_type} final-submit detection is not supported yet."],
             )
 
         try:

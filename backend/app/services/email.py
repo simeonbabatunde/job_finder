@@ -3,6 +3,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 
+from app.observability import log_event
+
 # Default to Gmail (TLS)
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -15,8 +17,7 @@ def send_reset_email(to_email: str, reset_link: str):
     Requires SMTP_EMAIL and SMTP_PASSWORD env vars.
     """
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print("[Email Service] SMTP credentials not set. Email would have been sent to:", to_email)
-        print(f"[Email Service] Link: {reset_link}")
+        log_event("email.reset.skipped", level="warning", recipient=to_email, reason="missing_smtp_credentials")
         return False
 
     msg = MIMEMultipart('alternative')
@@ -30,7 +31,7 @@ def send_reset_email(to_email: str, reset_link: str):
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #f8fafc; border-radius: 16px;">
         <div style="background-color: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
             <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1e293b; font-size: 24px; font-weight: 800; margin: 0;">Job Hunter</h1>
+                <h1 style="color: #1e293b; font-size: 24px; font-weight: 800; margin: 0;">Job Finder</h1>
             </div>
             
             <h2 style="color: #334155; font-size: 20px; font-weight: 600; margin-bottom: 20px;">Reset Your Password</h2>
@@ -61,8 +62,8 @@ def send_reset_email(to_email: str, reset_link: str):
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"[Email Service] Reset email sent successfully to {to_email}")
+        log_event("email.reset.sent", recipient=to_email)
         return True
     except Exception as e:
-        print(f"[Email Service] Failed to send email: {e}")
+        log_event("email.reset.failed", level="error", recipient=to_email, error=str(e))
         return False

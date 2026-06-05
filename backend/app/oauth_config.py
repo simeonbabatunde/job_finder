@@ -4,6 +4,8 @@ OAuth configuration and utilities for social login
 import os
 from fastapi import HTTPException
 
+from app.observability import log_event
+
 # OAuth Configuration
 # In production, these should be loaded securely from environment variables
 # For local dev/docker-compose, they are passed via environment variables
@@ -20,9 +22,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 def get_google_oauth_url() -> str:
     """Generate Google OAuth URL"""
     if not GOOGLE_CLIENT_ID:
-        # Graceful fallback or error logic could go here
-        # For now, print a warning or raise error if needed
-        print("WARNING: GOOGLE_CLIENT_ID is not set.")
+        log_event("oauth.provider_config_missing", level="warning", provider="google", key_name="GOOGLE_CLIENT_ID")
     
     params = {
         "client_id": GOOGLE_CLIENT_ID,
@@ -40,7 +40,7 @@ def get_google_oauth_url() -> str:
 def get_linkedin_oauth_url() -> str:
     """Generate LinkedIn OAuth URL"""
     if not LINKEDIN_CLIENT_ID:
-        print("WARNING: LINKEDIN_CLIENT_ID is not set.")
+        log_event("oauth.provider_config_missing", level="warning", provider="linkedin", key_name="LINKEDIN_CLIENT_ID")
     
     params = {
         "client_id": LINKEDIN_CLIENT_ID,

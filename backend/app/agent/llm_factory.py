@@ -5,6 +5,8 @@ from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from app.observability import log_event
+
 SUPPORTED_LLM_PROVIDERS = {"openai", "openrouter", "gemini", "ollama"}
 DEFAULT_MODEL_BY_PROVIDER = {
     "openai": "gpt-4o",
@@ -46,12 +48,12 @@ def get_llm(model_type: Optional[str] = None, model_name: Optional[str] = None):
     elif provider == "gemini":
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            print("Warning: GOOGLE_API_KEY not found in .env")
+            log_event("llm.provider_key_missing", level="warning", provider=provider, key_name="GOOGLE_API_KEY")
         return ChatGoogleGenerativeAI(model=name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True)
     elif provider == "openrouter":
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
-            print("Warning: OPENROUTER_API_KEY not found.")
+            log_event("llm.provider_key_missing", level="warning", provider=provider, key_name="OPENROUTER_API_KEY")
         return ChatOpenAI(
             model=name, 
             temperature=0,
@@ -60,13 +62,11 @@ def get_llm(model_type: Optional[str] = None, model_name: Optional[str] = None):
             model_kwargs={"extra_body": {"reasoning": {"enabled": True}}},
             default_headers={
                 "HTTP-Referer": os.getenv("FRONTEND_URL", "http://localhost:5173"),
-                "X-Title": "J Hunter Agent"
+                "X-Title": "Job Finder Agent"
             }
         )
     else:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-             # Fallback or error - for now log a warning? 
-             # Or maybe just return it and let it fail if used?
-             pass
+            log_event("llm.provider_key_missing", level="warning", provider=provider, key_name="OPENAI_API_KEY")
         return ChatOpenAI(model=name, temperature=0)

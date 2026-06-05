@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
 
-app = FastAPI(title="Job Hunter API", lifespan=lifespan)
+app = FastAPI(title="Job Finder API", lifespan=lifespan)
 
 
 def error_payload(
@@ -161,7 +161,7 @@ app.include_router(api_router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from Job Hunter API"}
+    return {"message": "Hello from Job Finder API"}
 
 
 if __name__ == "__main__":
