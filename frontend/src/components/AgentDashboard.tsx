@@ -44,13 +44,11 @@ interface AgentDashboardProps {
     minMatchScore?: number;
 }
 
-type MatchView = 'strong' | 'below_threshold' | 'screened_out' | 'all';
+type MatchView = 'strong' | 'below_threshold';
 
 const matchViews: { key: MatchView; label: string }[] = [
     { key: 'strong', label: 'Strong matches' },
     { key: 'below_threshold', label: 'Below threshold' },
-    { key: 'screened_out', label: 'Screened out' },
-    { key: 'all', label: 'All tracked' },
 ];
 
 function statusTone(status: string): 'neutral' | 'accent' | 'success' | 'warning' | 'danger' {
@@ -155,18 +153,6 @@ function emptyStateCopy(matchView: MatchView) {
         return {
             title: 'No below-threshold jobs.',
             detail: 'Jobs that were analyzed but did not clear your minimum score will appear here for review.',
-        };
-    }
-    if (matchView === 'screened_out') {
-        return {
-            title: 'No screened-out jobs.',
-            detail: 'Obvious non-fits skipped before AI analysis will appear here with the reason they were held back.',
-        };
-    }
-    if (matchView === 'all') {
-        return {
-            title: 'No tracked jobs yet.',
-            detail: 'Upload your resume, set preferences, then start matching to build your application pipeline.',
         };
     }
     return {
@@ -279,6 +265,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const displayedApps = limit ? sortedApplications.slice(0, limit) : sortedApplications;
     const useCompactList = compact && !fullPage;
     const currentEmpty = emptyStateCopy(fullPage ? matchView : 'strong');
+    const pipelineCountLabel = matchView === 'below_threshold'
+        ? `${applications.length} below-threshold role${applications.length === 1 ? '' : 's'}`
+        : `${applications.length} strong match${applications.length === 1 ? '' : 'es'}`;
 
     const handleStatusChange = (appId: number, status: string) => {
         setApplications(prev =>
@@ -737,7 +726,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                     </h3>
                     <p className="text-sm text-[var(--muted)]">
                         {fullPage
-                            ? `${applications.length} tracked role${applications.length === 1 ? '' : 's'}`
+                            ? pipelineCountLabel
                             : `${displayedApps.length} recent role${displayedApps.length === 1 ? '' : 's'}`}
                     </p>
                 </div>

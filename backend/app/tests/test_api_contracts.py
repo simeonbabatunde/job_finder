@@ -1181,6 +1181,15 @@ def test_application_link_resolver_classifies_ats_and_aggregators():
     assert linkedin.resolution_status == "needs_resolution"
     assert linkedin.resolved_url is None
 
+    external_apply = ApplicationLinkResolver._normalize_external_candidate(
+        "https://www.linkedin.com/jobs/view/externalApply/123?url=https%3A%2F%2Fboards.greenhouse.io%2Facme%2Fjobs%2F123",
+        "https://www.linkedin.com/jobs/view/123",
+        "linkedin",
+    )
+    assert external_apply == "https://boards.greenhouse.io/acme/jobs/123"
+    assert ApplicationLinkResolver._is_external_apply_candidate("Apply on company website") is True
+    assert ApplicationLinkResolver._is_external_apply_candidate("Easy Apply") is False
+
     company_site = ApplicationLinkResolver.classify_url("https://careers.example.com/jobs/123")
     assert company_site.source_type == "company_site"
     assert company_site.resolution_status == "resolved"

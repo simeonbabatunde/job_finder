@@ -151,6 +151,9 @@ class ApplicationLinkResolver:
                         )
 
                     resolved_url = await cls._find_external_apply_url(page, classification.source_type)
+                    if not resolved_url and classification.source_type == "linkedin":
+                        resolved_url = await cls._click_linkedin_external_apply_button(page, classification.source_type)
+
                     if resolved_url:
                         resolved = cls.classify_url(resolved_url)
                         return LinkResolutionResult(
@@ -267,6 +270,129 @@ class ApplicationLinkResolver:
             if resolved:
                 return resolved
         return None
+
+    @classmethod
+    async def _click_linkedin_external_apply_button(cls, page, source_type: str) -> Optional[str]:
+        try:
+            from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        except Exception:
+            return None
+
+        elements = page.locator('a[href], button, [role="button"]')
+        try:
+            count = min(await elements.count(), 80)
+        except Exception:
+            return None
+
+        clicked = 0
+        for index in range(count):
+            element = elements.nth(index)
+            try:
+                visible = await element.is_visible(timeout=500)
+                if not visible:
+                    continue
+                metadata = await element.evaluate(
+                    """(element) => {
+                        const href = element.href
+                            || element.getAttribute('href')
+                            || element.getAttribute('data-url')
+                            || element.getAttribute('data-href')
+                            || element.getAttribute('formaction')
+                            || "";
+                        const text = [
+                            element.innerText,
+                            element.textContent,
+                            element.getAttribute('aria-label'),
+                            element.getAttribute('title'),
+                            href
+                        ].filter(Boolean).join(" ").toLowerCase();
+                        return { href, text };
+                    }"""
+                )
+            except Exception:
+                continue
+
+            text = metadata.get("text", "")
+            href = metadata.get("href", "")
+            if not cls._is_external_apply_candidate(text):
+                continue
+
+            direct_url = cls._normalize_external_candidate(href, page.url, source_type) if href else None
+            if direct_url:
+                return direct_url
+
+            clicked += 1
+            if clicked > 5:
+                return None
+
+            original_url = page.url
+            try:
+                popup = None
+                try:
+                    async with page.expect_popup(timeout=2500) as popup_info:
+                        await element.click(timeout=3000)
+                    popup = await popup_info.value
+                except PlaywrightTimeoutError:
+                    popup = None
+
+                if popup:
+                    try:
+                        await popup.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except PlaywrightTimeoutError:
+                        pass
+                    try:
+                        await popup.wait_for_load_state("networkidle", timeout=5000)
+                    except PlaywrightTimeoutError:
+                        pass
+                    resolved = cls._normalize_external_candidate(popup.url, original_url, source_type)
+                    try:
+                        await popup.close()
+                    except Exception:
+                        pass
+                    if resolved:
+                        return resolved
+
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except PlaywrightTimeoutError:
+                    pass
+                try:
+                    await page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+
+                resolved = cls._normalize_external_candidate(page.url, original_url, source_type)
+                if resolved:
+                    return resolved
+
+                try:
+                    await page.keyboard.press("Escape")
+                except Exception:
+                    pass
+            except Exception:
+                continue
+
+        return None
+
+    @staticmethod
+    def _is_external_apply_candidate(text: str) -> bool:
+        normalized = " ".join((text or "").lower().split())
+        if not normalized:
+            return False
+        if any(blocked in normalized for blocked in ("easy apply", "save", "saved", "sign in", "log in")):
+            return False
+        return any(
+            marker in normalized
+            for marker in (
+                "apply",
+                "apply now",
+                "apply on company",
+                "company website",
+                "continue to application",
+                "external apply",
+                "start application",
+            )
+        )
 
     @classmethod
     def _normalize_external_candidate(cls, href: str, base_url: str, source_type: str) -> Optional[str]:
