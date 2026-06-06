@@ -7,7 +7,7 @@ import io
 import os
 import secrets
 import time
-from sqlalchemy import asc, desc, text
+from sqlalchemy import asc, desc, or_, text
 from sqlmodel import Session, select
 from app.models import (
     AgentRun,
@@ -378,6 +378,12 @@ def assert_application_matches_threshold(app: Application, session: Session, use
             status_code=400,
             detail=f"This job is below your {min_match_score}% minimum match score and cannot be used for {action}.",
         )
+
+def trackable_application_filter():
+    return (
+        or_(Application.pre_screen_status.is_(None), Application.pre_screen_status != "reject"),
+        Application.status != "Screened Out",
+    )
 
 def get_daily_agent_run_limit(user: User):
     if user.role == "admin":
@@ -1820,7 +1826,7 @@ def export_account_data(user: User = Depends(get_current_user), session: Session
     ).first()
     applications = session.exec(
         select(Application)
-        .where(Application.user_id == user_id)
+        .where(Application.user_id == user_id, *trackable_application_filter())
         .order_by(Application.created_at.desc())
     ).all()
     agent_runs = session.exec(
@@ -2086,7 +2092,7 @@ def get_applications(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    query = select(Application).where(Application.user_id == user.id)
+    query = select(Application).where(Application.user_id == user.id, *trackable_application_filter())
 
     if status:
         query = query.where(Application.status == status)
@@ -2109,12 +2115,8 @@ def get_applications(
                 Application.fit_score > 0,
                 Application.fit_score < threshold,
             )
-        elif match_bucket == "screened_out":
-            query = query.where(
-                (Application.pre_screen_status == "reject") | (Application.status == "Screened Out")
-            )
         else:
-            raise HTTPException(status_code=400, detail="match_bucket must be one of: all, strong, below_threshold, screened_out")
+            raise HTTPException(status_code=400, detail="match_bucket must be one of: all, strong, below_threshold")
 
     sort_columns = {
         "date": Application.created_at,

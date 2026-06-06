@@ -131,7 +131,7 @@ async def search_jobs(state: AgentState):
             )
             jobs.extend(ats_jobs)
     
-    # Persist jobs incrementally, but only send pass/maybe jobs to expensive AI analysis.
+    # Persist only jobs worth reviewing; reject results are counted but not saved.
     user_id = state.get("user_id")
     jobs_for_analysis = []
     pre_screen_counts = {"pass": 0, "maybe": 0, "reject": 0}
@@ -144,13 +144,11 @@ async def search_jobs(state: AgentState):
         if pre_screen.should_analyze:
             PersistenceService.save_job(user_id, job, "Identified")
             jobs_for_analysis.append(job)
-        else:
-            PersistenceService.save_job(user_id, job, "Screened Out")
 
     screened_summary = (
         f"Pre-screen kept {len(jobs_for_analysis)} for AI analysis "
         f"({pre_screen_counts['pass']} pass, {pre_screen_counts['maybe']} maybe) "
-        f"and screened out {pre_screen_counts['reject']} obvious non-fits."
+        f"and skipped {pre_screen_counts['reject']} obvious non-fits."
     )
     log_event(
         "agent_node.search_completed",

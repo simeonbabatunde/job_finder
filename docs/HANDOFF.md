@@ -31,7 +31,7 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
   - admin scraper configuration
 - Documentation was expanded on 2026-05-31 with root docs, UI/UX direction, implementation plan, and this handoff.
 - The first Influence Chart-style UI implementation pass is complete for the main dashboard, run panel, application history, package modal, auth modal, and admin settings.
-- The matching workflow now runs a conservative pre-screen before full AI analysis, persists screened-out jobs with reasons, and keeps below-threshold/screened-out jobs in separate review lanes.
+- The matching workflow now runs a conservative pre-screen before full AI analysis, skips obvious non-fits without saving them, and keeps strong and below-threshold matches in separate review lanes.
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
 - Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
@@ -191,11 +191,11 @@ Completed:
 - Added `python -m app.jobs.reencrypt_application_answers --dry-run|--apply` for operational answer-vault re-encryption.
 - Added API contract coverage for previous-key/plaintext re-encryption and unreadable-row reporting without partial rewrites.
 - Added `JobPreScreenService` with pass/maybe/reject buckets for cheap, high-recall screening before LLM fit analysis.
-- Updated the agent search node to persist `Screened Out` jobs with reasons and send only pass/maybe jobs to the LLM analysis batch.
+- Updated the agent search node to skip reject jobs without saving them and send only pass/maybe jobs to the LLM analysis batch.
 - Added `Application.pre_screen_status` and `Application.pre_screen_reasons` plus startup migration `0010_application_prescreen`.
-- Added `GET /applications?match_bucket=strong|below_threshold|screened_out|all`.
-- Added server-side action guards so package generation and fill-for-review are blocked for screened-out jobs and jobs below the latest minimum match score.
-- Updated the dashboard to default to strong matches, add full-page lanes for below-threshold and screened-out jobs, show pre-screen reasons, and disable package/fill actions for non-qualifying rows.
+- Added `GET /applications?match_bucket=strong|below_threshold|all`; `all` excludes skipped/screened-out legacy rows.
+- Added server-side action guards so package generation and fill-for-review are blocked for legacy screened-out jobs and jobs below the latest minimum match score.
+- Updated the dashboard to default to strong matches, add a full-page lane for below-threshold jobs, show pre-screen reasons, and disable package/fill actions for non-qualifying rows.
 - Updated backend and auto-apply reliability docs with the pre-screen cost gate and match bucket behavior.
 - Reviewed current frontend structure, backend structure, agent workflow, models, services, and existing docs.
 - Reviewed the Influence Chart project for the target design language and docs style.

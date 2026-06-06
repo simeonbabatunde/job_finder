@@ -339,10 +339,10 @@ Deliverables:
 - Pydantic request/response schemas for public API contracts. Implemented for the main auth, profile, preferences, agent run, application history, single-job analysis, application package, status, resume feedback, and password reset flows.
 - User ownership fields on resumes and preferences. Implemented with a versioned startup migration for existing local databases.
 - Query parameters for applications sorting, filtering, and limiting. Implemented on `GET /applications`.
-- Match buckets for the application pipeline. Implemented with `match_bucket=strong|below_threshold|screened_out|all`.
+- Match buckets for the application pipeline. Implemented with `match_bucket=strong|below_threshold|all`; `all` excludes skipped/screened-out legacy rows.
 - Account data export. Implemented with `GET /account/export` for resumes, preferences, generated package records, applications, agent runs, fill-review history, automation attempts, audits, and authenticated artifact URLs.
-- Conservative pre-screen before LLM analysis. Implemented with pass/maybe/reject buckets, persisted screened-out reasons, and dashboard review lanes.
-- Server-side action guards for match quality. Implemented so package generation and fill-for-review are blocked for screened-out jobs and jobs below the latest minimum match score.
+- Conservative pre-screen before LLM analysis. Implemented with pass/maybe/reject buckets; reject jobs are skipped without being saved.
+- Server-side action guards for match quality. Implemented so package generation and fill-for-review are blocked for legacy screened-out jobs and jobs below the latest minimum match score.
 - Agent run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
 - Safer auto-apply audit trail. Implemented with `AutoApplyAudit`; stronger confirmation rules remain.
 - LLM provider setting per deployment. Implemented with `LLM_PROVIDER`, `LLM_MODEL`, and provider-specific model overrides flowing through the shared LLM factory.

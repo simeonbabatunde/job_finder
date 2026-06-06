@@ -234,11 +234,10 @@ def test_search_jobs_prescreens_before_ai_analysis(monkeypatch):
     assert result["total_found_jobs"] == 3
     assert result["screened_out_jobs_count"] == 1
     saved_by_title = {job["title"]: (job, status) for _, job, status in saved_jobs}
-    assert saved_by_title["Junior Software Engineer Internship"][1] == "Screened Out"
-    assert saved_by_title["Junior Software Engineer Internship"][0]["pre_screen_status"] == "reject"
+    assert "Junior Software Engineer Internship" not in saved_by_title
     assert saved_by_title["Senior Software Engineer"][1] == "Identified"
     assert saved_by_title["Platform Analyst"][0]["pre_screen_status"] == "maybe"
-    assert "screened out 1 obvious non-fits" in result["logs"][-1]
+    assert "skipped 1 obvious non-fits" in result["logs"][-1]
 
 
 def test_search_jobs_returns_empty_list_when_scraper_fails(monkeypatch):
@@ -786,20 +785,15 @@ def test_application_match_bucket_filters_use_latest_threshold():
         assert below.status_code == 200, below.text
         assert [item["job_title"] for item in below.json()] == ["Low Role"]
 
-        screened = client.get("/applications?match_bucket=screened_out", headers=headers)
-        assert screened.status_code == 200, screened.text
-        screened_body = screened.json()
-        assert [item["job_title"] for item in screened_body] == ["Screened Role"]
-        assert screened_body[0]["pre_screen_status"] == "reject"
-        assert screened_body[0]["pre_screen_reasons"] == ["Title is clearly not full-time."]
-
         all_apps = client.get("/applications?match_bucket=all", headers=headers)
         assert all_apps.status_code == 200, all_apps.text
         assert {item["job_title"] for item in all_apps.json()} == {
             "Strong Role",
             "Low Role",
-            "Screened Role",
         }
+
+        screened = client.get("/applications?match_bucket=screened_out", headers=headers)
+        assert screened.status_code == 400
 
         invalid = client.get("/applications?match_bucket=unknown", headers=headers)
         assert invalid.status_code == 400
@@ -980,6 +974,16 @@ def test_account_export_includes_owned_records_and_artifact_links():
                 status="Analyzed",
                 fit_score=0.99,
             )
+            screened_app = Application(
+                user_id=user_id,
+                job_title="Screened Export Role",
+                company="SkipCo",
+                job_url="https://example.test/screened-export-role",
+                status="Screened Out",
+                fit_score=0.0,
+                pre_screen_status="reject",
+                pre_screen_reasons=["Obvious non-fit."],
+            )
             settings = ApplicationSubmitSettings(
                 user_id=user_id,
                 true_submit_enabled=True,
@@ -993,6 +997,7 @@ def test_account_export_includes_owned_records_and_artifact_links():
             )
             session.add(app_record)
             session.add(other_app)
+            session.add(screened_app)
             session.add(settings)
             session.commit()
             session.refresh(agent_run)
@@ -1112,6 +1117,7 @@ def test_account_export_includes_owned_records_and_artifact_links():
         assert {"upsert", "export"}.issubset(answer_actions)
         assert "$140k" not in json.dumps(body["application_answer_audit"])
         assert "Other User Role" not in body_text
+        assert "Screened Export Role" not in body_text
         assert "user_id" not in body_text
 
         assert client.get("/account/export").status_code == 401

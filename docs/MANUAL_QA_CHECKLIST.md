@@ -32,8 +32,8 @@ Use this checklist after `./scripts/preflight.sh` passes and before sharing a ho
 ## Application Pipeline
 
 - Open `Applications`.
-- Confirm strong matches, below-threshold jobs, screened-out jobs, and all tracked jobs are separated by the lane controls.
-- Confirm below-threshold and screened-out jobs are review-only and cannot generate packages or fill-review actions.
+- Confirm strong matches and below-threshold jobs are separated by the lane controls.
+- Confirm below-threshold jobs are review-only and cannot generate packages or fill-review actions.
 - Resolve an aggregator link only when a safe resolved employer URL is found.
 - Confirm unsupported, login-gated, captcha-gated, or unresolved links stay in review states.
 
