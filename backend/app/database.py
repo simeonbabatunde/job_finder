@@ -7,7 +7,7 @@ import os
 
 from app.observability import log_event
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/job_hunter")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/jobmatchhero")
 USE_ALEMBIC_MIGRATIONS = os.getenv("USE_ALEMBIC_MIGRATIONS", "").lower() in {"1", "true", "yes"}
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 STARTUP_MIGRATION_LOCK_ID = 741319502
@@ -443,6 +443,55 @@ def migrate_application_answer_audit(connection):
             )
         )
 
+def migrate_user_billing_fields(connection):
+    """Add Stripe billing metadata and subscription state to users."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "user" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("user")}
+    column_defs = {
+        "subscription_status": "VARCHAR",
+        "subscription_current_period_end": "TIMESTAMP",
+        "subscription_cancel_at_period_end": "BOOLEAN DEFAULT FALSE",
+        "stripe_customer_id": "VARCHAR",
+        "stripe_subscription_id": "VARCHAR",
+        "stripe_price_id": "VARCHAR",
+        "billing_updated_at": "TIMESTAMP",
+    }
+    for column_name, column_def in column_defs.items():
+        if column_name not in columns:
+            connection.execute(text(f"ALTER TABLE \"user\" ADD COLUMN {column_name} {column_def}"))
+
+    connection.execute(
+        text(
+            """
+            UPDATE "user"
+            SET subscription_cancel_at_period_end = FALSE
+            WHERE subscription_cancel_at_period_end IS NULL
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_user_subscription_status "
+            "ON \"user\" (subscription_status)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_user_stripe_customer_id "
+            "ON \"user\" (stripe_customer_id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_user_stripe_subscription_id "
+            "ON \"user\" (stripe_subscription_id)"
+        )
+    )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -458,6 +507,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0012_auth_session_refresh_tokens", migrate_auth_session_refresh_tokens),
     ("0013_worker_heartbeat", migrate_worker_heartbeat),
     ("0014_application_answer_audit", migrate_application_answer_audit),
+    ("0015_user_billing_fields", migrate_user_billing_fields),
 )
 
 def ensure_schema_migrations_table(connection):

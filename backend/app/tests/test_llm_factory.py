@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.llm_factory import resolve_llm_config
+from app.agent.llm_factory import LLMConfigurationError, resolve_llm_config, validate_llm_config
 
 
 LLM_ENV_KEYS = (
@@ -10,6 +10,9 @@ LLM_ENV_KEYS = (
     "OPENROUTER_MODEL",
     "GOOGLE_MODEL",
     "OLLAMA_MODEL",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GOOGLE_API_KEY",
 )
 
 
@@ -42,3 +45,20 @@ def test_resolve_llm_config_rejects_unknown_provider(monkeypatch):
 
     with pytest.raises(ValueError, match="Unsupported LLM provider"):
         resolve_llm_config()
+
+
+
+def test_validate_llm_config_requires_provider_key(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+
+    with pytest.raises(LLMConfigurationError, match="OPENAI_API_KEY"):
+        validate_llm_config()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert validate_llm_config() == ("openai", "gpt-4o")
+
+
+def test_validate_llm_config_allows_ollama_without_api_key(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+
+    assert validate_llm_config() == ("ollama", "llama3")

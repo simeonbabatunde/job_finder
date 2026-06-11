@@ -19,7 +19,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { getErrorMessage, prepareApplication, downloadCoverLetterPdf, updateApplicationStatus } from '../api/client';
 import { cn } from '../lib/cn';
-import { Button, IconButton, StatusChip } from './ui';
+import { Button, IconButton, Notice, StatusChip } from './ui';
 
 interface QAItem { question: string; answer: string; }
 interface InterviewQuestion { question: string; suggested_answer: string; }
@@ -330,7 +330,9 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                 </div>
 
                 {error && (
-                    <div className="mx-5 mt-3 shrink-0 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">{error}</div>
+                    <Notice tone="error" className="mx-5 mt-3 shrink-0">
+                        {error}
+                    </Notice>
                 )}
 
                 {(pkg || coverLetter) && (

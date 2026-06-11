@@ -30,6 +30,13 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True)
     hashed_password: Optional[str] = Field(default=None)
     subscription_tier: str = Field(default="free")  # "free" or "pro"
+    subscription_status: Optional[str] = Field(default=None, index=True)
+    subscription_current_period_end: Optional[datetime] = Field(default=None)
+    subscription_cancel_at_period_end: bool = Field(default=False)
+    stripe_customer_id: Optional[str] = Field(default=None, index=True)
+    stripe_subscription_id: Optional[str] = Field(default=None, index=True)
+    stripe_price_id: Optional[str] = Field(default=None)
+    billing_updated_at: Optional[datetime] = Field(default=None)
     role: str = Field(default="user") # "user" or "admin"
     created_at: datetime = Field(default_factory=utc_now)
 

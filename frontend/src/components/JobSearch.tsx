@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ExternalLink, LoaderCircle, MapPin, Search, Sparkles } from 'lucide-react';
 import { API_URL, getAuthHeaders, searchJobs } from '../api/client';
-import { Button, EmptyState, Panel, ProgressBar, StatusChip } from './ui';
+import { Button, EmptyState, Notice, Panel, ProgressBar, StatusChip } from './ui';
 
 interface Job {
     id: string;
@@ -97,9 +97,9 @@ export function JobSearch() {
             </form>
 
             {error && (
-                <div className="mb-5 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">
+                <Notice tone="error" className="mb-5">
                     {error}
-                </div>
+                </Notice>
             )}
 
             <div className="space-y-4">

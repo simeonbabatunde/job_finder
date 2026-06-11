@@ -1,4 +1,4 @@
-# Job Finder Backend
+# JobMatchHero Backend
 
 The backend is a FastAPI application that supports resume parsing, job discovery, LLM-based matching, application tracking, generated application materials, password reset, OAuth callbacks, scraper configuration, and optional browser automation.
 
@@ -76,7 +76,7 @@ http://localhost:8000
 Important variables:
 
 ```text
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/job_hunter
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/jobmatchhero
 LLM_PROVIDER=openai
 LLM_MODEL=
 OPENAI_MODEL=
@@ -108,6 +108,13 @@ AGENT_RUN_STALE_MINUTES=120
 ENABLE_TRUE_AUTO_SUBMIT=false
 TRUE_SUBMIT_PILOT_USER_EMAILS=
 TRUE_SUBMIT_PILOT_ATS_TYPES=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRO_PRICE_ID=
+PRO_PLAN_PRICE_LABEL=$10/mo
+BILLING_SUCCESS_URL=
+BILLING_CANCEL_URL=
+BILLING_PORTAL_RETURN_URL=
 ```
 
 Docker Compose also expects:
@@ -119,9 +126,9 @@ POSTGRES_DB=
 VITE_API_URL=
 ```
 
-## Agent Worker
+## Matching Worker
 
-Local API runs default to background execution. Docker Compose defaults to worker mode and starts a separate `worker` service that claims queued agent runs from the database.
+Local API runs default to background execution. Docker Compose defaults to worker mode and starts a separate `worker` service that claims queued matching runs from the database.
 
 To run worker mode manually:
 
@@ -129,7 +136,7 @@ To run worker mode manually:
 AGENT_RUNNER_MODE=worker uv run python -m app.worker
 ```
 
-The worker writes a heartbeat row while idle and while processing long agent runs. `GET /health/worker` uses that heartbeat to report whether worker mode is ready to drain queued runs.
+The worker writes a heartbeat row while idle and while processing long matching runs. `GET /health/worker` uses that heartbeat to report whether worker mode is ready to drain queued runs.
 
 ## CORS
 
@@ -176,7 +183,7 @@ Resume, profile, and preferences:
 - `POST /preferences`
 - `POST /agent/resume-feedback`
 
-Jobs and agent:
+Jobs and matching:
 
 - `GET /search-jobs`
 - `POST /agent/run`
@@ -204,7 +211,7 @@ Admin:
 - `GET /admin/config`
 - `PUT /admin/config`
 
-## Agent Workflow
+## Matching Workflow
 
 The LangGraph workflow is:
 
@@ -214,7 +221,7 @@ The LangGraph workflow is:
 4. `submit_application`
 5. `apply_browser` only when `auto_apply=true` and qualifying jobs exist
 
-The agent currently:
+The workflow currently:
 
 - extracts resume summary and skills
 - searches job boards and target company career pages
@@ -252,9 +259,9 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - The previous README contained a plaintext OpenRouter key. It has been removed; rotate the key if it was real.
 - Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight `schema_migrations` runner.
 - Core public write endpoints use Pydantic request schemas, and the main app/API responses now have explicit response models.
-- Daily agent-run quotas are enforced for free/pro tiers, and browser fill-for-review is gated to pro/admin users.
-- Agent runs are queued through FastAPI background tasks and persisted for polling.
-- Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation emit structured JSON operational logs. Set `STRUCTURED_LOG_LEVEL` to tune verbosity.
+- Daily matching-run quotas are enforced for free/pro tiers, browser fill-for-review is gated to pro/admin users, and Stripe Checkout/Portal/webhooks now manage paid Pro status when billing env vars are set.
+- Matching runs are queued through FastAPI background tasks and persisted for polling.
+- Matching runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation emit structured JSON operational logs. Set `STRUCTURED_LOG_LEVEL` to tune verbosity.
 - Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`; future readiness settings require approved pilot users or admins and optional ATS allowlisting.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
@@ -262,7 +269,7 @@ the main best-fit view while remaining reviewable from the full pipeline.
   - `uv run python -m app.jobs.reencrypt_application_answers --dry-run`
   - `uv run python -m app.jobs.reencrypt_application_answers --apply`
 - Application answer-vault export, view, reset, dashboard preload, and automation-use events are audited without storing answer values in the audit log.
-- `GET /account/export` returns a signed-in user's resumes, preferences, profile, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
+- `GET /account/export` returns a signed-in user's resumes, preferences, profile, application answers, generated package records, application history, matching runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
 - Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Health endpoints expose API liveness, DB reachability, and worker heartbeat freshness without returning user data.
 - LLM calls are live by default and need test doubles for repeatable automated tests.
@@ -281,4 +288,4 @@ The original goal remains:
 
 Build an LLM-powered app that can analyze a user's resume, compare it to job postings, submit or prepare applications for the best matches, support enterprise and local LLM providers, offer subscription tiers, and show application history and status.
 
-The current product expectation is that the user should not need separate "Analyze Resume" or "Save Preferences" actions before running the agent. The agent launch should save and analyze the required setup data as part of the workflow.
+The current product expectation is that the user should not need separate "Analyze Resume" or "Save Preferences" actions before starting a match. The matching workflow should save and analyze the required setup data as part of the process.

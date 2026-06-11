@@ -1,0 +1,33 @@
+# Secrets and local environment files
+.env
+.env.*
+
+# Git and editor state
+.git
+.github
+.DS_Store
+.idea
+.vscode
+
+# Local backups and generated artifacts
+backups
+*.backup
+*.dump
+*.dump.enc
+backend/storage
+
+# Python caches and environments
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.pyright
+backend/.venv
+
+# Node dependencies and build outputs
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+*.log

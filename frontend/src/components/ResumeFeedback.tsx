@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-    AlertCircle,
     Check,
     ChevronDown,
     ChevronUp,
@@ -11,7 +10,7 @@ import {
     X,
 } from 'lucide-react';
 import { getErrorMessage, getResumeFeedback } from '../api/client';
-import { Button, IconButton, ProgressBar, StatusChip } from './ui';
+import { Button, IconButton, Notice, ProgressBar, StatusChip } from './ui';
 
 interface Category {
     name: string;
@@ -35,7 +34,7 @@ function scoreTone(score: number): 'success' | 'accent' | 'warning' {
 }
 
 function ScoreRing({ score }: { score: number }) {
-    const color = score >= 75 ? '#177245' : score >= 50 ? '#176b63' : '#a16207';
+    const color = score >= 75 ? 'var(--positive)' : score >= 50 ? 'var(--accent)' : '#a16207';
     return (
         <div className="relative h-20 w-20 shrink-0">
             <svg viewBox="0 0 36 36" className="h-20 w-20 -rotate-90">
@@ -145,10 +144,9 @@ export const ResumeFeedback: React.FC<{ hasResume: boolean }> = ({ hasResume }) 
             )}
 
             {error && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <Notice tone="error" className="mt-3">
                     {error}
-                </div>
+                </Notice>
             )}
 
             {feedback && open && (

@@ -93,6 +93,9 @@ class UserResponse(BaseModel):
     id: Optional[int] = None
     email: str
     subscription_tier: str
+    subscription_status: Optional[str] = None
+    subscription_current_period_end: Optional[datetime] = None
+    subscription_cancel_at_period_end: bool = False
     role: str
 
 
@@ -108,6 +111,22 @@ class AuthResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class BillingStatusResponse(BaseModel):
+    plan: str
+    subscription_status: Optional[str] = None
+    subscription_current_period_end: Optional[datetime] = None
+    subscription_cancel_at_period_end: bool = False
+    billing_enabled: bool
+    can_upgrade: bool
+    can_manage_billing: bool
+    pro_price_label: str = "$10/mo"
+    message: str
+
+
+class BillingSessionResponse(BaseModel):
+    url: str
 
 
 class HealthResponse(BaseModel):

@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArchiveX, ArrowDownUp, Box, Camera, ClipboardCheck, Download, ExternalLink, Link2, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import {
     checkApplicationSubmitReadiness,
+    clearApplications as clearSavedApplications,
     clearApplicationFillReviews,
     createApplicationSubmitConfirmation,
     fetchFillReviewArtifact,
     fillApplicationForReview,
+    getErrorMessage,
     getApplicationAutomationAttempts,
     getApplicationFillReviews,
     getAuthHeaders,
@@ -15,7 +17,7 @@ import {
 import type { ApplicationFillReviewRecord, ApplicationFillReviewResult, ApplicationSubmitConfirmation, ApplicationSubmitReadiness, AutoApplyAttemptRecord } from '../api/client';
 import { isSupportedFillReviewAts } from '../lib/supportedAts';
 import { ApplicationPackageModal } from './ApplicationPackageModal';
-import { Button, EmptyState, IconButton, StatusChip } from './ui';
+import { Button, ConfirmDialog, EmptyState, IconButton, Notice, StatusChip } from './ui';
 
 interface Application {
     id: number;
@@ -165,6 +167,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
     const [applications, setApplications] = useState<Application[]>([]);
     const [loading, setLoading] = useState(true);
     const [clearing, setClearing] = useState(false);
+    const [clearDialogOpen, setClearDialogOpen] = useState(false);
+    const [clearFillHistoryDialogOpen, setClearFillHistoryDialogOpen] = useState(false);
+    const [clearNotice, setClearNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [resolvingId, setResolvingId] = useState<number | null>(null);
     const [fillingId, setFillingId] = useState<number | null>(null);
     const [linkError, setLinkError] = useState<string | null>(null);
@@ -225,18 +230,29 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
         };
     }, [artifactPreviewUrl]);
 
-    const clearApplications = async () => {
-        if (!confirm('Clear all application history? This cannot be undone.')) return;
+    const handleClearApplications = async () => {
         setClearing(true);
+        setClearNotice(null);
         try {
-            await fetch(`${API_URL}/applications`, {
-                method: 'DELETE',
-                headers: getAuthHeaders()
-            });
+            const result = await clearSavedApplications();
             setApplications([]);
             setSelectedApp(null);
+            setFillReview(null);
+            setArtifactPreviewUrl(null);
+            setAutomationAttempts([]);
+            setSubmitReadiness(null);
+            setSubmitConfirmation(null);
+            setClearDialogOpen(false);
+            setClearNotice({
+                type: 'success',
+                message: result.message || 'Application history cleared.',
+            });
         } catch (error) {
             console.error('Error clearing applications:', error);
+            setClearNotice({
+                type: 'error',
+                message: getErrorMessage(error, 'Failed to clear application history. Please try again.'),
+            });
         } finally {
             setClearing(false);
         }
@@ -314,7 +330,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
 
     const handleClearFillHistory = async () => {
         if (!fillReview) return;
-        if (!confirm('Clear saved fill-review attempts for this application?')) return;
 
         try {
             await clearApplicationFillReviews(fillReview.app.id);
@@ -322,6 +337,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
             setArtifactPreviewUrl(null);
             const attempts = await getApplicationAutomationAttempts(fillReview.app.id).catch(() => []);
             setAutomationAttempts(attempts);
+            setClearFillHistoryDialogOpen(false);
         } catch (error) {
             setLinkError(error instanceof Error ? error.message : 'Failed to clear fill-review history');
         }
@@ -414,6 +430,29 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
 
     return (
         <div className="mt-5 min-w-0">
+            <ConfirmDialog
+                open={clearDialogOpen}
+                title="Clear application history?"
+                description="This removes saved matches, generated packages, and fill-review history from this account. Your resume, preferences, and account settings stay in place."
+                cancelLabel="Keep history"
+                confirmLabel="Clear history"
+                loadingLabel="Clearing"
+                iconTone="error"
+                loading={clearing}
+                onCancel={() => setClearDialogOpen(false)}
+                onConfirm={() => void handleClearApplications()}
+            />
+            <ConfirmDialog
+                open={clearFillHistoryDialogOpen}
+                title="Clear saved review attempts?"
+                description="This removes screenshots, traces, and fill-review records for this application. The application itself stays in your pipeline."
+                cancelLabel="Keep attempts"
+                confirmLabel="Clear attempts"
+                loadingLabel="Clearing"
+                iconTone="error"
+                onCancel={() => setClearFillHistoryDialogOpen(false)}
+                onConfirm={() => void handleClearFillHistory()}
+            />
             {fillReview && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
                     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[var(--line)] bg-white shadow-xl">
@@ -629,7 +668,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                                     <h4 className="text-sm font-semibold text-[var(--ink)]">Saved review attempts</h4>
                                     <div className="flex items-center gap-2">
                                         <StatusChip tone="neutral">{fillReview.history.length}</StatusChip>
-                                        <Button variant="danger" size="sm" onClick={() => void handleClearFillHistory()}>
+                                        <Button variant="danger" size="sm" onClick={() => setClearFillHistoryDialogOpen(true)}>
                                             Clear
                                         </Button>
                                     </div>
@@ -744,7 +783,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                         <Button
                             variant="danger"
                             size="sm"
-                            onClick={clearApplications}
+                            onClick={() => setClearDialogOpen(true)}
                             disabled={clearing}
                         >
                             <Trash2 size={15} />
@@ -773,9 +812,14 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ limit, fullPage 
                 </div>
             )}
             {linkError && (
-                <p className="mb-3 rounded-md border border-[var(--danger-soft)] bg-[var(--danger-soft)] px-3 py-2 text-xs font-semibold text-[var(--danger)]">
+                <Notice tone="error" title="Something needs attention" className="mb-3">
                     {linkError}
-                </p>
+                </Notice>
+            )}
+            {clearNotice && (
+                <Notice tone={clearNotice.type === 'success' ? 'success' : 'error'} className="mb-3">
+                    {clearNotice.message}
+                </Notice>
             )}
 
             {loading ? (

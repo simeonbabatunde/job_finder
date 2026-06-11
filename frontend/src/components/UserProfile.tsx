@@ -4,7 +4,7 @@ import { AlertCircle, CheckCircle2, LoaderCircle, Save } from 'lucide-react';
 import type { ProfilePayload } from '../api/client';
 import { getErrorMessage, saveProfile } from '../api/client';
 import { cn } from '../lib/cn';
-import { Button, ProgressBar, StatusChip } from './ui';
+import { Button, Notice, ProgressBar, StatusChip } from './ui';
 
 export interface UserProfileHandle {
     save: (silent?: boolean) => Promise<boolean>;
@@ -205,10 +205,9 @@ export const UserProfile = forwardRef<UserProfileHandle, UserProfileProps>((prop
 
             <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-3 sm:flex-row sm:items-center sm:justify-between">
                 {status && (
-                    <p className={cn('flex items-center gap-2 text-sm font-semibold', status.type === 'success' ? 'text-[var(--positive)]' : 'text-[var(--danger)]')}>
-                        {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    <Notice tone={status.type === 'success' ? 'success' : 'error'} className="sm:max-w-md">
                         {status.message}
-                    </p>
+                    </Notice>
                 )}
                 <Button onClick={() => doSave(false)} disabled={saving} className="sm:ml-auto">
                     {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}

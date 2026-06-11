@@ -66,5 +66,5 @@ Use this checklist after `./scripts/preflight.sh` passes and before sharing a ho
 
 - With an admin account, open `/admin`.
 - Save scraper settings and confirm non-admin users cannot access the admin API.
-- Review structured logs for agent run, worker, fill-review, submit-readiness, and submit-confirmation events.
+- Review structured logs for matching run, worker, fill-review, submit-readiness, and submit-confirmation events.
 - Run the answer-vault re-encryption job in dry-run mode before any data-key rotation.

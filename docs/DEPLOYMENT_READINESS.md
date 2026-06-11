@@ -2,6 +2,7 @@
 
 Use this checklist before sharing a hosted staging build or storing real user data.
 For step-by-step operating procedures, see `docs/OPERATIONS_RUNBOOK.md`.
+For the first production VPS launch path, see `docs/VPS_DEPLOYMENT.md`.
 For hands-on product validation, use `docs/MANUAL_QA_CHECKLIST.md`.
 
 ## Required Services
@@ -16,6 +17,10 @@ Docker Compose runs all four services locally:
 ```bash
 docker compose up --build
 ```
+
+Production VPS deployments use `docker-compose.prod.yml`, `Caddyfile`,
+`frontend/Dockerfile.prod`, and `.env.production`. Local development should keep
+using the default `docker-compose.yml`.
 
 ## Launch Preflight
 
@@ -74,7 +79,7 @@ The worker writes one `WorkerHeartbeat` row per process. This row contains:
 - worker id
 - status: `starting`, `polling`, `idle`, `running`, or `error`
 - last seen timestamp
-- current agent run id when available
+- current matching run id when available
 - small operational details such as heartbeat interval
 
 Environment knobs:
@@ -148,7 +153,7 @@ Before enabling that against an existing database:
 1. Restore a copy of the database into a staging-like environment.
 2. Run Alembic upgrade against the copy.
 3. Verify `/health/db` reports `migration_mode: "alembic"`.
-4. Smoke-test auth, resume upload, preferences, agent queueing, application package generation, and artifact download.
+4. Smoke-test auth, resume upload, preferences, matching workflow queueing, application package generation, and artifact download.
 
 When `USE_ALEMBIC_MIGRATIONS=true`, startup migrations take a Postgres advisory
 lock so the API and worker can start at the same time without racing the Alembic
@@ -160,8 +165,8 @@ Local staging rehearsal with Docker Compose:
 APP_ENV=staging \
 AUTH_SECRET_KEY=<32+ random characters> \
 APP_DATA_ENCRYPTION_KEY=<32+ random characters> \
-FRONTEND_URL=https://staging-job-finder.example.com \
-CORS_ALLOWED_ORIGINS=https://staging-job-finder.example.com \
+FRONTEND_URL=https://staging.jobmatchhero.com \
+CORS_ALLOWED_ORIGINS=https://staging.jobmatchhero.com \
 USE_ALEMBIC_MIGRATIONS=true \
 docker compose up --build -d backend worker
 ```
@@ -198,18 +203,23 @@ Local Compose backup example:
 
 ```bash
 mkdir -p backups
-docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/job_finder.backup
-docker cp job_finder-db-1:/tmp/job_finder.backup backups/job_finder.backup
+docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/jobmatchhero.backup
+docker cp jobmatchhero-db-1:/tmp/jobmatchhero.backup backups/jobmatchhero.backup
 ```
 
 Local restore rehearsal against a disposable database:
 
 ```bash
-docker compose exec db createdb -U "$POSTGRES_USER" job_hunter_restore_check
-docker cp backups/job_finder.backup job_finder-db-1:/tmp/job_finder.backup
-docker compose exec db pg_restore -U "$POSTGRES_USER" -d job_hunter_restore_check --clean --if-exists /tmp/job_finder.backup
-docker compose exec db dropdb -U "$POSTGRES_USER" job_hunter_restore_check
+docker compose exec db createdb -U "$POSTGRES_USER" jobmatchhero_restore_check
+docker cp backups/jobmatchhero.backup jobmatchhero-db-1:/tmp/jobmatchhero.backup
+docker compose exec db pg_restore -U "$POSTGRES_USER" -d jobmatchhero_restore_check --clean --if-exists /tmp/jobmatchhero.backup
+docker compose exec db dropdb -U "$POSTGRES_USER" jobmatchhero_restore_check
 ```
+
+For local machines that already ran the app before the JobMatchHero rebrand,
+old data may be under pre-rebrand database, Compose project, or volume names.
+Take a backup before changing database env vars or renaming the project folder,
+then restore into `jobmatchhero` if you want to keep that local data.
 
 For managed Postgres, use the provider's snapshot/restore tooling plus one manual
 restore rehearsal before launch.
@@ -270,7 +280,7 @@ Then use the frontend at `http://localhost:5173`:
 ## Production Gates
 
 - Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a controlled pilot is approved; when a pilot is approved, scope it with `TRUE_SUBMIT_PILOT_USER_EMAILS` and optionally `TRUE_SUBMIT_PILOT_ATS_TYPES`.
-- Confirm `/health/worker` is healthy before relying on queued agent runs.
+- Confirm `/health/worker` is healthy before relying on queued matching runs.
 - Confirm CORS allows only the deployed frontend origin.
 - Confirm Postgres credentials are not local defaults.
 - Confirm backups and restore testing before storing real resumes or application answers.

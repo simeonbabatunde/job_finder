@@ -1,4 +1,4 @@
-# Job Finder Implementation Plan
+# JobMatchHero Implementation Plan
 
 This plan is based on a code review of the current repository on 2026-05-31 and the Influence Chart UI/UX reference project.
 
@@ -39,7 +39,7 @@ Strengths:
 
 Resolved and residual notes:
 
-- The main UI has been moved onto the Job Finder token system with a dashboard-first shell.
+- The main UI has been moved onto the JobMatchHero token system with a dashboard-first shell.
 - `src/App.css` previously contained Vite template styles; those have been replaced with a minimal note.
 - Shared UI primitives now cover the app shell, panels, headers, buttons, chips, progress bars, fields, and empty states.
 - Manual routing in `App.tsx` will get brittle as pages grow.
@@ -54,7 +54,7 @@ The backend is a FastAPI app in `backend/`.
 Key files:
 
 - `main.py`: FastAPI app, CORS, DB table creation, router mount.
-- `app/api/endpoints.py`: auth, OAuth callbacks, resume upload, preferences, profile, agent run, applications, admin config, password reset, application package, status update, resume feedback.
+- `app/api/endpoints.py`: auth, OAuth callbacks, resume upload, preferences, profile, matching run, applications, admin config, password reset, application package, status update, resume feedback.
 - `app/models.py`: SQLModel tables for resumes, preferences, users, applications, profiles, scraper config, reset tokens.
 - `app/agent/graph.py`: LangGraph workflow.
 - `app/agent/nodes.py`: resume parsing, job search, fit analysis, submission selection, browser application.
@@ -67,7 +67,7 @@ Key files:
 
 Strengths:
 
-- The agent workflow is cleanly separated into LangGraph nodes.
+- The matching workflow is cleanly separated into LangGraph nodes.
 - LLM provider selection is centralized.
 - Application persistence includes useful URL and title/company dedupe.
 - The application package endpoint already produces high-value artifacts.
@@ -80,7 +80,7 @@ Resolved and residual notes:
 - Startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to `create_all` plus the lightweight `schema_migrations` table.
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
-- Agent runs are persisted as queued records, can run in local background mode, and can be processed by the Docker worker service in worker mode.
+- Matching runs are persisted as queued records, can run in local background mode, and can be processed by the Docker worker service in worker mode.
 - Browser fill-for-review is gated to pro/admin users; true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`, and future readiness settings require an approved pilot user/admin plus optional ATS allowlisting.
 - Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
@@ -88,7 +88,7 @@ Resolved and residual notes:
 - Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
 - Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
 - Final-submit guardrails are implemented with user-scoped submission settings, per-application readiness checks, a no-click final confirmation endpoint with fixture-backed submit-control detection, and persisted `AutoApplyAttempt` records tying fill-review and confirmation into one auditable workflow. Attempts now include compact step-level telemetry for fill-review and final-confirmation transitions. Actual final submission remains disabled.
-- A focused backend test suite now covers auth, ownership, migrations, application queries, quotas, agent run persistence, LLM provider configuration, and structured errors.
+- A focused backend test suite now covers auth, ownership, migrations, application queries, quotas, matching run persistence, LLM provider configuration, and structured errors.
 
 ## Milestone 0: Repository Hygiene and Documentation
 
@@ -119,7 +119,7 @@ Implementation notes:
 
 - Added root `.gitignore` and `.env.example`.
 - Added `docs/AUTO_APPLY_RELIABILITY_PLAN.md` for the reliability path before production auto-submit.
-- User-facing brand is standardized as "Job Finder"; historical database names may still use `job_hunter`.
+- User-facing brand and new local database defaults are standardized as "JobMatchHero"/`jobmatchhero`; legacy local installs may still have pre-rebrand local data until migrated.
 
 ## Milestone 1: Design System Foundation
 
@@ -307,13 +307,13 @@ Move from prototype auth toward a model that can support paid plans and safe aut
 Deliverables:
 
 - Replace `X-User-Email` prototype auth with real session or bearer token auth. Implemented with signed bearer tokens backed by server-side session records.
-- User-scoped resumes and preferences. Implemented for upload, preferences save, user status, agent run, single-job analysis, application packages, and resume feedback.
+- User-scoped resumes and preferences. Implemented for upload, preferences save, user status, matching run, single-job analysis, application packages, and resume feedback.
 - Subscription model with enforced quotas.
 - Free/pro plan behavior:
-  - Free: daily agent-run limit.
-  - Pro: larger daily agent-run limit and browser fill-for-review access.
+  - Free: daily matching-run limit.
+  - Pro: larger daily matching-run limit and browser fill-for-review access.
   - True auto-submit: keep gated server-side, blocked by default, and unavailable until an approved pilot.
-- Account settings page. Implemented at `/settings` with profile details, saved application answers, and submission guardrails.
+- Account settings page. Implemented at `/settings` with billing, profile details, saved application answers, and submission guardrails.
 
 Acceptance criteria:
 
@@ -323,7 +323,7 @@ Acceptance criteria:
 
 Implementation notes:
 
-- The internal free/pro/admin behavior is implemented without external billing; Stripe or another billing provider can be added later without blocking guarded staging deployment.
+- Stripe billing is implemented for Pro upgrades: Checkout creates the subscription, the Customer Portal handles billing management, and webhooks update `subscription_tier`.
 
 ## Milestone 7: Backend Data and API Hardening
 
@@ -336,14 +336,14 @@ Make the backend maintainable, testable, and production safer.
 Deliverables:
 
 - Versioned migrations. Alembic scaffolding and a current-schema baseline exist now, with the lightweight startup runner still available as the local/dev fallback.
-- Pydantic request/response schemas for public API contracts. Implemented for the main auth, profile, preferences, agent run, application history, single-job analysis, application package, status, resume feedback, and password reset flows.
+- Pydantic request/response schemas for public API contracts. Implemented for the main auth, profile, preferences, matching run, application history, single-job analysis, application package, status, resume feedback, and password reset flows.
 - User ownership fields on resumes and preferences. Implemented with a versioned startup migration for existing local databases.
 - Query parameters for applications sorting, filtering, and limiting. Implemented on `GET /applications`.
 - Match buckets for the application pipeline. Implemented with `match_bucket=strong|below_threshold|all`; `all` excludes skipped/screened-out legacy rows.
-- Account data export. Implemented with `GET /account/export` for resumes, preferences, generated package records, applications, agent runs, fill-review history, automation attempts, audits, and authenticated artifact URLs.
+- Account data export. Implemented with `GET /account/export` for resumes, preferences, generated package records, applications, matching runs, fill-review history, automation attempts, audits, and authenticated artifact URLs.
 - Conservative pre-screen before LLM analysis. Implemented with pass/maybe/reject buckets; reject jobs are skipped without being saved.
 - Server-side action guards for match quality. Implemented so package generation and fill-for-review are blocked for legacy screened-out jobs and jobs below the latest minimum match score.
-- Agent run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
+- Matching run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
 - Safer auto-apply audit trail. Implemented with `AutoApplyAudit`; stronger confirmation rules remain.
 - LLM provider setting per deployment. Implemented with `LLM_PROVIDER`, `LLM_MODEL`, and provider-specific model overrides flowing through the shared LLM factory.
 - Structured error responses. Implemented at the FastAPI app boundary while preserving the existing `detail` field for current clients.
@@ -351,9 +351,9 @@ Deliverables:
 Acceptance criteria:
 
 - Database can migrate from empty state.
-- Tests cover auth boundaries, resume upload/preferences ownership, migration behavior, agent run persistence, quota enforcement, and application sorting/filtering.
+- Tests cover auth boundaries, resume upload/preferences ownership, migration behavior, matching run persistence, quota enforcement, and application sorting/filtering.
 - API contracts are explicit.
-- Agent logs are persisted or retrievable after a run.
+- Matching logs are persisted or retrievable after a run.
 
 Implementation notes:
 
@@ -404,8 +404,8 @@ Deliverables:
 - Environment templates.
 - CORS and frontend URL settings documented.
 - Health and readiness endpoints. Implemented for API, DB, and worker.
-- Logging strategy. Implemented with structured JSON operational events for agent runs, workers, browser fill-review, and submit confirmation.
-- Background job or worker strategy for long agent runs. Implemented with worker mode and heartbeat checks.
+- Logging strategy. Implemented with structured JSON operational events for matching runs, workers, browser fill-review, and submit confirmation.
+- Background job or worker strategy for long matching runs. Implemented with worker mode and heartbeat checks.
 - Deployment guide. Implemented through `docs/DEPLOYMENT_READINESS.md` and `docs/OPERATIONS_RUNBOOK.md`.
 - CI preflight workflow. Implemented in `.github/workflows/preflight.yml`.
 
@@ -413,7 +413,7 @@ Acceptance criteria:
 
 - App can run locally from a clean checkout.
 - Hosted staging can be configured from docs.
-- Long agent runs do not block the API request indefinitely.
+- Long matching runs do not block the API request indefinitely.
 
 ## Deployment Gate
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Save } from 'lucide-react';
+import { LoaderCircle, Save } from 'lucide-react';
 import { getAuthHeaders, API_URL, saveProfile } from '../api/client';
 import type { ProfilePayload } from '../api/client';
-import { Button, Panel, TextField } from './ui';
+import { Button, Notice, Panel, TextField } from './ui';
 import { ApplicationAnswers } from './ApplicationAnswers';
 import { SubmissionSettings } from './SubmissionSettings';
+import { BillingSettings } from './BillingSettings';
 
 const EMPTY_PROFILE: ProfilePayload = {
     first_name: '',
@@ -78,6 +79,9 @@ export const ProfileSettings = () => {
 
     return (
         <Panel className="p-5">
+            <div className="mb-5 border-b border-[var(--line)] pb-5">
+                <BillingSettings />
+            </div>
             <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Profile settings</p>
@@ -116,10 +120,9 @@ export const ProfileSettings = () => {
 
                 <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-4 sm:flex-row sm:items-center sm:justify-between">
                     {status && (
-                        <p className={`flex items-center gap-2 text-sm font-semibold ${status.startsWith('Failed') ? 'text-[var(--danger)]' : 'text-[var(--positive)]'}`}>
-                            {status.startsWith('Failed') ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+                        <Notice tone={status.startsWith('Failed') ? 'error' : 'success'} className="sm:max-w-md">
                             {status}
-                        </p>
+                        </Notice>
                     )}
                     <Button type="submit" disabled={saving} className="sm:ml-auto">
                         {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}

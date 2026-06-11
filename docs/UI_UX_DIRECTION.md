@@ -1,6 +1,6 @@
-# Job Finder UI/UX Direction
+# JobMatchHero UI/UX Direction
 
-This document translates the Influence Chart visual language into a Job Finder product experience.
+This document translates the Influence Chart visual language into a JobMatchHero product experience.
 
 ## Source Reference
 
@@ -21,7 +21,7 @@ Relevant files reviewed:
 
 ## Design Principles
 
-Job Finder should feel like a career operations console, not a marketing landing page.
+JobMatchHero should feel like a career operations console, not a marketing landing page.
 
 - Put the usable product on the first screen.
 - Frame the product as a smart job search assistant that matches roles to the user's resume and preferences, then packages the application materials.
@@ -46,9 +46,10 @@ Use these CSS variables in `frontend/src/index.css`:
   --muted: #657084;
   --line: #dce2ea;
   --soft: #eef3f7;
-  --accent: #176b63;
-  --accent-soft: #dff3ee;
-  --positive: #177245;
+  --accent: #3658a8;
+  --accent-hover: #2a4585;
+  --accent-soft: #e8edfb;
+  --positive: #3f6fb5;
   --warning: #a16207;
   --warning-soft: #fef3c7;
   --danger: #b42318;
@@ -84,7 +85,7 @@ Use this token system instead of one-off indigo/violet classes:
 The app shell should stay dashboard-first:
 
 - Top app header, white background, bottom border.
-- Brand block: small domain or app label, then "Job Finder".
+- Brand block: small domain or app label, then "JobMatchHero".
 - Navigation: Dashboard, Applications, Account, and Admin when permitted.
 - Account actions: plan chip, email, sign out.
 - Main background: `var(--page)`.
@@ -112,7 +113,7 @@ Resume, Profile, and Preferences should share field styling:
 - Multi-selects should behave like menus with checkboxes, not custom ad hoc dropdowns where possible.
 - Sliders or steppers are preferred for numeric thresholds such as match score.
 
-### Agent Run Panel
+### Matching Panel
 
 The run control should look operational:
 
@@ -227,5 +228,5 @@ The UI redesign is done when:
 - There are no decorative gradient blobs or one-off indigo/violet gradients.
 - Main workflow pages share a header, field style, section style, buttons, status chips, and table style.
 - Application history is scannable on desktop and mobile.
-- Resume/Profile/Preferences/Run Agent feel like one coherent workflow.
+- Resume/Profile/Preferences/Start matching feel like one coherent workflow.
 - Auth and admin screens no longer feel visually separate from the main app.

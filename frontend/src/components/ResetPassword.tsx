@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, KeyRound, LoaderCircle } from 'lucide-react';
+import { KeyRound, LoaderCircle } from 'lucide-react';
 import { getErrorMessage, resetPassword } from '../api/client';
-import { Button, PageShell, Panel, TextField } from './ui';
+import { Button, Notice, PageShell, Panel, TextField } from './ui';
 
 export const ResetPassword = () => {
     const [password, setPassword] = useState('');
@@ -50,9 +50,9 @@ export const ResetPassword = () => {
                     </div>
 
                     {!token ? (
-                        <div className="rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-4 text-sm font-semibold text-[var(--danger)]">
+                        <Notice tone="error">
                             Invalid or missing reset token.
-                        </div>
+                        </Notice>
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <TextField
@@ -73,16 +73,14 @@ export const ResetPassword = () => {
                     )}
 
                     {msg && (
-                        <div className="mt-5 flex items-start gap-2 rounded-lg border border-[var(--positive-soft)] bg-[var(--positive-soft)] p-3 text-sm font-semibold text-[var(--positive)]">
-                            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                        <Notice tone="success" className="mt-5">
                             {msg}
-                        </div>
+                        </Notice>
                     )}
                     {error && (
-                        <div className="mt-5 flex items-start gap-2 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">
-                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                        <Notice tone="error" className="mt-5">
                             {error}
-                        </div>
+                        </Notice>
                     )}
 
                     <a href="/" className="mt-6 inline-flex text-sm font-semibold text-[var(--muted)] hover:text-[var(--accent)]">

@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, Download, LoaderCircle, Save, ShieldCheck, Trash2 } from 'lucide-react';
+import { LoaderCircle, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import type { ApplicationAnswerProfilePayload } from '../api/client';
 import {
     deleteApplicationProfile,
-    exportApplicationProfile,
     getApplicationProfile,
     getErrorMessage,
     hasAuthSession,
     saveApplicationProfile,
 } from '../api/client';
 import { cn } from '../lib/cn';
-import { Button, StatusChip, TextField } from './ui';
+import { Button, ConfirmDialog, Notice, StatusChip, TextField } from './ui';
 
 const EMPTY_ANSWERS: ApplicationAnswerProfilePayload = {
     work_authorized_us: 'unspecified',
@@ -97,8 +96,8 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
     const [answers, setAnswers] = useState<ApplicationAnswerProfilePayload>(buildAnswers(initialData));
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [exporting, setExporting] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
     useEffect(() => {
         if (initialData) {
@@ -187,7 +186,6 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
             setStatus({ type: 'error', message: 'Sign in to reset application answers.' });
             return;
         }
-        if (!confirm('Reset all saved application answers? This clears optional self-identification answers too.')) return;
 
         setSaving(true);
         setStatus(null);
@@ -197,41 +195,11 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
             setAnswers(emptyAnswers);
             setStatus({ type: 'success', message: 'Application answers reset.' });
             onSaved?.(emptyAnswers);
+            setResetDialogOpen(false);
         } catch (error) {
             setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to reset application answers') });
         } finally {
             setSaving(false);
-        }
-    };
-
-    const handleExport = async () => {
-        if (!hasAuthSession()) {
-            setStatus({ type: 'error', message: 'Sign in to export application answers.' });
-            return;
-        }
-
-        setExporting(true);
-        setStatus(null);
-        try {
-            const exportData = await exportApplicationProfile();
-            if (!exportData.profile) {
-                setStatus({ type: 'error', message: exportData.message });
-                return;
-            }
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `job-finder-application-answers-${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
-            setStatus({ type: 'success', message: 'Application answers exported.' });
-        } catch (error) {
-            setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to export application answers') });
-        } finally {
-            setExporting(false);
         }
     };
 
@@ -260,6 +228,19 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
     );
 
     return (
+        <>
+        <ConfirmDialog
+            open={resetDialogOpen}
+            title="Reset application answers?"
+            description="This clears saved common application answers and optional self-identification responses. Your resume, preferences, and profile details stay in place."
+            cancelLabel="Keep answers"
+            confirmLabel="Reset answers"
+            loadingLabel="Resetting"
+            iconTone="error"
+            loading={saving}
+            onCancel={() => setResetDialogOpen(false)}
+            onConfirm={() => void handleReset()}
+        />
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -365,29 +346,22 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
 
             <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-3 sm:flex-row sm:items-center sm:justify-between">
                 {status && (
-                    <p className={cn(
-                        'flex items-center gap-2 text-sm font-semibold',
-                        status.type === 'success' ? 'text-[var(--positive)]' : 'text-[var(--danger)]',
-                    )}>
-                        {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    <Notice tone={status.type === 'success' ? 'success' : 'error'} className="sm:max-w-md">
                         {status.message}
-                    </p>
+                    </Notice>
                 )}
                 <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row">
-                    <Button type="button" variant="secondary" onClick={handleExport} disabled={saving || exporting}>
-                        {exporting ? <LoaderCircle className="animate-spin" size={16} /> : <Download size={16} />}
-                        {exporting ? 'Exporting' : 'Export answers'}
-                    </Button>
-                    <Button type="button" variant="danger" onClick={handleReset} disabled={saving || exporting}>
+                    <Button type="button" variant="danger" onClick={() => setResetDialogOpen(true)} disabled={saving}>
                         <Trash2 size={16} />
                         Reset answers
                     </Button>
-                    <Button type="submit" disabled={saving || exporting}>
+                    <Button type="submit" disabled={saving}>
                         {saving ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}
                         {saving ? 'Saving' : 'Save application answers'}
                     </Button>
                 </div>
             </div>
         </form>
+        </>
     );
 }

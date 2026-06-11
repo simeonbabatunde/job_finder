@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, RotateCcw, Save, ShieldAlert } from 'lucide-react';
+import { LoaderCircle, RotateCcw, Save, ShieldAlert } from 'lucide-react';
 import type { ApplicationSubmitSettingsPayload } from '../api/client';
 import {
     getErrorMessage,
@@ -9,8 +9,7 @@ import {
     resetSubmissionSettings,
     saveSubmissionSettings,
 } from '../api/client';
-import { cn } from '../lib/cn';
-import { Button, StatusChip, TextField } from './ui';
+import { Button, ConfirmDialog, Notice, StatusChip, TextField } from './ui';
 
 const EMPTY_SETTINGS: ApplicationSubmitSettingsPayload = {
     true_submit_enabled: false,
@@ -28,28 +27,65 @@ const EMPTY_SETTINGS: ApplicationSubmitSettingsPayload = {
     consent_to_submit: false,
 };
 
+const LIST_FIELD_NAMES = [
+    'allowed_companies',
+    'denied_companies',
+    'allowed_domains',
+    'denied_domains',
+    'allowed_job_title_keywords',
+] as const;
+
+type ListFieldName = (typeof LIST_FIELD_NAMES)[number];
+type ListDrafts = Record<ListFieldName, string>;
+
 function joinList(values?: string[]) {
     return (values || []).join(', ');
 }
 
 function splitList(value: string) {
     return value
-        .split(',')
+        .split(/[,;\n\r\t]+|\s{2,}/)
         .map(item => item.trim())
+        .map(item => item.replace(/\s+/g, ' '))
         .filter(Boolean);
+}
+
+function buildListDrafts(data: ApplicationSubmitSettingsPayload): ListDrafts {
+    const drafts = {} as ListDrafts;
+    for (const field of LIST_FIELD_NAMES) {
+        drafts[field] = joinList(data[field]);
+    }
+    return drafts;
 }
 
 function buildSettings(data?: Partial<ApplicationSubmitSettingsPayload> | null): ApplicationSubmitSettingsPayload {
     const next = { ...EMPTY_SETTINGS, ...(data || {}) };
+    for (const field of LIST_FIELD_NAMES) {
+        next[field] = splitList(joinList(next[field]));
+    }
     next.consent_to_submit = Boolean(next.true_submit_enabled || next.consented_at);
+    return next;
+}
+
+function isListFieldName(name: string): name is ListFieldName {
+    return (LIST_FIELD_NAMES as readonly string[]).includes(name);
+}
+
+function applyListDrafts(settings: ApplicationSubmitSettingsPayload, drafts: ListDrafts): ApplicationSubmitSettingsPayload {
+    const next = { ...settings };
+    for (const field of LIST_FIELD_NAMES) {
+        next[field] = splitList(drafts[field]);
+    }
     return next;
 }
 
 export function SubmissionSettings() {
     const [settings, setSettings] = useState<ApplicationSubmitSettingsPayload>(EMPTY_SETTINGS);
+    const [listDrafts, setListDrafts] = useState<ListDrafts>(() => buildListDrafts(EMPTY_SETTINGS));
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -58,7 +94,11 @@ export function SubmissionSettings() {
             setLoading(true);
             try {
                 const data = await getSubmissionSettings();
-                if (active) setSettings(buildSettings(data));
+                if (active) {
+                    const next = buildSettings(data);
+                    setSettings(next);
+                    setListDrafts(buildListDrafts(next));
+                }
             } catch (error) {
                 if (active) setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to load submission settings') });
             } finally {
@@ -99,6 +139,11 @@ export function SubmissionSettings() {
                 (next as Record<string, unknown>)[name] = Number(value);
                 return next;
             }
+            if (isListFieldName(name)) {
+                setListDrafts(prevDrafts => ({ ...prevDrafts, [name]: value }));
+                next[name] = splitList(value);
+                return next;
+            }
             (next as Record<string, unknown>)[name] = splitList(value);
             return next;
         });
@@ -114,8 +159,10 @@ export function SubmissionSettings() {
         setSaving(true);
         setStatus(null);
         try {
-            const saved = await saveSubmissionSettings(settings);
-            setSettings(buildSettings(saved));
+            const saved = await saveSubmissionSettings(applyListDrafts(settings, listDrafts));
+            const next = buildSettings(saved);
+            setSettings(next);
+            setListDrafts(buildListDrafts(next));
             setStatus({ type: 'success', message: 'Submission guardrails saved.' });
         } catch (error) {
             setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to save submission guardrails') });
@@ -129,14 +176,16 @@ export function SubmissionSettings() {
             setStatus({ type: 'error', message: 'Sign in to reset submission guardrails.' });
             return;
         }
-        if (!confirm('Reset submission guardrails to defaults?')) return;
 
         setSaving(true);
         setStatus(null);
         try {
             const reset = await resetSubmissionSettings();
-            setSettings(buildSettings(reset));
+            const next = buildSettings(reset);
+            setSettings(next);
+            setListDrafts(buildListDrafts(next));
             setStatus({ type: 'success', message: 'Submission guardrails reset.' });
+            setResetDialogOpen(false);
         } catch (error) {
             setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to reset submission guardrails') });
         } finally {
@@ -145,6 +194,19 @@ export function SubmissionSettings() {
     };
 
     return (
+        <>
+        <ConfirmDialog
+            open={resetDialogOpen}
+            title="Reset submission guardrails?"
+            description="This restores the default final-submit safeguards, company/domain rules, and title keyword rules for this account."
+            cancelLabel="Keep guardrails"
+            confirmLabel="Reset guardrails"
+            loadingLabel="Resetting"
+            iconTone="warning"
+            loading={saving}
+            onCancel={() => setResetDialogOpen(false)}
+            onConfirm={() => void handleReset()}
+        />
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -192,35 +254,35 @@ export function SubmissionSettings() {
                 <TextField
                     label="Allowed companies"
                     name="allowed_companies"
-                    value={joinList(settings.allowed_companies)}
+                    value={listDrafts.allowed_companies}
                     onChange={handleInputChange}
                     placeholder="Acme, Globex"
                 />
                 <TextField
                     label="Denied companies"
                     name="denied_companies"
-                    value={joinList(settings.denied_companies)}
+                    value={listDrafts.denied_companies}
                     onChange={handleInputChange}
                     placeholder="Company to avoid"
                 />
                 <TextField
                     label="Allowed domains"
                     name="allowed_domains"
-                    value={joinList(settings.allowed_domains)}
+                    value={listDrafts.allowed_domains}
                     onChange={handleInputChange}
                     placeholder="greenhouse.io, lever.co"
                 />
                 <TextField
                     label="Denied domains"
                     name="denied_domains"
-                    value={joinList(settings.denied_domains)}
+                    value={listDrafts.denied_domains}
                     onChange={handleInputChange}
                     placeholder="example.com"
                 />
                 <TextField
                     label="Allowed title keywords"
                     name="allowed_job_title_keywords"
-                    value={joinList(settings.allowed_job_title_keywords)}
+                    value={listDrafts.allowed_job_title_keywords}
                     onChange={handleInputChange}
                     placeholder="Backend, Platform, AI"
                     containerClassName="md:col-span-2"
@@ -283,16 +345,12 @@ export function SubmissionSettings() {
 
             <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-3 sm:flex-row sm:items-center sm:justify-between">
                 {status && (
-                    <p className={cn(
-                        'flex items-center gap-2 text-sm font-semibold',
-                        status.type === 'success' ? 'text-[var(--positive)]' : 'text-[var(--danger)]',
-                    )}>
-                        {status.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    <Notice tone={status.type === 'success' ? 'success' : 'error'} className="sm:max-w-md">
                         {status.message}
-                    </p>
+                    </Notice>
                 )}
                 <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row">
-                    <Button type="button" variant="secondary" onClick={handleReset} disabled={saving}>
+                    <Button type="button" variant="secondary" onClick={() => setResetDialogOpen(true)} disabled={saving}>
                         <RotateCcw size={16} />
                         Reset
                     </Button>
@@ -303,5 +361,6 @@ export function SubmissionSettings() {
                 </div>
             </div>
         </form>
+        </>
     );
 }

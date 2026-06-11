@@ -2,6 +2,10 @@
 
 Use this runbook for staging rehearsals, production launch checks, and sensitive-data operations. Keep true final submit disabled unless a separately approved pilot is active.
 
+For the full single-VPS production deployment procedure, including DNS, Docker,
+Caddy, `.env.production`, backups, health checks, updates, and rollback, see
+`docs/VPS_DEPLOYMENT.md`.
+
 ## Preflight Before Staging
 
 Run the full local gate before staging changes:
@@ -49,24 +53,29 @@ Local Compose rehearsal:
 
 ```bash
 mkdir -p backups
-docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/job_finder.backup
-docker cp job_finder-db-1:/tmp/job_finder.backup backups/job_finder.backup
-docker compose exec db createdb -U "$POSTGRES_USER" job_hunter_restore_check
-docker cp backups/job_finder.backup job_finder-db-1:/tmp/job_finder.backup
-docker compose exec db pg_restore -U "$POSTGRES_USER" -d job_hunter_restore_check --clean --if-exists /tmp/job_finder.backup
-docker compose exec db dropdb -U "$POSTGRES_USER" job_hunter_restore_check
+docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/jobmatchhero.backup
+docker cp jobmatchhero-db-1:/tmp/jobmatchhero.backup backups/jobmatchhero.backup
+docker compose exec db createdb -U "$POSTGRES_USER" jobmatchhero_restore_check
+docker cp backups/jobmatchhero.backup jobmatchhero-db-1:/tmp/jobmatchhero.backup
+docker compose exec db pg_restore -U "$POSTGRES_USER" -d jobmatchhero_restore_check --clean --if-exists /tmp/jobmatchhero.backup
+docker compose exec db dropdb -U "$POSTGRES_USER" jobmatchhero_restore_check
 ```
 
 Backup artifacts are private data. Do not commit or attach them to tickets.
 
+Legacy local databases created before the JobMatchHero rebrand may still live
+under pre-rebrand database, project, or volume names. Back up that data before
+changing `POSTGRES_DB`, `DATABASE_URL`, `COMPOSE_PROJECT_NAME`, or the root
+folder name. Restore into `jobmatchhero` after the rename if you need to
+preserve local records.
+
 ## Account Export Handling
 
-`GET /account/export` and the dashboard `Export data` action are user-scoped portability tools.
+`GET /account/export` is a backend-only portability and support tool; it is not linked from the primary app UI.
 
 Operational rules:
 
 - Treat account-export JSON as private user data.
-- Prefer the user self-serving the export from the signed-in dashboard.
 - If support must generate an export, confirm the requester owns the account before sharing anything.
 - Share exports only through an approved secure channel.
 - Do not paste export JSON into chat, issue trackers, logs, or analytics.

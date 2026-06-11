@@ -1,6 +1,6 @@
-# Job Finder Frontend
+# JobMatchHero Frontend
 
-The frontend is a React 19 + TypeScript + Vite app that powers the Job Finder user workflow.
+The frontend is a React 19 + TypeScript + Vite app that powers the JobMatchHero user workflow.
 
 ## Current Responsibilities
 
@@ -9,7 +9,7 @@ The frontend is a React 19 + TypeScript + Vite app that powers the Job Finder us
 - AI resume feedback.
 - User profile form for application autofill and cover letters.
 - Job preferences form.
-- Agent run controls.
+- Matching workflow controls.
 - Matched jobs and application history.
 - Application package modal with generated materials.
 - Admin scraper configuration.
@@ -25,7 +25,7 @@ The frontend is a React 19 + TypeScript + Vite app that powers the Job Finder us
 - `src/components/ResumeFeedback.tsx`: AI resume analysis.
 - `src/components/UserProfile.tsx`: profile details and completion state.
 - `src/components/JobPreferences.tsx`: target role, experience, location, job type, companies, score, recency.
-- `src/components/AgentControls.tsx`: agent launch and auto-submit toggle.
+- `src/components/AgentControls.tsx`: matching workflow launch and fill-for-review toggle.
 - `src/components/AgentDashboard.tsx`: matched jobs table and status.
 - `src/components/ApplicationPackageModal.tsx`: cover letter, tailored summary, Q&A, interview prep, company brief, status updates.
 - `src/components/AdminPanel.tsx`: scraper site configuration.
@@ -75,9 +75,10 @@ The next frontend pass should use the Influence Chart design language:
 - muted text: `#657084`
 - borders: `#dce2ea`
 - soft panels: `#eef3f7`
-- primary accent: `#176b63`
-- accent soft: `#dff3ee`
-- positive state: `#177245`
+- primary accent: `#3658a8`
+- accent hover: `#2a4585`
+- accent soft: `#e8edfb`
+- positive state: `#3f6fb5`
 
 The product should read as a career operations dashboard:
 
@@ -107,7 +108,7 @@ The first Influence Chart-style UI pass is now in place:
 - `lucide-react` is installed.
 - Shared primitives live in `src/components/ui.tsx`.
 - Main shell/header lives in `src/components/AppHeader.tsx`.
-- Dashboard, setup workflow, run agent panel, application history table, application package modal, auth modal, and admin settings have been restyled.
+- Dashboard, setup workflow, matching panel, application history table, application package modal, auth modal, and admin settings have been restyled.
 - `/applications` now opens a full application history view.
 - Application history rows show link readiness, can resolve supported aggregator links, and open the resolved employer URL when available.
 - Resolved Greenhouse and Lever rows show `Fill review` and return a structured review summary without submitting.

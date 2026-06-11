@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Plus, Save, Settings, Trash2 } from 'lucide-react';
 import { getAuthHeaders, API_URL } from '../api/client';
 import { cn } from '../lib/cn';
-import { Button, PageShell, Panel, SectionHeader, StatusChip, TextField } from './ui';
+import { Button, Notice, PageShell, Panel, SectionHeader, StatusChip, TextField } from './ui';
 
 export const AdminPanel: React.FC = () => {
     const [config, setConfig] = useState({
@@ -166,9 +166,12 @@ export const AdminPanel: React.FC = () => {
 
                         <div className="flex flex-col gap-3 border-t border-[var(--line)] pt-4 sm:flex-row sm:items-center sm:justify-between">
                             {msg && (
-                                <div className={`rounded-lg border px-3 py-2 text-sm font-semibold ${msg.includes('Error') || msg.includes('Network') ? 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]' : 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]'}`}>
+                                <Notice
+                                    tone={msg.includes('Error') || msg.includes('Network') ? 'error' : 'success'}
+                                    className="sm:max-w-md"
+                                >
                                     {msg}
-                                </div>
+                                </Notice>
                             )}
                             <Button onClick={handleSave} className="sm:ml-auto">
                                 <Save size={16} />

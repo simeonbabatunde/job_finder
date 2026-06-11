@@ -9,6 +9,9 @@ export interface AppUser {
     id?: number;
     email: string;
     subscription_tier: string;
+    subscription_status?: string | null;
+    subscription_current_period_end?: string | null;
+    subscription_cancel_at_period_end?: boolean;
     role: string;
 }
 
@@ -51,12 +54,6 @@ export interface ApplicationAnswerProfilePayload {
     updated_at?: string;
 }
 
-export interface ApplicationAnswerExportPayload {
-    profile: ApplicationAnswerProfilePayload | null;
-    exported_at: string;
-    message: string;
-}
-
 export interface ApplicationAnswerAuditRecord {
     id?: number;
     action: string;
@@ -65,25 +62,6 @@ export interface ApplicationAnswerAuditRecord {
     application_id?: number | null;
     fields: string[];
     created_at: string;
-}
-
-export interface AccountDataExportPayload {
-    user: AppUser;
-    exported_at: string;
-    resumes: Array<Record<string, unknown>>;
-    preferences: JobPreferencesPayload[];
-    profile?: ProfilePayload | null;
-    application_profile?: ApplicationAnswerProfilePayload | null;
-    application_answer_audit: ApplicationAnswerAuditRecord[];
-    submission_settings?: ApplicationSubmitSettingsPayload | null;
-    applications: Array<Record<string, unknown>>;
-    generated_packages: Array<Record<string, unknown>>;
-    agent_runs: Array<Record<string, unknown>>;
-    fill_reviews: ApplicationFillReviewRecord[];
-    automation_attempts: AutoApplyAttemptRecord[];
-    auto_apply_audit: Array<Record<string, unknown>>;
-    counts: Record<string, number>;
-    message: string;
 }
 
 export interface ApplicationFillReviewResult {
@@ -251,6 +229,22 @@ export interface AgentQuotaStatus {
     auto_apply_enabled: boolean;
 }
 
+export interface BillingStatus {
+    plan: string;
+    subscription_status?: string | null;
+    subscription_current_period_end?: string | null;
+    subscription_cancel_at_period_end: boolean;
+    billing_enabled: boolean;
+    can_upgrade: boolean;
+    can_manage_billing: boolean;
+    pro_price_label: string;
+    message: string;
+}
+
+export interface BillingSession {
+    url: string;
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
     if (error instanceof Error) return error.message;
     return fallback;
@@ -367,45 +361,6 @@ export async function getApplicationProfile(): Promise<ApplicationAnswerProfileP
         throw new Error(await getResponseDetail(response, 'Failed to fetch application answers'));
     }
     return response.json();
-}
-
-export async function exportApplicationProfile(): Promise<ApplicationAnswerExportPayload> {
-    const response = await fetch(`${API_URL}/application-profile/export`, {
-        headers: getAuthHeaders()
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to export application answers'));
-    }
-    return response.json();
-}
-
-export async function downloadAccountDataExport(): Promise<AccountDataExportPayload> {
-    let response = await fetch(`${API_URL}/account/export`, {
-        headers: getAuthHeaders()
-    });
-    if (response.status === 401 && localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)) {
-        const refreshed = await refreshAuthSession();
-        if (refreshed) {
-            response = await fetch(`${API_URL}/account/export`, {
-                headers: getAuthHeaders()
-            });
-        }
-    }
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to export account data'));
-    }
-
-    const data: AccountDataExportPayload = await response.json();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `job-finder-account-export-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(url);
-    return data;
 }
 
 export async function getApplicationProfileAudit(limit = 50): Promise<ApplicationAnswerAuditRecord[]> {
@@ -712,6 +667,17 @@ export async function clearApplicationFillReviews(appId: number) {
     return response.json();
 }
 
+export async function clearApplications(): Promise<{ message: string }> {
+    const response = await fetch(`${API_URL}/applications`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to clear application history'));
+    }
+    return response.json();
+}
+
 export async function getSubmissionSettings(): Promise<ApplicationSubmitSettingsPayload> {
     const response = await fetch(`${API_URL}/submission-settings`, {
         headers: getAuthHeaders(),
@@ -779,4 +745,36 @@ export async function fetchFillReviewArtifact(path: string): Promise<Blob> {
         throw new Error(await getResponseDetail(response, 'Failed to fetch fill-review artifact'));
     }
     return response.blob();
+}
+
+export async function getBillingStatus(): Promise<BillingStatus> {
+    const response = await fetch(`${API_URL}/billing/status`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch billing status'));
+    }
+    return response.json();
+}
+
+export async function createBillingCheckoutSession(): Promise<BillingSession> {
+    const response = await fetch(`${API_URL}/billing/checkout-session`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to start Pro checkout'));
+    }
+    return response.json();
+}
+
+export async function createBillingPortalSession(): Promise<BillingSession> {
+    const response = await fetch(`${API_URL}/billing/customer-portal`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to open billing management'));
+    }
+    return response.json();
 }

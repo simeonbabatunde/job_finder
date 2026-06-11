@@ -11,8 +11,9 @@ from uuid import uuid4
 import pytest
 
 os.environ["AUTH_SECRET_KEY"] = "test-secret"
-os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/job_finder_test.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/jobmatchhero_test.db"
 os.environ["FILL_REVIEW_ARTIFACT_DIR"] = tempfile.mkdtemp()
+os.environ["OPENAI_API_KEY"] = "test-openai-key"
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -476,6 +477,181 @@ def test_bearer_auth_and_user_status_contract():
         assert body["quota"]["auto_apply_enabled"] is False
 
 
+def test_billing_status_checkout_portal_and_webhook(monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_jobmatchhero")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_jobmatchhero_pro")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_jobmatchhero")
+    monkeypatch.setenv("PRO_PLAN_PRICE_LABEL", "$10/mo")
+    monkeypatch.setenv("FRONTEND_URL", "https://app.jobmatchhero.test")
+
+    calls = {}
+
+    def fake_customer_create(**kwargs):
+        calls["customer"] = kwargs
+        return {"id": "cus_jobmatchhero"}
+
+    def fake_checkout_create(**kwargs):
+        calls["checkout"] = kwargs
+        return {"url": "https://checkout.stripe.test/session"}
+
+    def fake_portal_create(**kwargs):
+        calls["portal"] = kwargs
+        return {"url": "https://billing.stripe.test/session"}
+
+    monkeypatch.setattr(endpoints.stripe.Customer, "create", fake_customer_create)
+    monkeypatch.setattr(endpoints.stripe.checkout.Session, "create", fake_checkout_create)
+    monkeypatch.setattr(endpoints.stripe.billing_portal.Session, "create", fake_portal_create)
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "billing")
+        user_id = auth["user"]["id"]
+
+        status = client.get("/billing/status", headers=headers)
+        assert status.status_code == 200, status.text
+        assert status.json()["billing_enabled"] is True
+        assert status.json()["can_upgrade"] is True
+        assert status.json()["pro_price_label"] == "$10/mo"
+
+        checkout = client.post("/billing/checkout-session", headers=headers)
+        assert checkout.status_code == 200, checkout.text
+        assert checkout.json()["url"] == "https://checkout.stripe.test/session"
+        assert calls["customer"]["email"] == auth["user"]["email"]
+        assert calls["customer"]["metadata"]["user_id"] == str(user_id)
+        assert calls["checkout"]["mode"] == "subscription"
+        assert calls["checkout"]["line_items"] == [{"price": "price_jobmatchhero_pro", "quantity": 1}]
+        assert calls["checkout"]["success_url"] == "https://app.jobmatchhero.test/settings?billing=success"
+
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            assert user.stripe_customer_id == "cus_jobmatchhero"
+            assert user.subscription_tier == "free"
+
+        portal = client.post("/billing/customer-portal", headers=headers)
+        assert portal.status_code == 200, portal.text
+        assert portal.json()["url"] == "https://billing.stripe.test/session"
+        assert calls["portal"] == {
+            "customer": "cus_jobmatchhero",
+            "return_url": "https://app.jobmatchhero.test/settings?billing=portal_return",
+        }
+
+        events = [
+            {
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "client_reference_id": str(user_id),
+                        "customer": "cus_jobmatchhero",
+                        "subscription": "sub_jobmatchhero",
+                        "payment_status": "paid",
+                        "status": "complete",
+                        "metadata": {"user_id": str(user_id)},
+                    }
+                },
+            },
+            {
+                "type": "customer.subscription.updated",
+                "data": {
+                    "object": {
+                        "id": "sub_jobmatchhero",
+                        "customer": "cus_jobmatchhero",
+                        "status": "active",
+                        "current_period_end": 1893456000,
+                        "cancel_at_period_end": True,
+                        "metadata": {"user_id": str(user_id)},
+                        "items": {"data": [{"price": {"id": "price_jobmatchhero_pro"}}]},
+                    }
+                },
+            },
+            {
+                "type": "customer.subscription.deleted",
+                "data": {
+                    "object": {
+                        "id": "sub_jobmatchhero",
+                        "customer": "cus_jobmatchhero",
+                        "status": "canceled",
+                    }
+                },
+            },
+        ]
+
+        def fake_construct_event(_payload, _signature):
+            return events.pop(0)
+
+        monkeypatch.setattr(endpoints, "construct_stripe_event", fake_construct_event)
+
+        webhook = client.post("/billing/webhook", data=b"{}", headers={"Stripe-Signature": "sig_test"})
+        assert webhook.status_code == 200, webhook.text
+        status_after_checkout = client.get("/user/status", headers=headers).json()
+        assert status_after_checkout["user"]["subscription_tier"] == "pro"
+        assert status_after_checkout["user"]["subscription_status"] == "active"
+
+        webhook = client.post("/billing/webhook", data=b"{}", headers={"Stripe-Signature": "sig_test"})
+        assert webhook.status_code == 200, webhook.text
+        status_after_update = client.get("/billing/status", headers=headers).json()
+        assert status_after_update["plan"] == "pro"
+        assert status_after_update["subscription_cancel_at_period_end"] is True
+        assert status_after_update["can_manage_billing"] is True
+
+        webhook = client.post("/billing/webhook", data=b"{}", headers={"Stripe-Signature": "sig_test"})
+        assert webhook.status_code == 200, webhook.text
+        status_after_delete = client.get("/billing/status", headers=headers).json()
+        assert status_after_delete["plan"] == "free"
+        assert status_after_delete["can_upgrade"] is True
+
+
+def test_billing_checkout_completed_without_paid_status_does_not_upgrade(monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_jobmatchhero")
+    monkeypatch.setenv("STRIPE_PRO_PRICE_ID", "price_jobmatchhero_pro")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_jobmatchhero")
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "billing-unpaid")
+        user_id = auth["user"]["id"]
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            user.stripe_customer_id = "cus_unpaid"
+            session.add(user)
+            session.commit()
+
+        def fake_construct_event(_payload, _signature):
+            return {
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "client_reference_id": str(user_id),
+                        "customer": "cus_unpaid",
+                        "subscription": "sub_unpaid",
+                        "payment_status": "unpaid",
+                        "status": "complete",
+                        "metadata": {"user_id": str(user_id)},
+                    }
+                },
+            }
+
+        monkeypatch.setattr(endpoints, "construct_stripe_event", fake_construct_event)
+
+        webhook = client.post("/billing/webhook", data=b"{}", headers={"Stripe-Signature": "sig_test"})
+        assert webhook.status_code == 200, webhook.text
+        status = client.get("/billing/status", headers=headers).json()
+        assert status["plan"] == "free"
+        assert status["subscription_status"] == "incomplete"
+
+
+def test_billing_checkout_requires_configuration(monkeypatch):
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("STRIPE_PRO_PRICE_ID", raising=False)
+
+    with TestClient(app) as client:
+        _, headers = register_user(client, "billing-disabled")
+        status = client.get("/billing/status", headers=headers)
+        assert status.status_code == 200, status.text
+        assert status.json()["billing_enabled"] is False
+
+        checkout = client.post("/billing/checkout-session", headers=headers)
+        assert checkout.status_code == 503, checkout.text
+        assert checkout.json()["detail"] == "Billing is not configured for this environment."
+
+
 def test_auth_secret_insecurity_detector_flags_dev_defaults():
     assert endpoints.auth_secret_is_insecure("")
     assert endpoints.auth_secret_is_insecure("change-me-in-production")
@@ -797,6 +973,151 @@ def test_application_match_bucket_filters_use_latest_threshold():
 
         invalid = client.get("/applications?match_bucket=unknown", headers=headers)
         assert invalid.status_code == 400
+
+
+def test_clear_applications_removes_related_history_and_preserves_other_users():
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "clear-applications")
+        other_auth, _ = register_user(client, "clear-applications-other")
+        user_id = auth["user"]["id"]
+        other_user_id = other_auth["user"]["id"]
+
+        with Session(engine) as session:
+            agent_run = AgentRun(user_id=user_id, status="completed")
+            app_record = Application(
+                user_id=user_id,
+                job_title="Clearable Role",
+                company="Acme",
+                job_url="https://example.test/clearable",
+                resolved_url="https://boards.greenhouse.io/acme/jobs/123",
+                source_type="ats",
+                ats_type="greenhouse",
+                resolution_status="resolved",
+                status="Needs Review",
+                fit_score=0.91,
+            )
+            other_app = Application(
+                user_id=other_user_id,
+                job_title="Other User Role",
+                company="OtherCo",
+                job_url="https://example.test/other-user",
+                status="Analyzed",
+                fit_score=0.82,
+            )
+            session.add(agent_run)
+            session.add(app_record)
+            session.add(other_app)
+            session.commit()
+            session.refresh(agent_run)
+            session.refresh(app_record)
+            session.refresh(other_app)
+
+            review = ApplicationFillReview(
+                user_id=user_id,
+                application_id=app_record.id,
+                ats_type="greenhouse",
+                application_url=app_record.resolved_url,
+                status="ready_for_review",
+                message="Prepared in clear test.",
+                fields_filled=["First name", "Email"],
+                fields_missing=[],
+                blockers=[],
+            )
+            session.add(review)
+            session.commit()
+            session.refresh(review)
+
+            screenshot_path = FillReviewArtifactStore.save_base64(
+                user_id=user_id,
+                application_id=app_record.id,
+                review_id=review.id,
+                kind="screenshot",
+                payload_base64=base64.b64encode(b"clear-png").decode("ascii"),
+                extension="png",
+            )
+            trace_path = FillReviewArtifactStore.save_base64(
+                user_id=user_id,
+                application_id=app_record.id,
+                review_id=review.id,
+                kind="trace",
+                payload_base64=base64.b64encode(b"clear-zip").decode("ascii"),
+                extension="zip",
+            )
+            review.screenshot_path = screenshot_path
+            review.trace_path = trace_path
+            session.add(review)
+
+            attempt = AutoApplyAttempt(
+                user_id=user_id,
+                application_id=app_record.id,
+                agent_run_id=agent_run.id,
+                fill_review_id=review.id,
+                job_url=app_record.job_url,
+                job_title=app_record.job_title,
+                company=app_record.company,
+                ats_type=app_record.ats_type,
+                mode="fill_for_review",
+                status="ready_for_confirmation",
+                screenshot_path=screenshot_path,
+                trace_path=trace_path,
+            )
+            session.add(attempt)
+            session.commit()
+            session.refresh(attempt)
+
+            session.add(
+                AutoApplyAudit(
+                    user_id=user_id,
+                    agent_run_id=agent_run.id,
+                    auto_apply_attempt_id=attempt.id,
+                    job_url=app_record.job_url,
+                    job_title=app_record.job_title,
+                    company=app_record.company,
+                    action="submit_confirmation",
+                    status="ready",
+                    message="Prepared for confirmation.",
+                )
+            )
+            session.add(
+                ApplicationAnswerAudit(
+                    user_id=user_id,
+                    application_id=app_record.id,
+                    action="automation_read",
+                    access_reason="submit_readiness",
+                    source="submit_readiness",
+                    fields=["work_authorized_us"],
+                )
+            )
+            session.commit()
+            app_id = app_record.id
+            other_app_id = other_app.id
+            attempt_id = attempt.id
+
+        response = client.delete("/applications", headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["message"] == "Cleared 1 saved application."
+
+        with Session(engine) as session:
+            assert session.get(Application, app_id) is None
+            assert session.get(Application, other_app_id) is not None
+            assert session.exec(
+                select(ApplicationFillReview).where(ApplicationFillReview.user_id == user_id)
+            ).all() == []
+            assert session.exec(
+                select(AutoApplyAttempt).where(AutoApplyAttempt.user_id == user_id)
+            ).all() == []
+            assert session.exec(
+                select(AutoApplyAudit).where(AutoApplyAudit.auto_apply_attempt_id == attempt_id)
+            ).all() == []
+            answer_audit = session.exec(
+                select(ApplicationAnswerAudit).where(ApplicationAnswerAudit.user_id == user_id)
+            ).one()
+            assert answer_audit.application_id is None
+
+        assert screenshot_path is not None
+        assert trace_path is not None
+        assert not Path(screenshot_path).exists()
+        assert not Path(trace_path).exists()
 
 
 def test_application_package_generation_requires_threshold_match():
@@ -2044,11 +2365,11 @@ def test_submission_settings_and_readiness_contract(monkeypatch):
                 "require_human_confirmation": True,
                 "min_fit_score": 85,
                 "max_submits_per_day": 3,
-                "allowed_companies": ["Acme"],
-                "denied_companies": ["Nope"],
-                "allowed_domains": ["greenhouse.io"],
+                "allowed_companies": ["Acme, Globex", "Bank of America", " acme "],
+                "denied_companies": ["Nope; Bad Corp"],
+                "allowed_domains": ["greenhouse.io  lever.co"],
                 "denied_domains": [],
-                "allowed_job_title_keywords": ["Backend"],
+                "allowed_job_title_keywords": ["Backend, Platform"],
                 "consent_to_submit": True,
             },
         )
@@ -2071,11 +2392,11 @@ def test_submission_settings_and_readiness_contract(monkeypatch):
                 "require_human_confirmation": True,
                 "min_fit_score": 85,
                 "max_submits_per_day": 3,
-                "allowed_companies": ["Acme"],
-                "denied_companies": ["Nope"],
-                "allowed_domains": ["greenhouse.io"],
+                "allowed_companies": ["Acme, Globex", "Bank of America", " acme "],
+                "denied_companies": ["Nope; Bad Corp"],
+                "allowed_domains": ["greenhouse.io  lever.co"],
                 "denied_domains": [],
-                "allowed_job_title_keywords": ["Backend"],
+                "allowed_job_title_keywords": ["Backend, Platform"],
                 "consent_to_submit": True,
             },
         )
@@ -2085,7 +2406,10 @@ def test_submission_settings_and_readiness_contract(monkeypatch):
         assert settings_body["true_submit_pilot_enabled"] is True
         assert settings_body["true_submit_pilot_approved"] is True
         assert settings_body["consented_at"] is not None
-        assert settings_body["allowed_companies"] == ["Acme"]
+        assert settings_body["allowed_companies"] == ["Acme", "Globex", "Bank of America"]
+        assert settings_body["denied_companies"] == ["Nope", "Bad Corp"]
+        assert settings_body["allowed_domains"] == ["greenhouse.io", "lever.co"]
+        assert settings_body["allowed_job_title_keywords"] == ["Backend", "Platform"]
 
         readiness = client.post(f"/applications/{app_id}/submit-readiness", headers=headers)
         assert readiness.status_code == 200, readiness.text
@@ -2267,9 +2591,30 @@ def test_schema_migrations_are_recorded_and_idempotent():
     assert ("0012_auth_session_refresh_tokens",) in rows
     assert ("0013_worker_heartbeat",) in rows
     assert ("0014_application_answer_audit",) in rows
+    assert ("0015_user_billing_fields",) in rows
+
+
+def test_agent_run_reports_missing_llm_configuration(monkeypatch):
+    monkeypatch.setenv("AGENT_RUNNER_MODE", "background")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(endpoints, "agent_graph", FakeAgentGraph())
+
+    with TestClient(app) as client:
+        auth, headers = register_user(client, "agent-missing-llm")
+        prepare_agent_setup(client, headers)
+
+        response = client.post("/agent/run", headers=headers)
+        assert response.status_code == 503, response.text
+        assert "OPENAI_API_KEY" in response.json()["detail"]
+
+        with Session(engine) as session:
+            runs = session.exec(select(AgentRun).where(AgentRun.user_id == auth["user"]["id"])).all()
+        assert runs == []
 
 
 def test_agent_run_is_persisted_with_logs_and_auto_apply_audit(monkeypatch):
+    monkeypatch.setenv("AGENT_RUNNER_MODE", "background")
     monkeypatch.setattr(endpoints, "agent_graph", FakeAgentGraph())
 
     with TestClient(app) as client:
@@ -2320,7 +2665,7 @@ def test_agent_run_worker_mode_processes_persisted_queue(monkeypatch):
         queued_run = client.get(f"/agent/runs/{body['agent_run_id']}", headers=headers)
         assert queued_run.status_code == 200, queued_run.text
         assert queued_run.json()["status"] == "queued"
-        assert queued_run.json()["logs"] == ["Agent workflow queued for worker"]
+        assert queued_run.json()["logs"] == ["Matching workflow queued for worker"]
 
         assert asyncio.run(endpoints.run_next_queued_agent_run()) is True
 

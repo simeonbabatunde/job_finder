@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2, Circle, FileText, Play, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { clearAuthSession, downloadAccountDataExport, getErrorMessage, getUserStatus, hasAuthSession, revokeAuthSession } from './api/client';
+import { clearAuthSession, getUserStatus, hasAuthSession, revokeAuthSession } from './api/client';
 import type {
   AgentQuotaStatus,
   AppUser,
@@ -47,7 +47,6 @@ function App() {
   const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
   const [applicationProfileData, setApplicationProfileData] = useState<ApplicationAnswerProfilePayload | null>(null);
   const [quotaData, setQuotaData] = useState<AgentQuotaStatus | null>(null);
-  const [exportingAccountData, setExportingAccountData] = useState(false);
 
   const resumeRef = useRef<ResumeUploadHandle>(null);
   const prefsRef = useRef<JobPreferencesHandle>(null);
@@ -113,17 +112,6 @@ function App() {
     setUser(u);
     setShowAuth(null);
     refreshStatus();
-  };
-
-  const handleExportAccountData = async () => {
-    setExportingAccountData(true);
-    try {
-      await downloadAccountDataExport();
-    } catch (error) {
-      window.alert(getErrorMessage(error, 'Failed to export account data'));
-    } finally {
-      setExportingAccountData(false);
-    }
   };
 
   const profileComplete = useMemo(() => {
@@ -197,8 +185,6 @@ function App() {
         currentPath={currentPath}
         onLogin={() => setShowAuth('login')}
         onLogout={handleLogout}
-        onExportData={user ? handleExportAccountData : undefined}
-        exportingData={exportingAccountData}
       />
       {children}
       {showAuth && (
@@ -232,7 +218,7 @@ function App() {
         <SectionHeader
           eyebrow="Account"
           title="Account settings"
-          description="Manage the profile details, reusable application answers, and submission guardrails the assistant uses for job matching and application prep."
+          description="Manage the profile details, reusable application answers, and submission guardrails JobMatchHero uses for matching and application prep."
         />
         <div className="mt-5">
           {user ? (
@@ -264,8 +250,8 @@ function App() {
           <div>
             <SectionHeader
               eyebrow="Dashboard"
-              title="Smart job search assistant"
-              description="Use your resume and preferences to find aligned roles, score fit, and package application materials automatically."
+              title="Match better jobs, faster"
+              description="JobMatchHero compares roles with your resume and preferences, highlights strong fits, and prepares application materials for review."
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {user ? (
@@ -314,7 +300,7 @@ function App() {
           <SectionHeader
             eyebrow="Setup"
             title="Workspace setup"
-            description="Give the assistant the resume, targets, and profile details it needs to match roles and write accurate materials."
+            description="Give JobMatchHero the resume, targets, and profile details it needs to match roles and write accurate materials."
           />
 
           <div className="mt-4 divide-y divide-[var(--line)] border-t border-[var(--line)]">
@@ -365,7 +351,7 @@ function App() {
             <SectionHeader
               eyebrow="Action"
               title="Match and package jobs"
-              description="Launch the assistant to search, score, and prepare application kits."
+              description="Start a matching workflow to search, score, and prepare application packages."
               action={<Play size={19} className="text-[var(--accent)]" />}
             />
             <div className="mt-4">

@@ -145,7 +145,7 @@ def main() -> None:
             expect(page.get_by_role("heading", name="Application answers").first).to_be_visible()
             expect(page.get_by_role("heading", name="Submission guardrails").first).to_be_visible()
         except Exception:
-            page.screenshot(path="/tmp/job_finder_frontend_smoke_failure.png", full_page=True)
+            page.screenshot(path="/tmp/jobmatchhero_frontend_smoke_failure.png", full_page=True)
             raise
         finally:
             context.close()

@@ -1,14 +1,40 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Lock, Mail, UserRound, X } from 'lucide-react';
+import { CheckCircle2, LoaderCircle, Lock, Mail, ShieldCheck, Sparkles, UserRound, X } from 'lucide-react';
 import { getErrorMessage, login, register, forgotPassword } from '../api/client';
 import type { AppUser } from '../api/client';
-import { Button, IconButton, TextField } from './ui';
+import { Button, IconButton, Notice, TextField } from './ui';
 
 interface LoginProps {
     onLoginSuccess: (user: AppUser) => void;
     onClose?: () => void;
     initialMode?: 'login' | 'register';
 }
+
+const planCards = [
+    {
+        name: 'Free',
+        label: '$0/month',
+        summary: 'A focused way to test the workflow and keep a cleaner shortlist without extra job-search busywork.',
+        features: [
+            'Up to 3 matching runs per day',
+            'Resume and preference-based scoring',
+            'Generated cover letters and application packages',
+            'Application pipeline tracking',
+        ],
+    },
+    {
+        name: 'Pro',
+        label: '$10/month',
+        summary: 'More daily matching capacity plus assisted form preparation for supported application systems.',
+        features: [
+            'Up to 50 matching runs per day',
+            'Everything included in Free',
+            'Fill supported applications for review',
+            'Higher automation capacity for serious searches',
+        ],
+        featured: true,
+    },
+];
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMode = 'login' }) => {
     const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
@@ -85,11 +111,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMo
     const title = mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Reset password';
     const subtitle = mode === 'forgot'
         ? 'Enter your email and we will send a reset link.'
-        : 'Access your smart job search assistant, matched roles, and generated application materials.';
+        : 'Access matched roles, pipeline, and application materials.';
 
     return (
-        <div className={onClose ? 'fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm' : 'flex min-h-screen items-center justify-center bg-[var(--page)] p-4'}>
-            <div className="relative z-10 w-full max-w-xl">
+        <div className={onClose ? 'fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 py-6 backdrop-blur-sm' : 'flex min-h-screen items-center justify-center bg-[var(--page)] p-4'}>
+            <div className="relative z-10 w-full max-w-2xl">
                 <div className="relative overflow-hidden rounded-lg border border-[var(--line)] bg-white p-6 shadow-2xl sm:p-8">
                     {onClose && (
                         <IconButton
@@ -109,7 +135,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMo
                         </span>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-                                Job Finder
+                                JobMatchHero
                             </p>
                             <h2 className="mt-1 text-2xl font-semibold text-[var(--ink)]">{title}</h2>
                             <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{subtitle}</p>
@@ -181,17 +207,15 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMo
                         )}
 
                         {error && (
-                            <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-soft)] bg-[var(--danger-soft)] p-3 text-sm font-semibold text-[var(--danger)]">
-                                <AlertCircle size={17} className="mt-0.5 shrink-0" />
+                            <Notice tone="error">
                                 {error}
-                            </div>
+                            </Notice>
                         )}
 
                         {successMsg && (
-                            <div className="flex items-start gap-2 rounded-lg border border-[var(--positive-soft)] bg-[var(--positive-soft)] p-3 text-sm font-semibold text-[var(--positive)]">
-                                <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
+                            <Notice tone="success">
                                 {successMsg}
-                            </div>
+                            </Notice>
                         )}
 
                         <Button type="submit" disabled={loading} size="lg" className="w-full">
@@ -210,6 +234,49 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMo
                             </Button>
                         )}
                     </form>
+
+                    <div className="mt-6 border-t border-[var(--line)] pt-5">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Plans</p>
+                                <h3 className="text-base font-semibold text-[var(--ink)]">Choose the search pace that fits</h3>
+                            </div>
+                            <p className="text-xs leading-5 text-[var(--muted)] sm:max-w-[220px] sm:text-right">
+                                Free gets you started. Pro unlocks higher volume and assisted form prep.
+                            </p>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            {planCards.map((plan) => {
+                                const Icon = plan.featured ? Sparkles : ShieldCheck;
+                                return (
+                                    <section
+                                        key={plan.name}
+                                        className={plan.featured ? "rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3" : "rounded-md border border-[var(--line)] bg-[var(--page)] p-3"}
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h4 className="text-sm font-semibold text-[var(--ink)]">{plan.name}</h4>
+                                                <p className="mt-0.5 text-xs font-semibold text-[var(--accent)]">{plan.label}</p>
+                                            </div>
+                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-[var(--accent)]">
+                                                <Icon size={16} />
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{plan.summary}</p>
+                                        <ul className="mt-3 space-y-1.5">
+                                            {plan.features.map((feature) => (
+                                                <li key={feature} className="flex items-start gap-2 text-xs leading-5 text-[var(--ink)]">
+                                                    <CheckCircle2 className="mt-0.5 shrink-0 text-[var(--positive)]" size={14} />
+                                                    <span>{feature}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </section>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

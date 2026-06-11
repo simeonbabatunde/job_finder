@@ -63,7 +63,7 @@ export const OAuthCallback = () => {
                     <span className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-[var(--soft)]">
                         {icon}
                     </span>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Job Finder</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">JobMatchHero</p>
                     <h1 className="mt-2 text-2xl font-semibold text-[var(--ink)]">{title}</h1>
                     <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{message}</p>
 

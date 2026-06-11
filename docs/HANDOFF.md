@@ -1,17 +1,20 @@
-# Job Finder Handoff
+# JobMatchHero Handoff
 
-This is the persistent handoff record for Job Finder. Keep it current at the end of meaningful implementation sessions.
+This is the persistent handoff record for JobMatchHero. Keep it current at the end of meaningful implementation sessions.
 
 ## Product Snapshot
 
-- Product: Job Finder
-- Current user-facing label in code: Job Finder
+- Product: JobMatchHero
+- Current user-facing label in code: JobMatchHero
 - Product promise: a smart career operations workspace that finds, scores, prepares, tracks, and optionally applies to matching jobs.
 - Core audience: job seekers who want a repeatable application workflow with AI-assisted resume matching, tailored application materials, and application tracking.
 - Reference UI direction: use the same calm, dense, research-dashboard language as the Influence Chart project.
 - Security checklist: `docs/SECURITY_CHECKLIST.md`.
+- Stripe Checkout and Customer Portal are implemented for the `$10/month` Pro plan; webhooks update user subscription state.
 
 ## Current Repository State
+
+- Latest billing update: added Stripe-backed Pro upgrades, `/billing/status`, `/billing/checkout-session`, `/billing/customer-portal`, `/billing/webhook`, billing fields on `User`, local/Alembic migrations, Account Settings billing UI, env templates, and focused billing tests.
 
 - Frontend lives in `frontend`.
 - Backend lives in `backend`.
@@ -34,9 +37,9 @@ This is the persistent handoff record for Job Finder. Keep it current at the end
 - The matching workflow now runs a conservative pre-screen before full AI analysis, skips obvious non-fits without saving them, and keeps strong and below-threshold matches in separate review lanes.
 - Deployment health checks now cover API liveness, database reachability, and worker heartbeat freshness.
 - The application answer vault now supports user export, reset, and access audits without duplicating answer values in audit records.
-- Account data export now covers resumes, preferences, application answers, generated package records, applications, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
+- Backend-only account data export now covers resumes, preferences, application answers, generated package records, applications, matching runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs for the signed-in user.
 - Answer-vault data-key rotation now has a dry-run/apply re-encryption job before old previous keys are removed.
-- Agent runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation now emit structured JSON operational events without answer/resume contents.
+- Matching runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation now emit structured JSON operational events without answer/resume contents.
 - `docs/OPERATIONS_RUNBOOK.md` now covers staging launch, backup restore rehearsal, account export handling, answer-vault key rotation, operational logging, and rollback notes.
 - Production-like startup now rejects weak secrets, missing answer-vault encryption keys, wildcard CORS origins, and localhost CORS origins.
 - `./scripts/preflight.sh` is now the repeatable local/CI launch-readiness gate, including a signed-in browser dashboard smoke.
@@ -59,9 +62,10 @@ Use these tokens from the Influence Chart project:
 - Muted: `#657084`
 - Line: `#dce2ea`
 - Soft: `#eef3f7`
-- Accent: `#176b63`
-- Accent soft: `#dff3ee`
-- Positive: `#177245`
+- Accent: `#3658a8`
+- Accent hover: `#2a4585`
+- Accent soft: `#e8edfb`
+- Positive: `#3f6fb5`
 
 The app should feel like a calm career operations dashboard:
 
@@ -85,7 +89,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - Resumes and preferences are now user-scoped in the touched backend flows.
 - Database startup can run an Alembic current-schema baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to `create_all` plus the lightweight versioned `schema_migrations` runner.
 - Core write endpoints use explicit Pydantic request schemas, and the main app/API responses now have explicit response models.
-- Daily free/pro agent-run quotas are enforced server-side, and the UI shows remaining run quota.
+- Daily free/pro matching-run quotas are enforced server-side, and the UI shows remaining run quota.
 - Browser fill-for-review is gated to pro/admin users; true auto-submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`.
 - The dashboard fill-review action uses the same supported ATS list as the backend, with a preflight audit to catch future adapter drift.
 - Signed-in users now have an Account route for profile details, reusable application answers, and submission guardrails.
@@ -93,7 +97,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 - API error responses now preserve `detail` and include a stable `error` object with code, message, status, and path.
 - Manual product QA is captured in `docs/MANUAL_QA_CHECKLIST.md`.
 - Submission guardrail settings now require the environment pilot flag plus an approved user/admin and optional ATS allowlist before `true_submit_enabled` can persist as true.
-- Agent runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
+- Matching runs now support `AGENT_RUNNER_MODE=worker` with a Docker worker service that claims persisted queued runs; local default background mode is still available.
 - Worker mode now writes heartbeat rows used by `/health/worker` to detect missing or stale workers before queued runs silently pile up.
 - Application answer-vault access is audited for direct views, exports, resets, dashboard preload, fill-for-review, and submit-readiness usage.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` can keep old encrypted answer-vault rows readable during data-key rotation while new saves use the current key; run the re-encryption job and confirm a clean dry run before removing old keys.
@@ -120,7 +124,7 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 
 | Date | Decision | Reason |
 | --- | --- | --- |
-| 2026-05-31 | Use Influence Chart design language for Job Finder | User requested a similar UI/UX design and color scheme. |
+| 2026-05-31 | Use Influence Chart design language for JobMatchHero | User requested a similar UI/UX design and color scheme. |
 | 2026-05-31 | Document before code restyle | Worktree is already dirty, and a detailed plan/handoff was explicitly requested. |
 | 2026-05-31 | Keep Tailwind primitives with a small local component layer | Matches Influence Chart and avoids premature dependency weight. |
 | 2026-05-31 | Treat auth and user-scoping as production blockers | Current prototype auth and global latest resume/preferences can leak or mix user data. |
@@ -138,23 +142,63 @@ Auto-apply reliability, answer vault design, work authorization, and voluntary s
 
 ## Resolved Decisions And Open Questions
 
-- User-facing brand is standardized as "Job Finder"; historical database names may still use `job_hunter`.
+- User-facing brand and new local database defaults are standardized as "JobMatchHero"/`jobmatchhero`; legacy local installs may still contain pre-rebrand databases until they are backed up and restored under the new name.
 - Custom signed bearer tokens with server-side sessions are the current auth system. External auth can be reconsidered later as a product/platform decision, not as a deployment blocker.
 - Should true auto-submit ever submit without a final human confirmation per job? Current answer: no.
 - Should sensitive voluntary self-identification answers be stored at all? Current answer: optional only, explicit consent required, encrypted at rest, default to decline/self-review.
 
 ## Latest Handoff Entry
 
+Date: 2026-06-08
+
+Completed:
+
+- Added the first production VPS deployment bundle: `docker-compose.prod.yml`,
+  root `Caddyfile`, `frontend/Dockerfile.prod`, `.env.production.example`,
+  `scripts/deploy-prod.sh`, `scripts/backup-postgres.sh`, and root `.dockerignore`.
+- Added `docs/VPS_DEPLOYMENT.md` with the full single-VPS deployment procedure:
+  VPS selection, DNS, server hardening, Docker install, production secrets,
+  same-origin `/api` routing, first deploy, health checks, backups, restore
+  rehearsal, updates, rollback, monitoring, and scaling triggers.
+- Linked the VPS guide from the root README, deployment readiness doc, and
+  operations runbook.
+- Removed the visible header `Export data` action; `GET /account/export` remains backend-only for privacy or support needs.
+- Rebranded the app to JobMatchHero across user-facing UI, docs, HTML title, API metadata, email heading, export filenames, service labels, logger name, package metadata, preflight temp artifacts, backup examples, and development fallback secret names.
+- Updated new local database defaults to `jobmatchhero` in `.env.example`, backend defaults, Alembic config, and preflight defaults.
+- Added `COMPOSE_PROJECT_NAME=jobmatchhero` to `.env.example` and documented that pre-rebrand local Docker data should be backed up before changing database/project/folder names.
+- Removed old product/candidate-name references from source and docs, keeping only stable internal API/model/file identifiers where renaming would be a compatibility change.
+- Reframed visible app copy from "agent" language toward JobMatchHero matching workflows, matching controls, and application packages.
+- Updated docs to reflect the current blue accent palette selected for the app.
+- Renamed the local project root folder to `/Users/simeon/Documents/projects/jobmatchhero`.
+
+Verification:
+
+- Old-name/candidate-name search passed with no remaining matches across source, docs, examples, and local `.env`.
+- `npm run build` passed in `frontend`.
+- `npm run lint` passed in `frontend`.
+- Dockerized focused backend API-contract tests passed: `docker run ... uv run --frozen --group dev python -m pytest app/tests/test_api_contracts.py -q`.
+- `docker compose config` rendered with project, database, network, and volume names under `jobmatchhero`.
+- `bash -n scripts/deploy-prod.sh` and `bash -n scripts/backup-postgres.sh` passed.
+- `docker compose --env-file .env.production.example -f docker-compose.prod.yml config` rendered successfully.
+- `docker run ... caddy validate --config /etc/caddy/Caddyfile` passed for the production Caddyfile.
+- `docker build -f frontend/Dockerfile.prod --build-arg VITE_API_URL=/api -t jobmatchhero-web-prod-check .` passed.
+- Focused deployment-template secret scan found no literal provider keys.
+
+Compatibility notes:
+
+- `/agent/*` API paths, `AgentRun` model names, and `app/agent/*` module paths remain intentionally unchanged for now. Rename or alias those only as a separate API migration.
+- The local root folder is now `/Users/simeon/Documents/projects/jobmatchhero`.
+
 Date: 2026-06-05
 
 Completed:
 
 - Completed a final deployment-readiness sweep across docs, backend services, and frontend shell metadata.
-- Standardized remaining user-facing legacy app labels to "Job Finder" while leaving historical internal database names such as `job_hunter` untouched.
+- Standardized remaining user-facing legacy app labels to "JobMatchHero" while documenting pre-rebrand local database names as a local-data compatibility concern.
 - Replaced deployment-path backend standard output calls with structured `log_event(...)` records, while preserving intentional CLI/smoke stdout output.
 - Confirmed local secret handling: only `.env.example` is tracked, local `.env` files are ignored, and Docker Compose reads provider keys from environment variables instead of committed values.
 - Updated implementation and handoff docs so completed milestones read as done, and the remaining true-submit work is represented as an explicit pilot/deployment gate rather than an unfinished default feature.
-- Verified the Docker Compose stack end to end: register, refresh token, save preferences/profile/application answers, save submission settings, upload resume, load user status, queue an agent run, retrieve the queued run, and logout.
+- Verified the Docker Compose stack end to end: register, refresh token, save preferences/profile/application answers, save submission settings, upload resume, load user status, queue a matching run, retrieve the queued run, and logout.
 - Verified the Alembic opt-in baseline with `alembic upgrade head` against a fresh temporary SQLite database in the uv Python 3.11 container.
 - Added `app.time_utils.utc_now()` and replaced app-side `datetime.utcnow()` usage while preserving naive UTC storage compatibility.
 - Added `ENABLE_TRUE_AUTO_SUBMIT=false` to `.env.example` and Docker Compose backend/worker environments.
@@ -181,10 +225,10 @@ Completed:
 - Added `.github/workflows/preflight.yml` so pushes and pull requests run the same preflight gate in CI.
 - Added `pytest` as a backend dev dependency in `backend/pyproject.toml` and `backend/uv.lock`.
 - Added `app.smoke.frontend_dashboard` for signed-in dashboard and Applications route browser coverage in preflight.
-- Added `app.observability.log_event` and structured JSON logs for agent run queue/start/claim/complete/failure, worker claims, browser fill-review, submit-readiness, and submit-confirmation transitions.
+- Added `app.observability.log_event` and structured JSON logs for matching run queue/start/claim/complete/failure, worker claims, browser fill-review, submit-readiness, and submit-confirmation transitions.
 - Added `docs/OPERATIONS_RUNBOOK.md` for staging, backup/restore, account export handling, answer-vault key rotation, structured log event families, and rollback notes.
-- Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, agent runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
-- Added a dashboard header `Export data` action that downloads the account export as JSON.
+- Added `GET /account/export` for signed-in account data export, including resumes, preferences, profile data, application answers, generated package records, application history, matching runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
+- Added a dashboard header `Export data` action that downloaded the account export as JSON; this visible header action was later removed while the backend endpoint was retained.
 - Added API contract coverage proving account export is user-scoped, includes generated package and artifact references, audits answer-vault export access, and does not expose answer values in audit records.
 - Added status-aware answer-vault decryption helpers that distinguish current-key, previous-key, plaintext, and unreadable fields.
 - Added `app.services.application_answer_rotation.reencrypt_application_answer_profiles` for dry-run/apply answer-vault row rewrites after data-key rotation.
@@ -197,7 +241,7 @@ Completed:
 - Added server-side action guards so package generation and fill-for-review are blocked for legacy screened-out jobs and jobs below the latest minimum match score.
 - Updated the dashboard to default to strong matches, add a full-page lane for below-threshold jobs, show pre-screen reasons, and disable package/fill actions for non-qualifying rows.
 - Updated backend and auto-apply reliability docs with the pre-screen cost gate and match bucket behavior.
-- Reviewed current frontend structure, backend structure, agent workflow, models, services, and existing docs.
+- Reviewed current frontend structure, backend structure, matching workflow, models, services, and existing docs.
 - Reviewed the Influence Chart project for the target design language and docs style.
 - Added root `README.md`.
 - Added `docs/UI_UX_DIRECTION.md`.
@@ -217,12 +261,12 @@ Completed:
 - Reworked `frontend/src/App.tsx` into a product dashboard shell with a compact overview strip, consolidated setup workflow, search assistant panel, recent matches, and full `/applications` route.
 - Restyled `ResumeUpload`, `JobPreferences`, `UserProfile`, `AgentControls`, `AgentDashboard`, `ApplicationPackageModal`, `Login`, and `AdminPanel`.
 - Added a full generated-package Markdown download from `ApplicationPackageModal`, alongside the existing cover-letter PDF download.
-- Refined key app copy to frame Job Finder as a smart job search assistant that matches roles to the user's resume/preferences and packages application materials.
+- Refined key app copy to frame JobMatchHero as a smart job search assistant that matches roles to the user's resume/preferences and packages application materials.
 - Added typed frontend API payloads for user status, profile, preferences, resume status, and auth user shape.
 - Moved `cn` into `frontend/src/lib/cn.ts` so Fast Refresh no longer warns about non-component exports from the UI component module.
 - Removed remaining explicit `any` lint violations in the touched frontend flow.
 - Removed the standalone setup readiness card; readiness now appears in the compact dashboard overview strip and in each workflow section.
-- Restored the two-column dashboard layout with Workspace Setup on the left and Run Agent/Matched Jobs on the right. The setup panel uses compact section headers instead of a left label rail, and the right-rail Matched Jobs view uses compact rows instead of a wide table to avoid signed-in overflow.
+- Restored the two-column dashboard layout with Workspace Setup on the left and matching controls/Matched Jobs on the right. The setup panel uses compact section headers instead of a left label rail, and the right-rail Matched Jobs view uses compact rows instead of a wide table to avoid signed-in overflow.
 - Restyled the remaining legacy utility surfaces: `ResumeFeedback`, `ResetPassword`, `OAuthCallback`, `JobSearch`, and `ProfileSettings`.
 - Added `/settings` to the signed-in app shell so profile settings, application answers, and submission guardrails are available outside the main dashboard workflow.
 - Added deployment-level LLM provider/model selection in `backend/app/agent/llm_factory.py` and updated live LLM call sites to use the shared default provider.
@@ -231,7 +275,7 @@ Completed:
 - Added `containerClassName` support to the shared `TextField` wrapper for grid alignment.
 - Added `user_id` ownership to `Resume` and `JobPreference`.
 - Added a versioned startup migration that adds missing ownership columns and backfills only when the database has exactly one user.
-- Scoped resume and preference lookups for upload, preferences save, user status, agent run, single-job analysis, application packages, and resume feedback.
+- Scoped resume and preference lookups for upload, preferences save, user status, matching run, single-job analysis, application packages, and resume feedback.
 - Added `GET /applications` query parameters for `limit`, `sort`, `direction`, and `status`.
 - Updated the dashboard application table to request the limited recent view through the API.
 - Fixed Google and LinkedIn callback profile creation by including a default location value.
@@ -243,18 +287,18 @@ Completed:
 - Added `APP_ENV`, `AUTH_SECRET_KEY`, `AUTH_PREVIOUS_SECRET_KEYS`, `AUTH_ACCESS_TOKEN_TTL_SECONDS`, and `AUTH_REFRESH_TOKEN_TTL_SECONDS` to `.env.example`.
 - Added `backend/app/schemas.py` with explicit request schemas for auth, profile, preferences, single-job analysis, application package generation, application status, and password reset flows.
 - Replaced the touched broad `dict` request payloads in `backend/app/api/endpoints.py`.
-- Added explicit response schemas for auth, profile, preferences, agent run, application history, single-job analysis, application package generation, application status, resume feedback, and password reset flows.
+- Added explicit response schemas for auth, profile, preferences, matching run, application history, single-job analysis, application package generation, application status, resume feedback, and password reset flows.
 - Updated application history responses to omit persistence-only `user_id`.
 - Replaced the one-off startup compatibility patch with a lightweight `schema_migrations` runner in `backend/app/database.py`.
 - Added Alembic scaffolding, a current-schema baseline revision, and an opt-in startup path through `USE_ALEMBIC_MIGRATIONS=true`.
 - Repaired `backend/.venv` with Python 3.14 and installed backend dependencies plus `pytest`.
-- Added `backend/app/tests/test_api_contracts.py` covering bearer auth, user-scoped resume/preferences, migration recording, application sorting/filtering/limit behavior, persisted agent runs, quota enforcement, and pro/admin browser fill-for-review gating.
+- Added `backend/app/tests/test_api_contracts.py` covering bearer auth, user-scoped resume/preferences, migration recording, application sorting/filtering/limit behavior, persisted matching runs, quota enforcement, and pro/admin browser fill-for-review gating.
 - Added `AgentRun` and `AutoApplyAudit` persistence models.
-- Added agent run history endpoints: `GET /agent/runs` and `GET /agent/runs/{run_id}`.
+- Added matching run history endpoints: `GET /agent/runs` and `GET /agent/runs/{run_id}`.
 - Changed `POST /agent/run` to queue background work and return an `agent_run_id`.
-- Added daily free/pro agent-run quota enforcement with `FREE_DAILY_AGENT_RUN_LIMIT` and `PRO_DAILY_AGENT_RUN_LIMIT`.
+- Added daily free/pro matching-run quota enforcement with `FREE_DAILY_AGENT_RUN_LIMIT` and `PRO_DAILY_AGENT_RUN_LIMIT`.
 - Gated browser fill-for-review to pro/admin users and surfaced quota status through `/user/status`.
-- Updated the Run Agent panel to show remaining run quota, disable browser fill-for-review for free users, and poll run status.
+- Updated the matching control panel to show remaining run quota, disable browser fill-for-review for free users, and poll run status.
 - Added application link-resolution metadata, migration support, and `ApplicationLinkResolver` classification for ATS, aggregator, company, and unknown links.
 - Added `POST /applications/{app_id}/resolve-link` with conservative Playwright resolution for aggregator links.
 - Updated the dashboard application cards/table to show link readiness, resolve unresolved links, and open the resolved employer URL when available.

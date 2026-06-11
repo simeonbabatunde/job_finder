@@ -1,10 +1,11 @@
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header, Response
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header, Response, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 import base64
 import hmac
 import io
 import os
+import re
 import secrets
 import time
 from sqlalchemy import asc, desc, or_, text
@@ -61,6 +62,8 @@ from app.schemas import (
     ApplicationStatusRequest,
     ApplicationStatusResponse,
     AuthResponse,
+    BillingSessionResponse,
+    BillingStatusResponse,
     AutoApplyAttemptResponse,
     DatabaseHealthResponse,
     EmailRequest,
@@ -86,12 +89,13 @@ from app.agent.graph import agent_graph
 from datetime import datetime, timedelta
 from uuid import uuid4
 import json
-from app.agent.llm_factory import get_llm
+from app.agent.llm_factory import LLMConfigurationError, get_llm, validate_llm_config
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 import bcrypt
 import hashlib
 import requests
+import stripe
 from urllib.parse import urlencode, quote, urlparse
 from app.time_utils import utc_now
 from app.oauth_config import (
@@ -110,7 +114,7 @@ router = APIRouter()
 
 APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").lower()
 PRODUCTION_LIKE_ENVS = {"prod", "production", "staging"}
-AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "job-finder-dev-secret-change-me"
+AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "jobmatchhero-dev-secret-change-me"
 AUTH_PREVIOUS_SECRET_KEYS = tuple(
     key.strip()
     for key in os.getenv("AUTH_PREVIOUS_SECRET_KEYS", "").split(",")
@@ -123,10 +127,12 @@ AUTH_ACCESS_TOKEN_TTL_SECONDS = int(
 AUTH_REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_REFRESH_TOKEN_TTL_SECONDS", str(60 * 60 * 24 * 30)))
 FREE_DAILY_AGENT_RUN_LIMIT = int(os.getenv("FREE_DAILY_AGENT_RUN_LIMIT", "3"))
 PRO_DAILY_AGENT_RUN_LIMIT = int(os.getenv("PRO_DAILY_AGENT_RUN_LIMIT", "50"))
+PRO_PLAN_PRICE_LABEL = os.getenv("PRO_PLAN_PRICE_LABEL", "$10/mo")
+STRIPE_ACTIVE_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 INSECURE_AUTH_SECRET_VALUES = {
     "",
     "change-me-in-production",
-    "job-finder-dev-secret-change-me",
+    "jobmatchhero-dev-secret-change-me",
 }
 
 def auth_secret_is_insecure(secret: str) -> bool:
@@ -150,7 +156,122 @@ def serialize_user(user: User):
         "id": user.id,
         "email": user.email,
         "subscription_tier": user.subscription_tier,
+        "subscription_status": user.subscription_status,
+        "subscription_current_period_end": user.subscription_current_period_end,
+        "subscription_cancel_at_period_end": user.subscription_cancel_at_period_end,
         "role": user.role,
+    }
+
+def get_stripe_secret_key():
+    return os.getenv("STRIPE_SECRET_KEY", "").strip()
+
+
+def get_stripe_webhook_secret():
+    return os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+
+
+def get_stripe_pro_price_id():
+    return os.getenv("STRIPE_PRO_PRICE_ID", "").strip()
+
+
+def stripe_billing_is_configured():
+    return bool(get_stripe_secret_key() and get_stripe_pro_price_id())
+
+
+def stripe_api_key_or_error():
+    secret_key = get_stripe_secret_key()
+    if not secret_key or not get_stripe_pro_price_id():
+        raise HTTPException(
+            status_code=503,
+            detail="Billing is not configured for this environment.",
+        )
+    stripe.api_key = secret_key
+    return secret_key
+
+
+def frontend_billing_url(kind: str):
+    configured = os.getenv(f"BILLING_{kind.upper()}_URL", "").strip()
+    if configured:
+        return configured
+    base_url = (os.getenv("FRONTEND_URL", "").strip() or FRONTEND_URL or "http://localhost:5173").rstrip("/")
+    return f"{base_url}/settings?billing={kind}"
+
+
+def stripe_value(obj, key: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def stripe_metadata_value(obj, key: str):
+    metadata = stripe_value(obj, "metadata", {}) or {}
+    if isinstance(metadata, dict):
+        return metadata.get(key)
+    return getattr(metadata, key, None)
+
+
+def stripe_timestamp_to_datetime(value):
+    if not value:
+        return None
+    try:
+        return datetime.utcfromtimestamp(int(value))
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def find_user_for_billing_event(session: Session, *, user_id=None, customer_id=None, subscription_id=None):
+    if user_id:
+        try:
+            user = session.get(User, int(user_id))
+            if user:
+                return user
+        except (TypeError, ValueError):
+            pass
+    if subscription_id:
+        user = session.exec(select(User).where(User.stripe_subscription_id == subscription_id)).first()
+        if user:
+            return user
+    if customer_id:
+        return session.exec(select(User).where(User.stripe_customer_id == customer_id)).first()
+    return None
+
+
+def update_user_subscription_from_stripe(
+    user: User,
+    *,
+    customer_id=None,
+    subscription_id=None,
+    status=None,
+    price_id=None,
+    current_period_end=None,
+    cancel_at_period_end=False,
+):
+    if customer_id:
+        user.stripe_customer_id = customer_id
+    if subscription_id:
+        user.stripe_subscription_id = subscription_id
+    if price_id:
+        user.stripe_price_id = price_id
+    user.subscription_status = status
+    user.subscription_current_period_end = current_period_end
+    user.subscription_cancel_at_period_end = bool(cancel_at_period_end)
+    user.subscription_tier = "pro" if status in STRIPE_ACTIVE_SUBSCRIPTION_STATUSES else "free"
+    user.billing_updated_at = utc_now()
+
+
+def billing_status_for_user(user: User):
+    billing_enabled = stripe_billing_is_configured()
+    can_manage = bool(billing_enabled and user.stripe_customer_id)
+    return {
+        "plan": user.subscription_tier,
+        "subscription_status": user.subscription_status,
+        "subscription_current_period_end": user.subscription_current_period_end,
+        "subscription_cancel_at_period_end": user.subscription_cancel_at_period_end,
+        "billing_enabled": billing_enabled,
+        "can_upgrade": bool(billing_enabled and user.subscription_tier != "pro"),
+        "can_manage_billing": can_manage,
+        "pro_price_label": os.getenv("PRO_PLAN_PRICE_LABEL", PRO_PLAN_PRICE_LABEL),
+        "message": "Billing is ready." if billing_enabled else "Billing is not configured in this environment.",
     }
 
 def sign_access_token_body(body: str, secret: str) -> str:
@@ -295,6 +416,111 @@ def auth_response(user: User, session: Session):
         "refresh_expires_in": tokens["refresh_expires_in"],
     }
 
+def extract_subscription_price_id(subscription):
+    items = stripe_value(subscription, "items", {}) or {}
+    item_data = stripe_value(items, "data", []) or []
+    first_item = item_data[0] if item_data else None
+    price = stripe_value(first_item, "price", {}) if first_item else {}
+    return stripe_value(price, "id") or get_stripe_pro_price_id() or None
+
+
+def create_or_get_stripe_customer(user: User, session: Session):
+    stripe_api_key_or_error()
+    if user.stripe_customer_id:
+        return user.stripe_customer_id
+
+    try:
+        customer = stripe.Customer.create(
+            email=user.email,
+            metadata={"user_id": str(user.id), "app": "jobmatchhero"},
+        )
+    except Exception as exc:
+        log_event("billing.customer_create_failed", level="error", user_id=user.id, error=str(exc))
+        raise HTTPException(status_code=502, detail="Billing provider error. Please try again.")
+
+    customer_id = stripe_value(customer, "id")
+    if not customer_id:
+        raise HTTPException(status_code=502, detail="Billing provider did not return a customer ID.")
+    user.stripe_customer_id = customer_id
+    user.billing_updated_at = utc_now()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return customer_id
+
+
+def construct_stripe_event(payload: bytes, signature: Optional[str]):
+    webhook_secret = get_stripe_webhook_secret()
+    if not webhook_secret:
+        raise HTTPException(status_code=503, detail="Stripe webhook signing secret is not configured.")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header.")
+    try:
+        return stripe.Webhook.construct_event(payload, signature, webhook_secret)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook payload.")
+    except Exception as exc:
+        if exc.__class__.__name__ == "SignatureVerificationError":
+            raise HTTPException(status_code=400, detail="Invalid Stripe webhook signature.")
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook payload.")
+
+
+def handle_checkout_session_completed(checkout_session, db_session: Session):
+    user_id = stripe_metadata_value(checkout_session, "user_id") or stripe_value(checkout_session, "client_reference_id")
+    customer_id = stripe_value(checkout_session, "customer")
+    subscription_id = stripe_value(checkout_session, "subscription")
+    payment_status = stripe_value(checkout_session, "payment_status")
+    user = find_user_for_billing_event(
+        db_session,
+        user_id=user_id,
+        customer_id=customer_id,
+        subscription_id=subscription_id,
+    )
+    if not user:
+        log_event("billing.checkout_user_not_found", level="warning", customer_id=customer_id, subscription_id=subscription_id)
+        return
+
+    status = "active" if payment_status in {"paid", "no_payment_required"} else "incomplete"
+    update_user_subscription_from_stripe(
+        user,
+        customer_id=customer_id,
+        subscription_id=subscription_id,
+        status=status,
+        price_id=get_stripe_pro_price_id() or user.stripe_price_id,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+
+def handle_subscription_event(subscription, db_session: Session, *, deleted: bool = False):
+    customer_id = stripe_value(subscription, "customer")
+    subscription_id = stripe_value(subscription, "id")
+    user_id = stripe_metadata_value(subscription, "user_id")
+    user = find_user_for_billing_event(
+        db_session,
+        user_id=user_id,
+        customer_id=customer_id,
+        subscription_id=subscription_id,
+    )
+    if not user:
+        log_event("billing.subscription_user_not_found", level="warning", customer_id=customer_id, subscription_id=subscription_id)
+        return
+
+    status = "canceled" if deleted else stripe_value(subscription, "status")
+    update_user_subscription_from_stripe(
+        user,
+        customer_id=customer_id,
+        subscription_id=subscription_id,
+        status=status,
+        price_id=extract_subscription_price_id(subscription),
+        current_period_end=stripe_timestamp_to_datetime(stripe_value(subscription, "current_period_end")),
+        cancel_at_period_end=stripe_value(subscription, "cancel_at_period_end", False),
+    )
+    db_session.add(user)
+    db_session.commit()
+
+
+
 def hash_password(password: str):
     # Bcrypt has a 72-byte limit. 
     # Standard practice: hash the password with SHA256 first to allow unlimited length.
@@ -346,6 +572,86 @@ def get_current_user(session: Session = Depends(get_session), authorization: Opt
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@router.get("/billing/status", response_model=BillingStatusResponse)
+def get_billing_status(user: User = Depends(get_current_user)):
+    return billing_status_for_user(user)
+
+
+@router.post("/billing/checkout-session", response_model=BillingSessionResponse)
+def create_billing_checkout_session(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    stripe_api_key_or_error()
+    if user.subscription_tier == "pro" and user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="You are already on Pro. Use Manage billing instead.")
+
+    customer_id = create_or_get_stripe_customer(user, session)
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=customer_id,
+            client_reference_id=str(user.id),
+            line_items=[{"price": get_stripe_pro_price_id(), "quantity": 1}],
+            success_url=frontend_billing_url("success"),
+            cancel_url=frontend_billing_url("cancelled"),
+            allow_promotion_codes=True,
+            metadata={"user_id": str(user.id), "plan": "pro"},
+            subscription_data={"metadata": {"user_id": str(user.id), "plan": "pro"}},
+        )
+    except Exception as exc:
+        log_event("billing.checkout_create_failed", level="error", user_id=user.id, error=str(exc))
+        raise HTTPException(status_code=502, detail="Billing provider error. Please try again.")
+
+    checkout_url = stripe_value(checkout_session, "url")
+    if not checkout_url:
+        raise HTTPException(status_code=502, detail="Billing provider did not return a checkout URL.")
+    return {"url": checkout_url}
+
+
+@router.post("/billing/customer-portal", response_model=BillingSessionResponse)
+def create_billing_customer_portal(user: User = Depends(get_current_user)):
+    stripe_api_key_or_error()
+    if not user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Upgrade to Pro before opening billing management.")
+
+    try:
+        portal_session = stripe.billing_portal.Session.create(
+            customer=user.stripe_customer_id,
+            return_url=frontend_billing_url("portal_return"),
+        )
+    except Exception as exc:
+        log_event("billing.portal_create_failed", level="error", user_id=user.id, error=str(exc))
+        raise HTTPException(status_code=502, detail="Billing provider error. Please try again.")
+
+    portal_url = stripe_value(portal_session, "url")
+    if not portal_url:
+        raise HTTPException(status_code=502, detail="Billing provider did not return a portal URL.")
+    return {"url": portal_url}
+
+
+@router.post("/billing/webhook", response_model=MessageResponse)
+async def handle_stripe_billing_webhook(
+    request: Request,
+    stripe_signature: Optional[str] = Header(None, alias="Stripe-Signature"),
+    session: Session = Depends(get_session),
+):
+    event = construct_stripe_event(await request.body(), stripe_signature)
+    event_type = stripe_value(event, "type")
+    event_data = stripe_value(event, "data", {}) or {}
+    event_object = stripe_value(event_data, "object", {}) or {}
+
+    if event_type == "checkout.session.completed":
+        handle_checkout_session_completed(event_object, session)
+    elif event_type in {"customer.subscription.created", "customer.subscription.updated"}:
+        handle_subscription_event(event_object, session)
+    elif event_type == "customer.subscription.deleted":
+        handle_subscription_event(event_object, session, deleted=True)
+    elif event_type == "invoice.payment_failed":
+        log_event("billing.invoice_payment_failed", level="warning", customer_id=stripe_value(event_object, "customer"))
+    elif event_type == "invoice.paid":
+        log_event("billing.invoice_paid", customer_id=stripe_value(event_object, "customer"))
+
+    return {"message": "Webhook received."}
+
 
 def get_latest_resume(session: Session, user_id: int):
     return session.exec(
@@ -502,7 +808,7 @@ def claim_next_queued_agent_run():
 
         run.status = "running"
         run.claimed_at = utc_now()
-        run.logs = (run.logs or []) + ["Agent workflow claimed by worker"]
+        run.logs = (run.logs or []) + ["Matching workflow claimed by worker"]
         session.add(run)
         session.commit()
         session.refresh(run)
@@ -579,7 +885,7 @@ def get_worker_health_snapshot(session: Session):
 
     return {
         "status": overall_status,
-        "service": "job-finder-api",
+        "service": "jobmatchhero-api",
         "checked_at": now,
         "runner_mode": runner_mode,
         "worker_expected": worker_expected,
@@ -599,7 +905,7 @@ def get_worker_health_snapshot(session: Session):
 def health_check():
     return {
         "status": "ok",
-        "service": "job-finder-api",
+        "service": "jobmatchhero-api",
         "checked_at": utc_now(),
     }
 
@@ -611,7 +917,7 @@ def database_health_check(session: Session = Depends(get_session)):
         raise HTTPException(status_code=503, detail=f"Database health check failed: {exc}") from exc
     return {
         "status": "ok",
-        "service": "job-finder-api",
+        "service": "jobmatchhero-api",
         "checked_at": utc_now(),
         "database": "reachable",
         "migration_mode": "alembic" if USE_ALEMBIC_MIGRATIONS else "lightweight",
@@ -950,10 +1256,17 @@ def normalize_policy_list(values: Optional[list[str]]) -> list[str]:
     if not values:
         return []
     normalized = []
+    seen = set()
     for value in values:
-        item = str(value or "").strip()
-        if item:
+        for raw_item in re.split(r"[,;\n\r\t]+|\s{2,}", str(value or "")):
+            item = re.sub(r"\s+", " ", raw_item).strip()
+            key = item.casefold()
+            if not item or key in seen:
+                continue
             normalized.append(item)
+            seen.add(key)
+            if len(normalized) >= 50:
+                return normalized
     return normalized[:50]
 
 def truthy_env(name: str) -> bool:
@@ -1030,6 +1343,62 @@ def get_or_create_submit_settings(session: Session, user_id: int):
     session.commit()
     session.refresh(settings)
     return settings
+
+def clear_application_records(session: Session, user_id: int) -> int:
+    applications = session.exec(select(Application).where(Application.user_id == user_id)).all()
+    app_ids = [app.id for app in applications if app.id is not None]
+    if not app_ids:
+        return 0
+
+    attempts = session.exec(
+        select(AutoApplyAttempt).where(
+            AutoApplyAttempt.user_id == user_id,
+            AutoApplyAttempt.application_id.in_(app_ids),
+        )
+    ).all()
+    attempt_ids = [attempt.id for attempt in attempts if attempt.id is not None]
+
+    if attempt_ids:
+        attempt_audits = session.exec(
+            select(AutoApplyAudit).where(
+                AutoApplyAudit.user_id == user_id,
+                AutoApplyAudit.auto_apply_attempt_id.in_(attempt_ids),
+            )
+        ).all()
+        for audit in attempt_audits:
+            session.delete(audit)
+
+    answer_audits = session.exec(
+        select(ApplicationAnswerAudit).where(
+            ApplicationAnswerAudit.user_id == user_id,
+            ApplicationAnswerAudit.application_id.in_(app_ids),
+        )
+    ).all()
+    for audit in answer_audits:
+        audit.application_id = None
+        session.add(audit)
+
+    for attempt in attempts:
+        FillReviewArtifactStore.delete(attempt.screenshot_path)
+        FillReviewArtifactStore.delete(attempt.trace_path)
+        session.delete(attempt)
+
+    reviews = session.exec(
+        select(ApplicationFillReview).where(
+            ApplicationFillReview.user_id == user_id,
+            ApplicationFillReview.application_id.in_(app_ids),
+        )
+    ).all()
+    for review in reviews:
+        FillReviewArtifactStore.delete(review.screenshot_path)
+        FillReviewArtifactStore.delete(review.trace_path)
+        session.delete(review)
+
+    for app in applications:
+        session.delete(app)
+
+    session.commit()
+    return len(applications)
 
 def update_submit_settings_from_payload(
     session: Session,
@@ -1364,6 +1733,22 @@ def sanitize_application_answer_payload(payload: ApplicationAnswerProfileRequest
         data["disability_status"] = "prefer_not_to_answer"
     return data
 
+
+def friendly_agent_error(message: str):
+    if "You didn't provide an API key" in message or "missing OPENAI_API_KEY" in message:
+        return "LLM provider openai is missing OPENAI_API_KEY. Add it to your local .env and restart Docker Compose before starting matching."
+    if "Incorrect API key" in message or "invalid_api_key" in message or "Error code: 401" in message:
+        return "The LLM provider rejected the configured API key. Check your local .env value and restart Docker Compose."
+    return message
+
+
+def agent_result_error(logs: list[str]):
+    for log in logs:
+        if log.startswith(("Error parsing resume:", "Error analyzing jobs:")):
+            return friendly_agent_error(log)
+    return None
+
+
 async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
     with Session(engine) as session:
         agent_run = session.get(AgentRun, agent_run_id)
@@ -1374,7 +1759,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
         try:
             agent_run.status = "running"
             agent_run.claimed_at = agent_run.claimed_at or utc_now()
-            agent_run.logs = ["Agent workflow started"]
+            agent_run.logs = ["Matching workflow started"]
             session.add(agent_run)
             session.commit()
             log_event(
@@ -1404,7 +1789,7 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
                 "current_job": None,
                 "application_status": "searching",
                 "applications_submitted": [],
-                "logs": ["Agent workflow started"],
+                "logs": ["Matching workflow started"],
                 "user_id": user_id,
                 "agent_run_id": agent_run_id,
                 "auto_apply": auto_apply,
@@ -1418,8 +1803,11 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
                 resume.summary = result.get("resume_summary")
                 session.add(resume)
 
-            agent_run.status = result.get("application_status", "completed")
-            agent_run.logs = result.get("logs", [])
+            result_logs = result.get("logs", [])
+            result_error = agent_result_error(result_logs)
+            agent_run.status = "failed" if result_error else result.get("application_status", "completed")
+            agent_run.error = result_error
+            agent_run.logs = result_logs
             agent_run.applications_count = len(result.get("applications_submitted", []))
             agent_run.found_jobs_count = result.get("total_found_jobs", len(result.get("found_jobs", [])))
             agent_run.completed_at = utc_now()
@@ -2013,15 +2401,20 @@ async def run_agent(
             detail="Browser fill-for-review requires a pro plan.",
         )
 
+    try:
+        validate_llm_config()
+    except LLMConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
     quota_limit, quota_remaining_before_run = ensure_agent_quota(session, user)
     agent_run = AgentRun(
         user_id=user.id,
         status="queued",
         auto_apply=auto_apply,
         logs=[
-            "Agent workflow queued for worker"
+            "Matching workflow queued for worker"
             if get_agent_runner_mode() == "worker"
-            else "Agent workflow queued"
+            else "Matching workflow queued"
         ],
     )
     session.add(agent_run)
@@ -2158,11 +2551,9 @@ async def resolve_application_link(
 
 @router.delete("/applications", response_model=MessageResponse)
 def clear_applications(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    applications = session.exec(select(Application).where(Application.user_id == user.id)).all()
-    for app in applications:
-        session.delete(app)
-    session.commit()
-    return {"message": f"Cleared {len(applications)} applications"}
+    cleared_count = clear_application_records(session, user.id)
+    label = "application" if cleared_count == 1 else "applications"
+    return {"message": f"Cleared {cleared_count} saved {label}."}
 
 @router.post("/agent/analyze-single", response_model=JobAnalysisResponse)
 async def analyze_single_job(

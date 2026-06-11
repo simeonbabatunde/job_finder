@@ -5,6 +5,7 @@ import type {
     LabelHTMLAttributes,
     ReactNode,
 } from 'react';
+import { AlertCircle, CheckCircle2, Info, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { cn } from '../lib/cn';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -46,6 +47,125 @@ export function Button({
             )}
             {...props}
         />
+    );
+}
+
+type NoticeTone = 'success' | 'error' | 'warning' | 'info';
+
+interface NoticeProps extends HTMLAttributes<HTMLDivElement> {
+    tone?: NoticeTone;
+    title?: string;
+    children: ReactNode;
+}
+
+const noticeStyles: Record<NoticeTone, string> = {
+    success: 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]',
+    error: 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]',
+    warning: 'border-[var(--warning-soft)] bg-[var(--warning-soft)] text-[var(--warning)]',
+    info: 'border-[var(--accent-soft)] bg-[var(--accent-soft)] text-[var(--accent)]',
+};
+
+const noticeIcons = {
+    success: CheckCircle2,
+    error: AlertCircle,
+    warning: TriangleAlert,
+    info: Info,
+};
+
+export function Notice({ tone = 'info', title, children, className, ...props }: NoticeProps) {
+    const Icon = noticeIcons[tone];
+    return (
+        <div
+            role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'}
+            aria-live={tone === 'error' || tone === 'warning' ? 'assertive' : 'polite'}
+            className={cn(
+                'flex items-start gap-2 rounded-md border px-3 py-2 text-sm',
+                noticeStyles[tone],
+                className,
+            )}
+            {...props}
+        >
+            <Icon className="mt-0.5 shrink-0" size={16} />
+            <div className="min-w-0">
+                {title && <p className="font-semibold">{title}</p>}
+                <div className={cn('leading-5', title ? 'mt-0.5 text-xs' : 'font-semibold')}>
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface ConfirmDialogProps {
+    open: boolean;
+    title: string;
+    description?: ReactNode;
+    confirmLabel: string;
+    cancelLabel?: string;
+    confirmVariant?: ButtonVariant;
+    iconTone?: NoticeTone;
+    loading?: boolean;
+    loadingLabel?: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+}
+
+export function ConfirmDialog({
+    open,
+    title,
+    description,
+    confirmLabel,
+    cancelLabel = 'Cancel',
+    confirmVariant = 'danger',
+    iconTone = 'warning',
+    loading = false,
+    loadingLabel = 'Working',
+    onConfirm,
+    onCancel,
+}: ConfirmDialogProps) {
+    if (!open) return null;
+    const Icon = noticeIcons[iconTone];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="confirm-dialog-title"
+                className="w-full max-w-md rounded-lg border border-[var(--line)] bg-white shadow-xl"
+            >
+                <div className="flex items-start gap-3 border-b border-[var(--line)] p-5">
+                    <span className={cn(
+                        'mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white',
+                        iconTone === 'success' && 'bg-[var(--positive-soft)] text-[var(--positive)]',
+                        iconTone === 'error' && 'bg-[var(--danger-soft)] text-[var(--danger)]',
+                        iconTone === 'warning' && 'bg-[var(--warning-soft)] text-[var(--warning)]',
+                        iconTone === 'info' && 'bg-[var(--accent-soft)] text-[var(--accent)]',
+                    )}>
+                        <Icon size={18} />
+                    </span>
+                    <div>
+                        <h3 id="confirm-dialog-title" className="text-base font-semibold text-[var(--ink)]">
+                            {title}
+                        </h3>
+                        {description && (
+                            <div className="mt-1 text-sm leading-6 text-[var(--muted)]">
+                                {description}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="flex flex-col gap-2 p-5 sm:flex-row sm:justify-end">
+                    <Button variant="secondary" onClick={onCancel} disabled={loading}>
+                        {cancelLabel}
+                    </Button>
+                    <Button variant={confirmVariant} onClick={onConfirm} disabled={loading}>
+                        {loading ? <LoaderCircle className="animate-spin" size={16} /> : null}
+                        {loading ? loadingLabel : confirmLabel}
+                    </Button>
+                </div>
+            </div>
+        </div>
     );
 }
 

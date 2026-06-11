@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, LoaderCircle, Play, ShieldAlert } from 'lucide-react';
+import { LoaderCircle, Play, ShieldAlert } from 'lucide-react';
 import { getAuthHeaders, API_URL } from '../api/client';
 import type { AgentQuotaStatus } from '../api/client';
 import type { ResumeUploadHandle } from './ResumeUpload';
 import type { JobPreferencesHandle } from './JobPreferences';
-import { Button, StatusChip } from './ui';
+import { Button, Notice, StatusChip } from './ui';
 
 interface AgentControlsProps {
     onComplete: () => void;
@@ -59,7 +59,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 return;
             }
 
-            setStatus(run.status === 'queued' ? 'Search assistant queued...' : 'Finding best-fit jobs...');
+            setStatus(run.status === 'queued' ? 'Matching workflow queued...' : 'Finding best-fit jobs...');
         }
 
         setStatus('Search is still running. Check application history again shortly.');
@@ -68,7 +68,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
 
     const startAgent = async () => {
         if (!isLoggedIn) {
-            setStatus('Please sign in or create an account to launch the search assistant.');
+            setStatus('Please sign in or create an account to start matching.');
             onAuthRequired();
             return;
         }
@@ -108,7 +108,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 if (typeof data.quota_remaining === 'number') {
                     setQuotaRemaining(data.quota_remaining);
                 }
-                setStatus('Search assistant queued...');
+                setStatus('Matching workflow queued...');
                 if (data.agent_run_id) {
                     await pollAgentRun(data.agent_run_id, shouldAutoApply, Boolean(wasFileSelected));
                 } else {
@@ -118,7 +118,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 setStatus(`Error: ${data.detail || 'Failed to run search'}`);
             }
         } catch (error) {
-            console.error('Error running search assistant:', error);
+            console.error('Error running matching workflow:', error);
             setStatus('Failed to connect to backend.');
         } finally {
             setIsRunning(false);
@@ -126,6 +126,9 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
     };
 
     const isProblem = status.startsWith('Error') || status.includes('sign in') || status.includes('Failed');
+    const isProgress = status.includes('queued') || status.includes('Finding') || status.includes('still running');
+    const noticeTone = isProblem ? 'error' : isProgress ? 'info' : 'success';
+    const noticeTitle = isProblem ? 'Something needs attention' : isProgress ? 'Matching update' : 'Matching complete';
 
     return (
         <div className="w-full">
@@ -143,7 +146,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                         )}
                     </div>
                     <p className="text-sm leading-6 text-[var(--muted)]">
-                        The assistant compares open roles with your resume and preferences, saves the strongest matches, and packages materials for review.
+                        JobMatchHero compares open roles with your resume and preferences, saves the strongest matches, and packages materials for review.
                     </p>
                 </div>
 
@@ -178,10 +181,9 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
             </div>
 
             {status && (
-                <div className={`mt-3 flex items-start gap-3 rounded-lg border p-3 text-sm font-semibold ${isProblem ? 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]' : 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]'}`}>
-                    {isProblem ? <AlertTriangle size={17} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={17} className="mt-0.5 shrink-0" />}
-                    <span>{status}</span>
-                </div>
+                <Notice tone={noticeTone} title={noticeTitle} className="mt-3">
+                    {status}
+                </Notice>
             )}
         </div>
     );

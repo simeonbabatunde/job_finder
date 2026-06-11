@@ -3,7 +3,7 @@ import { CheckCircle2, FileText, Trash2, UploadCloud } from 'lucide-react';
 import type { ResumeStatus } from '../api/client';
 import { uploadResume } from '../api/client';
 import { cn } from '../lib/cn';
-import { Button, StatusChip } from './ui';
+import { Button, Notice, StatusChip } from './ui';
 
 export interface ResumeUploadHandle {
   hasFile: boolean;
@@ -49,6 +49,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
 
       setUploading(true);
       setMessage('');
+      setIsError(false);
       try {
         await uploadResume(file);
         if (!silent) {
@@ -211,9 +212,9 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
         )}
 
         {message && (
-          <div className={`mt-3 rounded-lg border p-3 text-sm font-semibold ${isError ? 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]' : 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]'}`}>
+          <Notice tone={isError ? 'error' : 'success'} className="mt-3">
             {message}
-          </div>
+          </Notice>
         )}
       </div>
     </div>

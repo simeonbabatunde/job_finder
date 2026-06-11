@@ -8,13 +8,13 @@ FRONTEND_HEALTH_URL="${PREFLIGHT_FRONTEND_URL:-http://localhost:5173}"
 
 export POSTGRES_USER="${POSTGRES_USER:-postgres}"
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
-export POSTGRES_DB="${POSTGRES_DB:-job_hunter}"
-export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@db:5432/job_hunter}"
+export POSTGRES_DB="${POSTGRES_DB:-jobmatchhero}"
+export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@db:5432/jobmatchhero}"
 export FRONTEND_URL="${FRONTEND_URL:-http://localhost:5173}"
 export VITE_API_URL="${VITE_API_URL:-http://localhost:8000}"
 export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://frontend:5173}"
 export APP_ENV="${APP_ENV:-development}"
-export AUTH_SECRET_KEY="${AUTH_SECRET_KEY:-job-finder-dev-secret-change-me}"
+export AUTH_SECRET_KEY="${AUTH_SECRET_KEY:-jobmatchhero-dev-secret-change-me}"
 export AUTH_PREVIOUS_SECRET_KEYS="${AUTH_PREVIOUS_SECRET_KEYS:-}"
 export AUTH_ACCESS_TOKEN_TTL_SECONDS="${AUTH_ACCESS_TOKEN_TTL_SECONDS:-3600}"
 export AUTH_REFRESH_TOKEN_TTL_SECONDS="${AUTH_REFRESH_TOKEN_TTL_SECONDS:-2592000}"
@@ -136,11 +136,11 @@ section "Docker Compose config"
 docker compose config >/dev/null
 
 section "Alembic isolated upgrade"
-ALEMBIC_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/job_finder_preflight_alembic.XXXXXX")"
+ALEMBIC_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/jobmatchhero_preflight_alembic.XXXXXX")"
 trap 'rm -rf "$ALEMBIC_TMP_DIR"; on_exit' EXIT
 docker run --rm \
   -e UV_PROJECT_ENVIRONMENT=/tmp/uv-venv \
-  -e DATABASE_URL=sqlite:////preflight/job_finder_alembic.db \
+  -e DATABASE_URL=sqlite:////preflight/jobmatchhero_alembic.db \
   -v "$ROOT_DIR/backend:/app" \
   -v "$ALEMBIC_TMP_DIR:/preflight" \
   -w /app \

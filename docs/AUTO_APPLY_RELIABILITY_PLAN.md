@@ -242,7 +242,7 @@ Implemented behavior:
 
 - Jobs are classified as `pass`, `maybe`, or `reject` before the full LLM fit analysis.
 - `pass` and `maybe` jobs continue to AI analysis.
-- `reject` jobs are counted in the agent run summary and skipped without being saved.
+- `reject` jobs are counted in the matching run summary and skipped without being saved.
 - The screen rejects only clear preference conflicts, such as senior role preference vs. junior/internship title, full-time preference vs. contract/part-time title, or remote preference vs. clearly on-site posting.
 - Weak role-keyword overlap is never a hard reject; it becomes `maybe` so the full AI analysis can still catch good but unusually written postings.
 - The application API exposes `match_bucket=strong|below_threshold|all`; `all` excludes skipped/screened-out legacy rows.
@@ -449,12 +449,12 @@ First pilot constraints:
 
 ## Worker Architecture
 
-Long-running agent work now runs through the worker. Future true-submit attempts should also stay worker-owned rather than running as unrestricted API request work.
+Long-running matching work now runs through the worker. Future true-submit attempts should also stay worker-owned rather than running as unrestricted API request work.
 
 Recommended architecture:
 
-- API queues persisted agent runs and future `AutoApplyAttempt` jobs.
-- Worker process runs queued agent work and future Playwright submission attempts.
+- API queues persisted matching runs and future `AutoApplyAttempt` jobs.
+- Worker process runs queued matching work and future Playwright submission attempts.
 - Worker writes attempt state transitions.
 - Frontend polls attempt/run status.
 - Browser traces and screenshots are stored as artifacts.

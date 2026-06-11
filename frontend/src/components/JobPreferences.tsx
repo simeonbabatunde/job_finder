@@ -4,7 +4,7 @@ import { ChevronDown } from 'lucide-react';
 import type { JobPreferencesPayload } from '../api/client';
 import { savePreferences } from '../api/client';
 import { cn } from '../lib/cn';
-import { ProgressBar } from './ui';
+import { Notice, ProgressBar } from './ui';
 
 export interface JobPreferencesHandle {
     submitPrefs: (silent?: boolean) => Promise<boolean>;
@@ -264,9 +264,9 @@ export const JobPreferences = forwardRef<JobPreferencesHandle, JobPreferencesPro
                 {saving && <ProgressBar value={100} className="animate-pulse" />}
 
                 {message && (
-                    <div className={`rounded-lg border p-3 text-sm font-semibold ${message.includes('Error') ? 'border-[var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger)]' : 'border-[var(--positive-soft)] bg-[var(--positive-soft)] text-[var(--positive)]'}`}>
+                    <Notice tone={message.includes('Error') ? 'error' : 'success'}>
                         {message}
-                    </div>
+                    </Notice>
                 )}
             </div>
         </div>
