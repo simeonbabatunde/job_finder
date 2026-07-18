@@ -33,7 +33,7 @@ Use this checklist after `./scripts/preflight.sh` passes and before sharing a ho
 
 - Open `Applications`.
 - Confirm strong matches and below-threshold jobs are separated by the lane controls.
-- Confirm below-threshold jobs are review-only and cannot generate packages or fill-review actions.
+- Confirm below-threshold jobs are review-only and cannot generate packages.
 - Resolve an aggregator link only when a safe resolved employer URL is found.
 - Confirm unsupported, login-gated, captcha-gated, or unresolved links stay in review states.
 
@@ -46,25 +46,19 @@ Use this checklist after `./scripts/preflight.sh` passes and before sharing a ho
 - Download the cover-letter PDF.
 - Update application status and confirm the pipeline reflects the change.
 
-## Fill-For-Review Safety
+## Removed Browser Automation
 
-- Use a pro/admin account before testing browser fill-for-review.
-- Confirm `Fill review` appears only for resolved supported ATS links.
-- Run fill-for-review on a test or fixture-safe application URL.
-- Confirm the app fills available fields, lists missing fields and blockers, saves a review record, and never clicks final submit.
-- Preview the saved screenshot and download the trace only while signed in.
-- Clear saved fill-review attempts and confirm artifact links disappear.
+- Confirm the application pipeline only shows `Package` and `Open` actions for matched jobs.
+- Confirm no `Apply with assistant`, `Application prep`, screenshot, trace, or final-readiness controls are visible.
+- Confirm old browser automation endpoints return `410 Gone` if called directly.
 
 ## True-Submit Gate
 
-- Confirm `ENABLE_TRUE_AUTO_SUBMIT=false` for normal local, staging, and demo use.
-- Confirm submission guardrails show the pilot as locked unless the global flag and pilot allowlist explicitly approve the user.
-- Confirm `Inspect final step` can detect submit controls without clicking them.
-- Confirm submit confirmation still reports `can_submit=false` outside an approved pilot.
+- Confirm there are no final-submit or browser-form automation controls in the product UI.
 
 ## Admin And Operations
 
 - With an admin account, open `/admin`.
 - Save scraper settings and confirm non-admin users cannot access the admin API.
-- Review structured logs for matching run, worker, fill-review, submit-readiness, and submit-confirmation events.
+- Review structured logs for matching run and worker events.
 - Run the answer-vault re-encryption job in dry-run mode before any data-key rotation.

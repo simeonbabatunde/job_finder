@@ -115,8 +115,8 @@ class ApplicationFillReviewService:
                 status="unsupported",
                 ats_type=ats_type,
                 application_url=application_url,
-                blockers=[f"{ats_type} fill-for-review is not supported yet."],
-                message="This ATS is not supported for fill-for-review yet.",
+                blockers=[f"{ats_type} application prep is not supported yet."],
+                message="This ATS is not supported for application prep yet.",
             )
 
         if not profile:
@@ -125,7 +125,7 @@ class ApplicationFillReviewService:
                 ats_type=ats_type,
                 application_url=application_url,
                 blockers=["Candidate profile is required."],
-                message="Add candidate profile details before fill-for-review.",
+                message="Add candidate profile details before application prep.",
             )
 
         if not resume_bytes:
@@ -134,7 +134,7 @@ class ApplicationFillReviewService:
                 ats_type=ats_type,
                 application_url=application_url,
                 blockers=["Resume file is required."],
-                message="Upload a resume before fill-for-review.",
+                message="Upload a resume before application prep.",
             )
 
         try:
@@ -275,7 +275,7 @@ class ApplicationFillReviewService:
                         ats_type=ats_type,
                         application_url=application_url,
                         blockers=[str(exc)],
-                        message="Fill-for-review could not complete.",
+                        message="Application prep could not complete.",
                     )
                 finally:
                     if fill_result and trace_started:
@@ -288,7 +288,7 @@ class ApplicationFillReviewService:
                 ats_type=ats_type,
                 application_url=application_url,
                 blockers=[str(exc)],
-                message="Fill-for-review could not complete.",
+                message="Application prep could not complete.",
             )
 
     @classmethod

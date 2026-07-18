@@ -47,7 +47,7 @@ def upload_resume(api_url: str, token: str) -> None:
 
 def seed_user(api_url: str) -> dict[str, Any]:
     stamp = int(time.time() * 1000)
-    email = f"frontend-smoke+{stamp}@jobfinder.test"
+    email = f"frontend-smoke+{stamp}@jobmatchkit.test"
     password = "Password123!"
     auth = api_post(
         api_url,
@@ -145,7 +145,7 @@ def main() -> None:
             expect(page.get_by_role("heading", name="Application answers").first).to_be_visible()
             expect(page.get_by_role("heading", name="Submission guardrails").first).to_be_visible()
         except Exception:
-            page.screenshot(path="/tmp/jobmatchhero_frontend_smoke_failure.png", full_page=True)
+            page.screenshot(path="/tmp/jobmatchkit_frontend_smoke_failure.png", full_page=True)
             raise
         finally:
             context.close()

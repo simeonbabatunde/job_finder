@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends, Header, Response, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 import base64
 import hmac
 import io
@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import time
+import zipfile
 from sqlalchemy import asc, desc, or_, text
 from sqlmodel import Session, select
 from app.models import (
@@ -21,6 +22,7 @@ from app.models import (
     AutoApplyAudit,
     AutoApplyAttempt,
     JobPreference,
+    MatchingProfile,
     PasswordResetToken,
     Profile,
     Resume,
@@ -35,6 +37,12 @@ from app.services.job_search import JobSearchService
 from app.services.email import send_reset_email
 from app.services.application_link_resolver import ApplicationLinkResolver
 from app.services.application_fill_review import ApplicationFillReviewService
+from app.services.agent_run_control import (
+    CANCEL_REQUESTED_STATUS,
+    CANCELED_STATUS,
+    CANCELABLE_AGENT_RUN_STATUSES,
+    mark_run_canceled,
+)
 from app.services.fill_review_artifacts import FillReviewArtifactStore
 from app.services.field_encryption import (
     data_encryption_key_is_configured,
@@ -50,8 +58,6 @@ from app.schemas import (
     ApplicationAnswerAuditResponse,
     ApplicationAnswerExportResponse,
     ApplicationAnswerProfileResponse,
-    ApplicationFillReviewResponse,
-    ApplicationFillReviewRecordResponse,
     ApplicationPackageRequest,
     ApplicationPackageResponse,
     ApplicationSubmitConfirmationResponse,
@@ -72,6 +78,9 @@ from app.schemas import (
     JobAnalysisResponse,
     JobPreferenceRequest,
     JobPreferenceResponse,
+    MatchingProfileCreateRequest,
+    MatchingProfileRequest,
+    MatchingProfileResponse,
     LoginRequest,
     MessageResponse,
     ProfileRequest,
@@ -79,6 +88,7 @@ from app.schemas import (
     ProfileResponse,
     RegisterRequest,
     ResumeFeedbackResponse,
+    ResumeLibraryResponse,
     ResumeUploadResponse,
     ResetPasswordRequest,
     SocialAuthRequest,
@@ -114,7 +124,7 @@ router = APIRouter()
 
 APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").lower()
 PRODUCTION_LIKE_ENVS = {"prod", "production", "staging"}
-AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "jobmatchhero-dev-secret-change-me"
+AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "jobmatchkit-dev-secret-change-me"
 AUTH_PREVIOUS_SECRET_KEYS = tuple(
     key.strip()
     for key in os.getenv("AUTH_PREVIOUS_SECRET_KEYS", "").split(",")
@@ -132,7 +142,7 @@ STRIPE_ACTIVE_SUBSCRIPTION_STATUSES = {"active", "trialing"}
 INSECURE_AUTH_SECRET_VALUES = {
     "",
     "change-me-in-production",
-    "jobmatchhero-dev-secret-change-me",
+    "jobmatchkit-dev-secret-change-me",
 }
 
 def auth_secret_is_insecure(secret: str) -> bool:
@@ -432,7 +442,7 @@ def create_or_get_stripe_customer(user: User, session: Session):
     try:
         customer = stripe.Customer.create(
             email=user.email,
-            metadata={"user_id": str(user.id), "app": "jobmatchhero"},
+            metadata={"user_id": str(user.id), "app": "jobmatchkit"},
         )
     except Exception as exc:
         log_event("billing.customer_create_failed", level="error", user_id=user.id, error=str(exc))
@@ -667,7 +677,169 @@ def get_latest_preferences(session: Session, user_id: int):
         .order_by(JobPreference.created_at.desc())
     ).first()
 
-def get_min_match_score(session: Session, user_id: int):
+def serialize_resume_status(resume: Optional[Resume]):
+    if not resume:
+        return None
+    return {
+        "id": resume.id,
+        "filename": resume.filename,
+        "uploaded_at": resume.upload_date,
+        "skills": resume.skills or [],
+        "summary": resume.summary,
+    }
+
+
+def matching_profile_payload(profile: MatchingProfile) -> dict:
+    return {
+        "role": profile.role or [],
+        "experience_level": profile.experience_level or ["Intermediate"],
+        "location": profile.location or [],
+        "job_type": profile.job_type or ["Full-time"],
+        "target_companies": profile.target_companies or [],
+        "min_match_score": profile.min_match_score or 70,
+        "posted_within_days": profile.posted_within_days or 7,
+    }
+
+
+def matching_profile_has_saved_targets(profile: Optional[MatchingProfile]) -> bool:
+    if not profile:
+        return False
+    payload = matching_profile_payload(profile)
+    return bool(payload["role"] or payload["location"] or payload["target_companies"])
+
+
+def apply_matching_profile_payload(profile: MatchingProfile, payload: MatchingProfileRequest, user_id: int, session: Session) -> None:
+    resume_id = payload.resume_id
+    if resume_id is not None:
+        resume = session.get(Resume, resume_id)
+        if not resume or resume.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Resume not found")
+    profile.name = (payload.name or "Untitled profile").strip()[:120] or "Untitled profile"
+    profile.resume_id = resume_id
+    profile.role = normalize_policy_list(payload.role)
+    profile.experience_level = normalize_policy_list(payload.experience_level) or ["Intermediate"]
+    profile.location = normalize_policy_list(payload.location)
+    profile.job_type = normalize_policy_list(payload.job_type) or ["Full-time"]
+    profile.target_companies = normalize_policy_list(payload.target_companies)
+    profile.min_match_score = max(0, min(int(payload.min_match_score or 70), 100))
+    profile.posted_within_days = max(1, min(int(payload.posted_within_days or 7), 90))
+    profile.updated_at = utc_now()
+
+
+def serialize_matching_profile(profile: MatchingProfile, session: Optional[Session] = None):
+    resume = session.get(Resume, profile.resume_id) if session and profile.resume_id else None
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "resume_id": profile.resume_id,
+        **matching_profile_payload(profile),
+        "is_default": bool(profile.is_default),
+        "is_archived": bool(profile.is_archived),
+        "last_used_at": profile.last_used_at,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+        "resume": serialize_resume_status(resume),
+    }
+
+
+def create_default_matching_profile(session: Session, user_id: int) -> MatchingProfile:
+    resume = get_latest_resume(session, user_id)
+    prefs = get_latest_preferences(session, user_id)
+    profile = MatchingProfile(
+        user_id=user_id,
+        name="Default profile",
+        resume_id=resume.id if resume else None,
+        role=(prefs.role if prefs else []),
+        experience_level=(prefs.experience_level if prefs else ["Intermediate"]),
+        location=(prefs.location if prefs else []),
+        job_type=(prefs.job_type if prefs else ["Full-time"]),
+        target_companies=(getattr(prefs, "target_companies", []) if prefs else []),
+        min_match_score=(prefs.min_match_score if prefs else 70),
+        posted_within_days=(prefs.posted_within_days if prefs else 7),
+        is_default=True,
+        is_archived=False,
+    )
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    return profile
+
+
+def get_default_matching_profile(session: Session, user_id: int, create: bool = True) -> Optional[MatchingProfile]:
+    profile = session.exec(
+        select(MatchingProfile)
+        .where(
+            MatchingProfile.user_id == user_id,
+            MatchingProfile.is_default == True,
+            MatchingProfile.is_archived == False,
+        )
+        .order_by(MatchingProfile.updated_at.desc())
+    ).first()
+    if profile:
+        return profile
+    profile = session.exec(
+        select(MatchingProfile)
+        .where(MatchingProfile.user_id == user_id, MatchingProfile.is_archived == False)
+        .order_by(MatchingProfile.updated_at.desc())
+    ).first()
+    if profile:
+        profile.is_default = True
+        profile.updated_at = utc_now()
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+        return profile
+    return create_default_matching_profile(session, user_id) if create else None
+
+
+def get_matching_profile_or_404(session: Session, user_id: int, profile_id: int) -> MatchingProfile:
+    profile = session.get(MatchingProfile, profile_id)
+    if not profile or profile.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Matching profile not found")
+    return profile
+
+
+def set_default_matching_profile(session: Session, user_id: int, profile: MatchingProfile) -> None:
+    profiles = session.exec(select(MatchingProfile).where(MatchingProfile.user_id == user_id)).all()
+    for existing in profiles:
+        existing.is_default = existing.id == profile.id
+        session.add(existing)
+    profile.is_archived = False
+    profile.updated_at = utc_now()
+
+
+def resolve_run_matching_profile(session: Session, user_id: int, profile_id: Optional[int]) -> MatchingProfile:
+    profile = get_matching_profile_or_404(session, user_id, profile_id) if profile_id else get_default_matching_profile(session, user_id)
+    if not profile or profile.is_archived:
+        raise HTTPException(status_code=404, detail="Matching profile not found")
+    return profile
+
+
+def resolve_profile_resume(session: Session, user_id: int, profile: MatchingProfile, require_attached: bool = True) -> Optional[Resume]:
+    resume = session.get(Resume, profile.resume_id) if profile.resume_id else None
+    if resume and resume.user_id == user_id:
+        return resume
+    latest_resume = get_latest_resume(session, user_id)
+    if latest_resume and profile.is_default:
+        profile.resume_id = latest_resume.id
+        profile.updated_at = utc_now()
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+        return latest_resume
+    if require_attached:
+        raise HTTPException(status_code=400, detail="Attach a resume to this matching profile before starting matching.")
+    return None
+
+
+def get_min_match_score(session: Session, user_id: int, matching_profile_id: Optional[int] = None):
+    if matching_profile_id:
+        profile = session.get(MatchingProfile, matching_profile_id)
+        if profile and profile.user_id == user_id:
+            return profile.min_match_score
+    profile = get_default_matching_profile(session, user_id)
+    if profile:
+        return profile.min_match_score
     prefs = get_latest_preferences(session, user_id)
     return prefs.min_match_score if prefs else 70
 
@@ -678,7 +850,7 @@ def assert_application_matches_threshold(app: Application, session: Session, use
             detail=f"Screened-out jobs are review-only and cannot be used for {action}.",
         )
 
-    min_match_score = get_min_match_score(session, user_id)
+    min_match_score = get_min_match_score(session, user_id, app.matching_profile_id)
     if app.fit_score * 100 < min_match_score:
         raise HTTPException(
             status_code=400,
@@ -686,9 +858,15 @@ def assert_application_matches_threshold(app: Application, session: Session, use
         )
 
 def trackable_application_filter():
+    aggregator_sources = tuple(ApplicationLinkResolver.AGGREGATOR_DOMAINS.keys())
     return (
         or_(Application.pre_screen_status.is_(None), Application.pre_screen_status != "reject"),
         Application.status != "Screened Out",
+        or_(
+            Application.source_type.is_(None),
+            Application.source_type.notin_(aggregator_sources),
+            Application.resolution_status == "resolved",
+        ),
     )
 
 def get_daily_agent_run_limit(user: User):
@@ -699,7 +877,18 @@ def get_daily_agent_run_limit(user: User):
     return FREE_DAILY_AGENT_RUN_LIMIT
 
 def can_auto_apply(user: User):
-    return user.role == "admin" or user.subscription_tier == "pro"
+    return False
+
+
+def raise_browser_automation_retired():
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Apply with assistant and Application Prep have been removed. "
+            "Use the generated package and open the employer application link manually."
+        ),
+    )
+
 
 def get_agent_runner_mode():
     mode = os.getenv("AGENT_RUNNER_MODE", "background").strip().lower()
@@ -772,19 +961,24 @@ def fail_stale_agent_runs(session: Session):
     stale_before = utc_now() - timedelta(minutes=get_agent_run_stale_minutes())
     stale_runs = session.exec(
         select(AgentRun).where(
-            AgentRun.status == "running",
+            AgentRun.status.in_(["running", CANCEL_REQUESTED_STATUS]),
             AgentRun.claimed_at.is_not(None),
             AgentRun.claimed_at < stale_before,
         )
     ).all()
     for run in stale_runs:
-        run.status = "failed"
-        run.error = "Agent run timed out while claimed by a worker."
-        run.logs = (run.logs or []) + [run.error]
-        run.completed_at = utc_now()
-        session.add(run)
+        if run.status == CANCEL_REQUESTED_STATUS:
+            mark_run_canceled(session, run)
+            event_name = "agent_run.stale_canceled"
+        else:
+            run.status = "failed"
+            run.error = "Agent run timed out while claimed by a worker."
+            run.logs = (run.logs or []) + [run.error]
+            run.completed_at = utc_now()
+            session.add(run)
+            event_name = "agent_run.stale_failed"
         log_event(
-            "agent_run.stale_failed",
+            event_name,
             level="warning",
             agent_run_id=run.id,
             user_id=run.user_id,
@@ -850,7 +1044,7 @@ def get_worker_health_snapshot(session: Session):
         select(AgentRun).where(AgentRun.status == "queued")
     ).all()
     running_runs = session.exec(
-        select(AgentRun).where(AgentRun.status == "running")
+        select(AgentRun).where(AgentRun.status.in_(["running", CANCEL_REQUESTED_STATUS]))
     ).all()
     stale_runs = [
         run
@@ -885,7 +1079,7 @@ def get_worker_health_snapshot(session: Session):
 
     return {
         "status": overall_status,
-        "service": "jobmatchhero-api",
+        "service": "jobmatchkit-api",
         "checked_at": now,
         "runner_mode": runner_mode,
         "worker_expected": worker_expected,
@@ -905,7 +1099,7 @@ def get_worker_health_snapshot(session: Session):
 def health_check():
     return {
         "status": "ok",
-        "service": "jobmatchhero-api",
+        "service": "jobmatchkit-api",
         "checked_at": utc_now(),
     }
 
@@ -917,7 +1111,7 @@ def database_health_check(session: Session = Depends(get_session)):
         raise HTTPException(status_code=503, detail=f"Database health check failed: {exc}") from exc
     return {
         "status": "ok",
-        "service": "jobmatchhero-api",
+        "service": "jobmatchkit-api",
         "checked_at": utc_now(),
         "database": "reachable",
         "migration_mode": "alembic" if USE_ALEMBIC_MIGRATIONS else "lightweight",
@@ -930,11 +1124,15 @@ def worker_health_check(response: Response, session: Session = Depends(get_sessi
         response.status_code = 503
     return snapshot
 
-def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAudit]] = None):
+def serialize_agent_run(run: AgentRun, audit_records: Optional[list[AutoApplyAudit]] = None, session: Optional[Session] = None):
+    matching_profile = session.get(MatchingProfile, run.matching_profile_id) if session and run.matching_profile_id else None
     return {
         "id": run.id,
         "status": run.status,
         "auto_apply": run.auto_apply,
+        "matching_profile_id": run.matching_profile_id,
+        "matching_profile_name": matching_profile.name if matching_profile else None,
+        "resume_id": run.resume_id,
         "logs": run.logs,
         "applications_count": run.applications_count,
         "found_jobs_count": run.found_jobs_count,
@@ -975,7 +1173,8 @@ def serialize_generated_package_export(app: Application):
         "created_at": app.created_at,
     }
 
-def serialize_application_response(app: Application):
+def serialize_application_response(app: Application, session: Optional[Session] = None):
+    matching_profile = session.get(MatchingProfile, app.matching_profile_id) if session and app.matching_profile_id else None
     return {
         "id": app.id,
         "job_title": app.job_title,
@@ -988,6 +1187,10 @@ def serialize_application_response(app: Application):
         "resolution_status": app.resolution_status or "unresolved",
         "resolution_notes": app.resolution_notes,
         "status": app.status,
+        "matching_profile_id": app.matching_profile_id,
+        "matching_profile_name": matching_profile.name if matching_profile else None,
+        "matching_profile_min_match_score": matching_profile.min_match_score if matching_profile else None,
+        "agent_run_id": app.agent_run_id,
         "fit_score": app.fit_score,
         "explanation": app.explanation,
         "cover_letter": app.cover_letter,
@@ -1186,7 +1389,7 @@ def update_attempt_from_fill_review(
         build_attempt_step(
             "fill_review_completed",
             attempt.status,
-            review_record.message or "Fill-for-review completed.",
+            review_record.message or "Application prep completed.",
             {
                 "fields_filled_count": len(review_record.fields_filled or []),
                 "needs_review_count": len(review_record.fields_missing or []) + len(review_record.blockers or []),
@@ -1352,7 +1555,6 @@ def clear_application_records(session: Session, user_id: int) -> int:
 
     attempts = session.exec(
         select(AutoApplyAttempt).where(
-            AutoApplyAttempt.user_id == user_id,
             AutoApplyAttempt.application_id.in_(app_ids),
         )
     ).all()
@@ -1361,7 +1563,6 @@ def clear_application_records(session: Session, user_id: int) -> int:
     if attempt_ids:
         attempt_audits = session.exec(
             select(AutoApplyAudit).where(
-                AutoApplyAudit.user_id == user_id,
                 AutoApplyAudit.auto_apply_attempt_id.in_(attempt_ids),
             )
         ).all()
@@ -1370,7 +1571,6 @@ def clear_application_records(session: Session, user_id: int) -> int:
 
     answer_audits = session.exec(
         select(ApplicationAnswerAudit).where(
-            ApplicationAnswerAudit.user_id == user_id,
             ApplicationAnswerAudit.application_id.in_(app_ids),
         )
     ).all()
@@ -1382,10 +1582,10 @@ def clear_application_records(session: Session, user_id: int) -> int:
         FillReviewArtifactStore.delete(attempt.screenshot_path)
         FillReviewArtifactStore.delete(attempt.trace_path)
         session.delete(attempt)
+    session.flush()
 
     reviews = session.exec(
         select(ApplicationFillReview).where(
-            ApplicationFillReview.user_id == user_id,
             ApplicationFillReview.application_id.in_(app_ids),
         )
     ).all()
@@ -1393,6 +1593,7 @@ def clear_application_records(session: Session, user_id: int) -> int:
         FillReviewArtifactStore.delete(review.screenshot_path)
         FillReviewArtifactStore.delete(review.trace_path)
         session.delete(review)
+    session.flush()
 
     for app in applications:
         session.delete(app)
@@ -1549,14 +1750,14 @@ def evaluate_submit_readiness(
             checks.append("Required work-authorization answers are complete.")
 
     if not latest_review:
-        blockers.append("Run fill-for-review before final-submit readiness can be evaluated.")
+        blockers.append("Run application prep before final-submit readiness can be evaluated.")
     else:
         if latest_review.blockers:
-            blockers.append("Latest fill-review attempt still has blockers.")
+            blockers.append("Latest application prep attempt still has blockers.")
         if latest_review.fields_missing:
-            blockers.append("Latest fill-review attempt still has missing fields.")
+            blockers.append("Latest application prep attempt still has missing fields.")
         if not latest_review.blockers and not latest_review.fields_missing:
-            checks.append("Latest fill-review attempt has no saved blockers or missing fields.")
+            checks.append("Latest application prep attempt has no saved blockers or missing fields.")
 
     ready = len(blockers) == 0
     return {
@@ -1756,6 +1957,17 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
         if not agent_run or not user:
             return
 
+        if agent_run.status in {CANCEL_REQUESTED_STATUS, CANCELED_STATUS}:
+            mark_run_canceled(session, agent_run)
+            session.commit()
+            log_event(
+                "agent_run.canceled_before_start",
+                agent_run_id=agent_run.id,
+                user_id=user_id,
+                auto_apply=auto_apply,
+            )
+            return
+
         try:
             agent_run.status = "running"
             agent_run.claimed_at = agent_run.claimed_at or utc_now()
@@ -1770,12 +1982,21 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
                 runner_mode=get_agent_runner_mode(),
             )
 
-            resume = get_latest_resume(session, user_id)
-            prefs = get_latest_preferences(session, user_id)
+            matching_profile = resolve_run_matching_profile(session, user_id, agent_run.matching_profile_id)
+            resume = resolve_profile_resume(session, user_id, matching_profile)
             profile = session.exec(select(Profile).where(Profile.user_id == user_id)).first()
+            allowed_companies = normalize_policy_list(matching_profile.target_companies or [])
 
             if not resume:
-                raise ValueError("Please upload a resume first")
+                raise ValueError("Please attach a resume to this matching profile first")
+
+            matching_profile.last_used_at = utc_now()
+            matching_profile.updated_at = utc_now()
+            agent_run.matching_profile_id = matching_profile.id
+            agent_run.resume_id = resume.id
+            session.add(matching_profile)
+            session.add(agent_run)
+            session.commit()
 
             initial_state = {
                 "resume": resume.content,
@@ -1783,17 +2004,19 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
                 "resume_filename": resume.filename,
                 "resume_summary": None,
                 "extracted_skills": [],
-                "preferences": prefs,
+                "preferences": matching_profile,
                 "profile": profile,
                 "found_jobs": [],
                 "current_job": None,
                 "application_status": "searching",
                 "applications_submitted": [],
-                "logs": ["Matching workflow started"],
+                "logs": [f"Matching workflow started for {matching_profile.name}"],
                 "user_id": user_id,
                 "agent_run_id": agent_run_id,
+                "matching_profile_id": matching_profile.id,
                 "auto_apply": auto_apply,
                 "auto_apply_audit": [],
+                "allowed_companies": allowed_companies,
             }
 
             result = await agent_graph.ainvoke(initial_state)
@@ -1805,12 +2028,17 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
 
             result_logs = result.get("logs", [])
             result_error = agent_result_error(result_logs)
-            agent_run.status = "failed" if result_error else result.get("application_status", "completed")
-            agent_run.error = result_error
-            agent_run.logs = result_logs
+            session.refresh(agent_run)
+            if agent_run.status == CANCEL_REQUESTED_STATUS or result.get("application_status") == CANCELED_STATUS:
+                agent_run.logs = result_logs
+                mark_run_canceled(session, agent_run)
+            else:
+                agent_run.status = "failed" if result_error else result.get("application_status", "completed")
+                agent_run.error = result_error
+                agent_run.logs = result_logs
+                agent_run.completed_at = utc_now()
             agent_run.applications_count = len(result.get("applications_submitted", []))
             agent_run.found_jobs_count = result.get("total_found_jobs", len(result.get("found_jobs", [])))
-            agent_run.completed_at = utc_now()
             persist_auto_apply_audit(session, user_id, agent_run.id, result.get("auto_apply_audit", []))
             session.add(agent_run)
             session.commit()
@@ -1831,15 +2059,23 @@ async def execute_agent_run(agent_run_id: int, user_id: int, auto_apply: bool):
                 audit_records_count=len(result.get("auto_apply_audit", [])),
             )
         except Exception as e:
-            agent_run.status = "failed"
-            agent_run.error = str(e)
-            agent_run.logs = (agent_run.logs or []) + [f"Agent failed: {e}"]
-            agent_run.completed_at = utc_now()
+            session.refresh(agent_run)
+            if agent_run.status == CANCEL_REQUESTED_STATUS:
+                mark_run_canceled(session, agent_run)
+                event_name = "agent_run.canceled"
+                event_level = "info"
+            else:
+                agent_run.status = "failed"
+                agent_run.error = str(e)
+                agent_run.logs = (agent_run.logs or []) + [f"Agent failed: {e}"]
+                agent_run.completed_at = utc_now()
+                event_name = "agent_run.failed"
+                event_level = "error"
             session.add(agent_run)
             session.commit()
             log_event(
-                "agent_run.failed",
-                level="error",
+                event_name,
+                level=event_level,
                 agent_run_id=agent_run.id,
                 user_id=user_id,
                 auto_apply=auto_apply,
@@ -2080,9 +2316,11 @@ def logout(
 @router.post("/upload-resume", response_model=ResumeUploadResponse)
 async def upload_resume(
     file: UploadFile = File(...),
+    matching_profile_id: Optional[int] = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
+    profile = resolve_run_matching_profile(session, user.id, matching_profile_id)
     content = await file.read()
     try:
         text_content = ResumeService.parse_resume(content, file.filename)
@@ -2100,21 +2338,166 @@ async def upload_resume(
     session.add(resume)
     session.commit()
     session.refresh(resume)
+    profile.resume_id = resume.id
+    profile.updated_at = utc_now()
+    session.add(profile)
+    session.commit()
     return {"id": resume.id, "filename": resume.filename, "message": "Resume uploaded successfully"}
+
+
+@router.get("/resumes", response_model=List[ResumeLibraryResponse])
+def list_resumes(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    resumes = session.exec(
+        select(Resume)
+        .where(Resume.user_id == user.id)
+        .order_by(Resume.upload_date.desc())
+    ).all()
+    return [serialize_resume_status(resume) for resume in resumes]
+
+
+@router.get("/matching-profiles", response_model=List[MatchingProfileResponse])
+def list_matching_profiles(
+    include_archived: bool = False,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    get_default_matching_profile(session, user.id)
+    query = select(MatchingProfile).where(MatchingProfile.user_id == user.id)
+    if not include_archived:
+        query = query.where(MatchingProfile.is_archived == False)
+    query = query.order_by(MatchingProfile.is_default.desc(), MatchingProfile.updated_at.desc())
+    return [serialize_matching_profile(profile, session) for profile in session.exec(query).all()]
+
+
+@router.post("/matching-profiles", response_model=MatchingProfileResponse)
+def create_matching_profile(
+    payload: MatchingProfileCreateRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    existing_profiles = session.exec(select(MatchingProfile).where(MatchingProfile.user_id == user.id)).all()
+    duplicate = None
+    if payload.duplicate_from_id:
+        duplicate = get_matching_profile_or_404(session, user.id, payload.duplicate_from_id)
+
+    profile = MatchingProfile(
+        user_id=user.id,
+        is_default=payload.is_default or not existing_profiles,
+        is_archived=False,
+    )
+    if duplicate:
+        profile.name = payload.name if "name" in payload.model_fields_set else f"{duplicate.name} copy"
+        profile.resume_id = duplicate.resume_id
+        profile.role = list(duplicate.role or [])
+        profile.experience_level = list(duplicate.experience_level or ["Intermediate"])
+        profile.location = list(duplicate.location or [])
+        profile.job_type = list(duplicate.job_type or ["Full-time"])
+        profile.target_companies = list(duplicate.target_companies or [])
+        profile.min_match_score = duplicate.min_match_score
+        profile.posted_within_days = duplicate.posted_within_days
+        override_fields = {
+            "resume_id", "role", "experience_level", "location", "job_type",
+            "target_companies", "min_match_score", "posted_within_days",
+        }
+        if payload.model_fields_set & override_fields:
+            apply_matching_profile_payload(profile, payload, user.id, session)
+        else:
+            profile.name = (profile.name or "Untitled profile").strip()[:120] or "Untitled profile"
+            profile.updated_at = utc_now()
+    else:
+        apply_matching_profile_payload(profile, payload, user.id, session)
+    if profile.is_default:
+        set_default_matching_profile(session, user.id, profile)
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    return serialize_matching_profile(profile, session)
+
+
+@router.patch("/matching-profiles/{profile_id}", response_model=MatchingProfileResponse)
+def update_matching_profile(
+    profile_id: int,
+    payload: MatchingProfileRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    profile = get_matching_profile_or_404(session, user.id, profile_id)
+    apply_matching_profile_payload(profile, payload, user.id, session)
+    if payload.is_default:
+        set_default_matching_profile(session, user.id, profile)
+    session.add(profile)
+    session.commit()
+    session.refresh(profile)
+    return serialize_matching_profile(profile, session)
+
+
+@router.delete("/matching-profiles/{profile_id}", response_model=MatchingProfileResponse)
+def archive_matching_profile(
+    profile_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    profile = get_matching_profile_or_404(session, user.id, profile_id)
+    active_count = session.exec(
+        select(MatchingProfile).where(
+            MatchingProfile.user_id == user.id,
+            MatchingProfile.is_archived == False,
+        )
+    ).all()
+    if len(active_count) <= 1:
+        raise HTTPException(status_code=400, detail="At least one matching profile must remain active.")
+    was_default = bool(profile.is_default)
+    profile.is_archived = True
+    profile.is_default = False
+    profile.updated_at = utc_now()
+    session.add(profile)
+    session.commit()
+    if was_default:
+        replacement = get_default_matching_profile(session, user.id)
+        if replacement and replacement.id != profile.id:
+            set_default_matching_profile(session, user.id, replacement)
+            session.commit()
+    session.refresh(profile)
+    return serialize_matching_profile(profile, session)
+
+
+@router.post("/matching-profiles/{profile_id}/resume", response_model=MatchingProfileResponse)
+async def upload_matching_profile_resume(
+    profile_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    await upload_resume(file=file, matching_profile_id=profile_id, user=user, session=session)
+    profile = get_matching_profile_or_404(session, user.id, profile_id)
+    return serialize_matching_profile(profile, session)
 
 @router.get("/search-jobs")
 def search_jobs(query: str, location: str):
-    return JobSearchService.search_jobs(query, location)
+    return JobSearchService.search_jobs(query, location, use_ranked_companies=False)
 
 @router.post("/preferences", response_model=JobPreferenceResponse)
 def create_preferences(
     prefs: JobPreferenceRequest,
+    matching_profile_id: Optional[int] = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     preference_data = prefs.model_dump()
     scoped_preferences = JobPreference(**preference_data, user_id=user.id)
     session.add(scoped_preferences)
+
+    profile = resolve_run_matching_profile(session, user.id, matching_profile_id)
+    profile.role = normalize_policy_list(prefs.role)
+    profile.experience_level = normalize_policy_list(prefs.experience_level) or ["Intermediate"]
+    profile.location = normalize_policy_list(prefs.location)
+    profile.job_type = normalize_policy_list(prefs.job_type) or ["Full-time"]
+    profile.target_companies = normalize_policy_list(prefs.target_companies)
+    profile.min_match_score = max(0, min(int(prefs.min_match_score or 70), 100))
+    profile.posted_within_days = max(1, min(int(prefs.posted_within_days or 7), 90))
+    profile.updated_at = utc_now()
+    session.add(profile)
+
     session.commit()
     session.refresh(scoped_preferences)
     return scoped_preferences
@@ -2278,10 +2661,10 @@ def export_account_data(user: User = Depends(get_current_user), session: Session
         "application_profile": application_profile,
         "application_answer_audit": application_answer_audit,
         "submission_settings": serialize_submit_settings(submission_settings, user) if submission_settings else None,
-        "applications": [serialize_application_response(application) for application in applications],
+        "applications": [serialize_application_response(application, session) for application in applications],
         "generated_packages": generated_packages,
         "agent_runs": [
-            serialize_agent_run(run, audit_by_run.get(run.id or 0, []))
+            serialize_agent_run(run, audit_by_run.get(run.id or 0, []), session)
             for run in agent_runs
         ],
         "fill_reviews": serialized_fill_reviews,
@@ -2386,20 +2769,18 @@ def reset_submission_settings(user: User = Depends(get_current_user), session: S
 async def run_agent(
     background_tasks: BackgroundTasks,
     auto_apply: bool = False,
+    matching_profile_id: Optional[int] = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    # Get latest resume, preferences and profile
-    resume = get_latest_resume(session, user.id)
+    matching_profile = resolve_run_matching_profile(session, user.id, matching_profile_id)
+    resume = resolve_profile_resume(session, user.id, matching_profile)
 
     if not resume:
-        raise HTTPException(status_code=400, detail="Please upload a resume first")
+        raise HTTPException(status_code=400, detail="Please attach a resume to this matching profile first")
 
-    if auto_apply and not can_auto_apply(user):
-        raise HTTPException(
-            status_code=403,
-            detail="Browser fill-for-review requires a pro plan.",
-        )
+    if auto_apply:
+        raise_browser_automation_retired()
 
     try:
         validate_llm_config()
@@ -2409,12 +2790,14 @@ async def run_agent(
     quota_limit, quota_remaining_before_run = ensure_agent_quota(session, user)
     agent_run = AgentRun(
         user_id=user.id,
+        matching_profile_id=matching_profile.id,
+        resume_id=resume.id,
         status="queued",
         auto_apply=auto_apply,
         logs=[
-            "Matching workflow queued for worker"
+            f"Matching workflow queued for {matching_profile.name}"
             if get_agent_runner_mode() == "worker"
-            else "Matching workflow queued"
+            else f"Matching workflow queued for {matching_profile.name}"
         ],
     )
     session.add(agent_run)
@@ -2425,6 +2808,8 @@ async def run_agent(
         agent_run_id=agent_run.id,
         user_id=user.id,
         auto_apply=auto_apply,
+        matching_profile_id=matching_profile.id,
+        resume_id=resume.id,
         runner_mode=get_agent_runner_mode(),
         quota_limit=quota_limit,
         quota_remaining=max(quota_remaining_before_run - 1, 0),
@@ -2439,6 +2824,7 @@ async def run_agent(
         "applications_count": 0,
         "found_jobs_count": 0,
         "agent_run_id": agent_run.id,
+        "matching_profile_id": matching_profile.id,
         "quota_limit": quota_limit,
         "quota_remaining": max(quota_remaining_before_run - 1, 0),
     }
@@ -2456,7 +2842,7 @@ def get_agent_runs(
         .limit(min(max(limit, 1), 50))
     )
     runs = session.exec(query).all()
-    return [serialize_agent_run(run) for run in runs]
+    return [serialize_agent_run(run, session=session) for run in runs]
 
 @router.get("/agent/runs/{run_id}", response_model=AgentRunRecordResponse)
 def get_agent_run(
@@ -2473,7 +2859,97 @@ def get_agent_run(
         .where(AutoApplyAudit.agent_run_id == run.id, AutoApplyAudit.user_id == user.id)
         .order_by(AutoApplyAudit.created_at.asc())
     ).all()
-    return serialize_agent_run(run, audit_records)
+    return serialize_agent_run(run, audit_records, session)
+
+@router.post("/agent/runs/{run_id}/cancel", response_model=AgentRunRecordResponse)
+def cancel_agent_run(
+    run_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    run = session.get(AgentRun, run_id)
+    if not run or run.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+
+    if run.status == CANCELED_STATUS:
+        return serialize_agent_run(run, session=session)
+
+    if run.status not in CANCELABLE_AGENT_RUN_STATUSES:
+        raise HTTPException(status_code=400, detail="This matching run has already finished.")
+
+    if run.status == "queued":
+        mark_run_canceled(session, run)
+        event_name = "agent_run.queued_canceled"
+    else:
+        message = "Stop requested. Matching will stop after the current step finishes."
+        run.status = CANCEL_REQUESTED_STATUS
+        if not run.logs or run.logs[-1] != message:
+            run.logs = (run.logs or []) + [message]
+        session.add(run)
+        event_name = "agent_run.cancel_requested"
+
+    session.commit()
+    session.refresh(run)
+    log_event(
+        event_name,
+        agent_run_id=run.id,
+        user_id=user.id,
+        auto_apply=run.auto_apply,
+        status=run.status,
+    )
+    return serialize_agent_run(run, session=session)
+
+def application_threshold_for_profile(session: Session, user_id: int, app: Application, cache: dict[Optional[int], int]) -> float:
+    cache_key = app.matching_profile_id
+    if cache_key not in cache:
+        cache[cache_key] = get_min_match_score(session, user_id, app.matching_profile_id)
+    return cache[cache_key] / 100
+
+
+@router.get("/applications/summary")
+def get_application_summary(
+    matching_profile_id: Optional[int] = None,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    selected_profile = resolve_run_matching_profile(session, user.id, matching_profile_id) if matching_profile_id else get_default_matching_profile(session, user.id)
+    min_match_score = selected_profile.min_match_score if selected_profile else 70
+    threshold = min_match_score / 100
+
+    query = select(Application).where(Application.user_id == user.id, *trackable_application_filter())
+    if matching_profile_id:
+        query = query.where(Application.matching_profile_id == selected_profile.id)
+    applications = session.exec(query).all()
+    threshold_cache: dict[Optional[int], int] = {}
+    strong_count = sum(
+        1
+        for app in applications
+        if app.pre_screen_status != "reject"
+        and app.status != "Screened Out"
+        and (app.fit_score or 0) >= (threshold if matching_profile_id else application_threshold_for_profile(session, user.id, app, threshold_cache))
+    )
+    below_threshold_count = sum(
+        1
+        for app in applications
+        if app.pre_screen_status != "reject"
+        and app.status != "Screened Out"
+        and 0 < (app.fit_score or 0) < (threshold if matching_profile_id else application_threshold_for_profile(session, user.id, app, threshold_cache))
+    )
+    latest_run_query = select(AgentRun).where(AgentRun.user_id == user.id)
+    if matching_profile_id and selected_profile:
+        latest_run_query = latest_run_query.where(AgentRun.matching_profile_id == selected_profile.id)
+    latest_run = session.exec(
+        latest_run_query.order_by(desc(AgentRun.started_at))
+    ).first()
+
+    return {
+        "strong_count": strong_count,
+        "below_threshold_count": below_threshold_count,
+        "visible_count": len(applications),
+        "min_match_score": min_match_score,
+        "latest_run": serialize_agent_run(latest_run, session=session) if latest_run else None,
+    }
+
 
 @router.get("/applications", response_model=List[ApplicationResponse])
 def get_applications(
@@ -2482,18 +2958,24 @@ def get_applications(
     direction: str = "desc",
     status: Optional[str] = None,
     match_bucket: str = "all",
+    matching_profile_id: Optional[int] = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
+    selected_profile = resolve_run_matching_profile(session, user.id, matching_profile_id) if matching_profile_id else None
     query = select(Application).where(Application.user_id == user.id, *trackable_application_filter())
+    if selected_profile:
+        query = query.where(Application.matching_profile_id == selected_profile.id)
 
     if status:
         query = query.where(Application.status == status)
 
-    if match_bucket != "all":
-        latest_prefs = get_latest_preferences(session, user.id)
-        min_match_score = latest_prefs.min_match_score if latest_prefs else 70
-        threshold = min_match_score / 100
+    if match_bucket not in {"all", "strong", "below_threshold"}:
+        raise HTTPException(status_code=400, detail="match_bucket must be one of: all, strong, below_threshold")
+
+    defer_profile_bucket_filter = match_bucket != "all" and selected_profile is None
+    if match_bucket != "all" and selected_profile:
+        threshold = selected_profile.min_match_score / 100
 
         if match_bucket == "strong":
             query = query.where(
@@ -2508,8 +2990,6 @@ def get_applications(
                 Application.fit_score > 0,
                 Application.fit_score < threshold,
             )
-        else:
-            raise HTTPException(status_code=400, detail="match_bucket must be one of: all, strong, below_threshold")
 
     sort_columns = {
         "date": Application.created_at,
@@ -2521,10 +3001,30 @@ def get_applications(
     sort_direction = asc if direction == "asc" else desc
     query = query.order_by(sort_direction(sort_column))
 
-    if limit and limit > 0:
+    if limit and limit > 0 and not defer_profile_bucket_filter:
         query = query.limit(min(limit, 100))
 
-    return [serialize_application_response(application) for application in session.exec(query).all()]
+    applications = session.exec(query).all()
+    if defer_profile_bucket_filter:
+        threshold_cache: dict[Optional[int], int] = {}
+        if match_bucket == "strong":
+            applications = [
+                app for app in applications
+                if app.pre_screen_status != "reject"
+                and app.status != "Screened Out"
+                and (app.fit_score or 0) >= application_threshold_for_profile(session, user.id, app, threshold_cache)
+            ]
+        elif match_bucket == "below_threshold":
+            applications = [
+                app for app in applications
+                if app.pre_screen_status != "reject"
+                and app.status != "Screened Out"
+                and 0 < (app.fit_score or 0) < application_threshold_for_profile(session, user.id, app, threshold_cache)
+            ]
+        if limit and limit > 0:
+            applications = applications[:min(limit, 100)]
+
+    return [serialize_application_response(application, session) for application in applications]
 
 @router.post("/applications/{app_id}/resolve-link", response_model=ApplicationResponse)
 async def resolve_application_link(
@@ -2536,7 +3036,11 @@ async def resolve_application_link(
     if not app or app.user_id != user.id:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    resolution = await ApplicationLinkResolver.resolve_url(app.source_url or app.job_url)
+    resolution = await ApplicationLinkResolver.resolve_url(
+        app.source_url or app.job_url,
+        company=app.company,
+        job_title=app.job_title,
+    )
     app.source_url = resolution.original_url
     app.resolved_url = resolution.resolved_url
     app.source_type = resolution.source_type
@@ -2547,13 +3051,13 @@ async def resolve_application_link(
     session.add(app)
     session.commit()
     session.refresh(app)
-    return serialize_application_response(app)
+    return serialize_application_response(app, session)
 
 @router.delete("/applications", response_model=MessageResponse)
 def clear_applications(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     cleared_count = clear_application_records(session, user.id)
     label = "application" if cleared_count == 1 else "applications"
-    return {"message": f"Cleared {cleared_count} saved {label}."}
+    return {"message": f"Cleared {cleared_count} saved {label} across all matching profiles."}
 
 @router.post("/agent/analyze-single", response_model=JobAnalysisResponse)
 async def analyze_single_job(
@@ -2595,8 +3099,14 @@ async def analyze_single_job(
 
 @router.get("/user/status", response_model=UserStatusResponse)
 def get_user_status(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    resume = get_latest_resume(session, user.id)
-    prefs = get_latest_preferences(session, user.id)
+    selected_profile = get_default_matching_profile(session, user.id)
+    resume = resolve_profile_resume(session, user.id, selected_profile, require_attached=False) if selected_profile else get_latest_resume(session, user.id)
+    prefs = selected_profile
+    matching_profiles = session.exec(
+        select(MatchingProfile)
+        .where(MatchingProfile.user_id == user.id, MatchingProfile.is_archived == False)
+        .order_by(MatchingProfile.is_default.desc(), MatchingProfile.updated_at.desc())
+    ).all()
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
     application_profile = session.exec(
         select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
@@ -2613,21 +3123,10 @@ def get_user_status(user: User = Depends(get_current_user), session: Session = D
 
     return {
         "user": user,
-        "resume": {
-            "filename": resume.filename,
-            "uploaded_at": resume.upload_date,
-            "skills": resume.skills,
-            "summary": resume.summary
-        } if resume else None,
-        "preferences": {
-            "role": prefs.role,
-            "location": prefs.location,
-            "job_type": prefs.job_type,
-            "experience_level": prefs.experience_level,
-            "target_companies": getattr(prefs, "target_companies", []),
-            "posted_within_days": prefs.posted_within_days,
-            "min_match_score": prefs.min_match_score
-        } if prefs else None,
+        "resume": serialize_resume_status(resume),
+        "preferences": matching_profile_payload(prefs) if matching_profile_has_saved_targets(prefs) else None,
+        "matching_profiles": [serialize_matching_profile(item, session) for item in matching_profiles],
+        "selected_matching_profile": serialize_matching_profile(selected_profile, session) if selected_profile else None,
         "profile": {
             "first_name": profile.first_name,
             "last_name": profile.last_name,
@@ -2732,465 +3231,58 @@ def reset_password(payload: ResetPasswordRequest, session: Session = Depends(get
 
 # ─── Application Package ────────────────────────────────────────────────────
 
-@router.post("/applications/{app_id}/fill-review", response_model=ApplicationFillReviewResponse)
-async def fill_application_for_review(
-    app_id: int,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    if not app or app.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Application not found")
-    assert_application_matches_threshold(app, session, user.id, "fill-for-review")
+@router.post("/applications/{app_id}/assistant-session", response_model=MessageResponse)
+def create_apply_assistant_session(app_id: int):
+    raise_browser_automation_retired()
 
-    application_url = app.resolved_url or app.job_url
-    link_resolution = ApplicationLinkResolver.classify_url(application_url)
-    ats_type = app.ats_type or link_resolution.ats_type
-    log_event(
-        "browser_fill_review.requested",
-        user_id=user.id,
-        application_id=app.id,
-        ats_type=ats_type,
-        source_host=url_host(application_url),
-        resolution_status=app.resolution_status,
-    )
-    if app.resolution_status != "resolved" or not application_url:
-        raise HTTPException(status_code=400, detail="Resolve this application link before fill-for-review")
-    if ats_type not in ApplicationFillReviewService.SUPPORTED_ATS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Fill-for-review currently supports Greenhouse, Lever, Ashby, SmartRecruiters, "
-                "Workday, BambooHR, iCIMS, Recruitee, and Taleo links only"
-            ),
-        )
 
-    resume = get_latest_resume(session, user.id)
-    profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
-    answer_profile = decrypt_application_answer_profile(session.exec(
-        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
-    ).first())
-    if answer_profile:
-        audit_application_answer_access(
-            session,
-            user_id=user.id,
-            action="automation_use",
-            access_reason="fill_for_review",
-            source="browser_fill_review",
-            application_id=app.id,
-        )
+@router.get("/assistant/session/{token}", response_model=MessageResponse)
+def get_apply_assistant_payload(token: str):
+    raise_browser_automation_retired()
 
-    if not resume:
-        raise HTTPException(status_code=400, detail="Please upload a resume first")
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please complete your candidate profile first")
 
-    attempt = create_auto_apply_attempt(
-        session,
-        user_id=user.id,
-        app=app,
-        mode="fill_for_review",
-        status="filling",
-    )
-    attempt = append_attempt_step(
-        session,
-        attempt,
-        "inputs_validated",
-        "success",
-        "Resume, profile, application link, and ATS support were validated.",
-        {
-            "ats_type": ats_type,
-            "has_answer_profile": bool(answer_profile and answer_profile.consent_to_use_answers),
-        },
-    )
-    attempt = append_attempt_step(
-        session,
-        attempt,
-        "browser_fill_started",
-        "running",
-        "Browser fill-for-review started.",
-        {"application_url": application_url},
-    )
+@router.post("/assistant/session/{token}/plan", response_model=MessageResponse)
+async def plan_apply_assistant_form_step(token: str):
+    raise_browser_automation_retired()
 
-    fill_result = await ApplicationFillReviewService.fill_application_for_review(
-        application_url=application_url,
-        ats_type=ats_type,
-        profile=profile,
-        resume_bytes=resume.file_content,
-        resume_filename=resume.filename,
-        answer_profile=answer_profile if answer_profile and answer_profile.consent_to_use_answers else None,
-        cover_letter=app.cover_letter,
-    )
 
-    review_record = ApplicationFillReview(
-        user_id=user.id,
-        application_id=app.id,
-        ats_type=fill_result.ats_type,
-        application_url=fill_result.application_url,
-        status=fill_result.status,
-        message=fill_result.message,
-        fields_filled=fill_result.fields_filled,
-        fields_missing=fill_result.fields_missing,
-        blockers=fill_result.blockers,
-    )
-    app.status = fill_result.application_status
-    session.add(review_record)
-    session.add(app)
-    session.commit()
-    session.refresh(review_record)
+@router.post("/applications/{app_id}/fill-review", response_model=MessageResponse)
+async def fill_application_for_review(app_id: int):
+    raise_browser_automation_retired()
 
-    review_record.screenshot_path = FillReviewArtifactStore.save_base64(
-        user_id=user.id,
-        application_id=app.id,
-        review_id=review_record.id,
-        kind="screenshot",
-        payload_base64=fill_result.screenshot_base64,
-        extension="png",
-    )
-    review_record.trace_path = FillReviewArtifactStore.save_base64(
-        user_id=user.id,
-        application_id=app.id,
-        review_id=review_record.id,
-        kind="trace",
-        payload_base64=fill_result.trace_base64,
-        extension="zip",
-    )
-    session.add(review_record)
-    session.commit()
-    session.refresh(review_record)
-    attempt = update_attempt_from_fill_review(session, attempt, review_record)
+@router.post("/applications/{app_id}/submit-readiness", response_model=MessageResponse)
+def check_application_submit_readiness(app_id: int):
+    raise_browser_automation_retired()
 
-    response = fill_result.model_dump()
-    response["review_id"] = review_record.id
-    response["attempt_id"] = attempt.id
-    response["screenshot_url"] = fill_review_artifact_url(
-        app.id,
-        review_record.id,
-        "screenshot",
-        review_record.screenshot_path,
-    )
-    response["trace_url"] = fill_review_artifact_url(
-        app.id,
-        review_record.id,
-        "trace",
-        review_record.trace_path,
-    )
-    response.pop("trace_base64", None)
-    log_event(
-        "browser_fill_review.completed",
-        user_id=user.id,
-        application_id=app.id,
-        auto_apply_attempt_id=attempt.id,
-        fill_review_id=review_record.id,
-        status=fill_result.status,
-        application_status=fill_result.application_status,
-        ats_type=fill_result.ats_type,
-        fields_filled_count=len(fill_result.fields_filled or []),
-        missing_fields_count=len(fill_result.fields_missing or []),
-        blockers_count=len(fill_result.blockers or []),
-        screenshot_saved=bool(review_record.screenshot_path),
-        trace_saved=bool(review_record.trace_path),
-    )
-    return response
 
-@router.post("/applications/{app_id}/submit-readiness", response_model=ApplicationSubmitReadinessResponse)
-def check_application_submit_readiness(
-    app_id: int,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    if not app or app.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Application not found")
-    log_event(
-        "submit_readiness.requested",
-        user_id=user.id,
-        application_id=app.id,
-        ats_type=app.ats_type,
-        source_host=url_host(app.resolved_url or app.job_url),
-    )
+@router.post("/applications/{app_id}/submit-confirmation", response_model=MessageResponse)
+async def create_application_submit_confirmation(app_id: int):
+    raise_browser_automation_retired()
 
-    settings = get_or_create_submit_settings(session, user.id)
-    answer_profile = decrypt_application_answer_profile(session.exec(
-        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
-    ).first())
-    if answer_profile:
-        audit_application_answer_access(
-            session,
-            user_id=user.id,
-            action="automation_read",
-            access_reason="submit_readiness",
-            source="submit_readiness",
-            application_id=app.id,
-        )
-    latest_review = get_latest_fill_review(session, user.id, app.id)
-    submits_today_count = get_submits_today_count(session, user.id)
 
-    readiness = evaluate_submit_readiness(
-        app=app,
-        user=user,
-        settings=settings,
-        answer_profile=answer_profile,
-        latest_review=latest_review,
-        submits_today_count=submits_today_count,
-    )
-    log_event(
-        "submit_readiness.completed",
-        user_id=user.id,
-        application_id=app.id,
-        ready=readiness.get("ready"),
-        can_submit=readiness.get("can_submit"),
-        blockers_count=len(readiness.get("blockers") or []),
-        warnings_count=len(readiness.get("warnings") or []),
-        checks_count=len(readiness.get("checks") or []),
-    )
-    return readiness
+@router.get("/applications/{app_id}/fill-reviews", response_model=MessageResponse)
+def get_application_fill_reviews(app_id: int):
+    raise_browser_automation_retired()
 
-@router.post("/applications/{app_id}/submit-confirmation", response_model=ApplicationSubmitConfirmationResponse)
-async def create_application_submit_confirmation(
-    app_id: int,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    if not app or app.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Application not found")
-    log_event(
-        "submit_confirmation.requested",
-        user_id=user.id,
-        application_id=app.id,
-        ats_type=app.ats_type,
-        source_host=url_host(app.resolved_url or app.job_url),
-    )
 
-    settings = get_or_create_submit_settings(session, user.id)
-    answer_profile = decrypt_application_answer_profile(session.exec(
-        select(ApplicationAnswerProfile).where(ApplicationAnswerProfile.user_id == user.id)
-    ).first())
-    if answer_profile:
-        audit_application_answer_access(
-            session,
-            user_id=user.id,
-            action="automation_read",
-            access_reason="submit_confirmation",
-            source="submit_confirmation",
-            application_id=app.id,
-        )
-    latest_review = get_latest_fill_review(session, user.id, app.id)
-    readiness = evaluate_submit_readiness(
-        app=app,
-        user=user,
-        settings=settings,
-        answer_profile=answer_profile,
-        latest_review=latest_review,
-        submits_today_count=get_submits_today_count(session, user.id),
-    )
+@router.get("/applications/{app_id}/automation-attempts", response_model=MessageResponse)
+def get_application_automation_attempts(app_id: int):
+    raise_browser_automation_retired()
 
-    submit_control = unavailable_submit_control(["Resolve readiness blockers before final submit control detection."])
-    if readiness["ready"]:
-        detection = await ApplicationFillReviewService.detect_final_submit_control(
-            application_url=app.resolved_url or app.job_url,
-            ats_type=app.ats_type or "",
-        )
-        submit_control = serialize_submit_control_detection(detection)
 
-    response = build_submit_confirmation_response(app, readiness, submit_control)
-    attempt = get_latest_auto_apply_attempt(session, user.id, app.id)
-    if not attempt:
-        attempt = create_auto_apply_attempt(
-            session,
-            user_id=user.id,
-            app=app,
-            mode="submit_confirmation",
-            status="confirming",
-        )
-    if latest_review and not attempt.fill_review_id:
-        attempt.fill_review_id = latest_review.id
-        attempt.screenshot_path = latest_review.screenshot_path
-        attempt.trace_path = latest_review.trace_path
-        session.add(attempt)
-        session.commit()
-        session.refresh(attempt)
+@router.get("/applications/{app_id}/fill-reviews/{review_id}/screenshot", response_model=MessageResponse)
+def get_application_fill_review_screenshot(app_id: int, review_id: int):
+    raise_browser_automation_retired()
 
-    attempt = append_attempt_step(
-        session,
-        attempt,
-        "readiness_checked",
-        "success" if readiness.get("ready") else "blocked",
-        readiness.get("message"),
-        {
-            "blockers_count": len(readiness.get("blockers") or []),
-            "checks_count": len(readiness.get("checks") or []),
-        },
-    )
-    if submit_control:
-        attempt = append_attempt_step(
-            session,
-            attempt,
-            "submit_control_detection",
-            submit_control.get("status", "unavailable"),
-            (
-                "Final submit control inspected without clicking."
-                if submit_control.get("detected")
-                else blocked_reason_from_lists(submit_control.get("blockers") or []) or "Final submit control was not detected."
-            ),
-            {
-                "detected": bool(submit_control.get("detected")),
-                "confidence": submit_control.get("confidence"),
-                "label": submit_control.get("label"),
-            },
-        )
-    attempt = update_attempt_from_confirmation(session, attempt, response)
-    response["attempt_id"] = attempt.id
-    session.add(
-        AutoApplyAudit(
-            user_id=user.id,
-            auto_apply_attempt_id=attempt.id,
-            job_url=app.resolved_url or app.job_url,
-            job_title=app.job_title,
-            company=app.company,
-            action="submit_confirmation",
-            status="ready" if response["ready"] else "blocked",
-            message=response["message"],
-        )
-    )
-    session.commit()
-    log_event(
-        "submit_confirmation.completed",
-        user_id=user.id,
-        application_id=app.id,
-        auto_apply_attempt_id=attempt.id,
-        ready=response.get("ready"),
-        can_submit=response.get("can_submit"),
-        submit_control_status=submit_control.get("status"),
-        blockers_count=len(response.get("blockers") or []),
-        warnings_count=len(response.get("warnings") or []),
-    )
-    return response
 
-@router.get("/applications/{app_id}/fill-reviews", response_model=List[ApplicationFillReviewRecordResponse])
-def get_application_fill_reviews(
-    app_id: int,
-    limit: int = 10,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    if not app or app.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Application not found")
+@router.get("/applications/{app_id}/fill-reviews/{review_id}/trace", response_model=MessageResponse)
+def get_application_fill_review_trace(app_id: int, review_id: int):
+    raise_browser_automation_retired()
 
-    query = (
-        select(ApplicationFillReview)
-        .where(ApplicationFillReview.application_id == app.id, ApplicationFillReview.user_id == user.id)
-        .order_by(ApplicationFillReview.created_at.desc())
-        .limit(min(max(limit, 1), 25))
-    )
-    return [serialize_fill_review_record(record) for record in session.exec(query).all()]
-
-@router.get("/applications/{app_id}/automation-attempts", response_model=List[AutoApplyAttemptResponse])
-def get_application_automation_attempts(
-    app_id: int,
-    limit: int = 10,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    if not app or app.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    query = (
-        select(AutoApplyAttempt)
-        .where(AutoApplyAttempt.application_id == app.id, AutoApplyAttempt.user_id == user.id)
-        .order_by(AutoApplyAttempt.created_at.desc())
-        .limit(min(max(limit, 1), 25))
-    )
-    return [serialize_auto_apply_attempt(attempt) for attempt in session.exec(query).all()]
-
-@router.get("/applications/{app_id}/fill-reviews/{review_id}/screenshot")
-def get_application_fill_review_screenshot(
-    app_id: int,
-    review_id: int,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    review = session.get(ApplicationFillReview, review_id)
-    if (
-        not app
-        or app.user_id != user.id
-        or not review
-        or review.user_id != user.id
-        or review.application_id != app.id
-    ):
-        raise HTTPException(status_code=404, detail="Fill-review screenshot not found")
-    if not FillReviewArtifactStore.is_readable(review.screenshot_path):
-        raise HTTPException(status_code=404, detail="Fill-review screenshot not found")
-
-    return FileResponse(
-        review.screenshot_path,
-        media_type="image/png",
-        filename=f"fill-review-{review.id}-screenshot.png",
-    )
-
-@router.get("/applications/{app_id}/fill-reviews/{review_id}/trace")
-def get_application_fill_review_trace(
-    app_id: int,
-    review_id: int,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    review = session.get(ApplicationFillReview, review_id)
-    if (
-        not app
-        or app.user_id != user.id
-        or not review
-        or review.user_id != user.id
-        or review.application_id != app.id
-    ):
-        raise HTTPException(status_code=404, detail="Fill-review trace not found")
-    if not FillReviewArtifactStore.is_readable(review.trace_path):
-        raise HTTPException(status_code=404, detail="Fill-review trace not found")
-
-    return FileResponse(
-        review.trace_path,
-        media_type="application/zip",
-        filename=f"fill-review-{review.id}-trace.zip",
-    )
 
 @router.delete("/applications/{app_id}/fill-reviews", response_model=MessageResponse)
-def clear_application_fill_reviews(
-    app_id: int,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    app = session.get(Application, app_id)
-    if not app or app.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    reviews = session.exec(
-        select(ApplicationFillReview)
-        .where(ApplicationFillReview.application_id == app.id, ApplicationFillReview.user_id == user.id)
-    ).all()
-    for review in reviews:
-        linked_attempts = session.exec(
-            select(AutoApplyAttempt).where(
-                AutoApplyAttempt.user_id == user.id,
-                AutoApplyAttempt.application_id == app.id,
-                AutoApplyAttempt.fill_review_id == review.id,
-            )
-        ).all()
-        for attempt in linked_attempts:
-            attempt.fill_review_id = None
-            attempt.screenshot_path = None
-            attempt.trace_path = None
-            attempt.updated_at = utc_now()
-            session.add(attempt)
-        FillReviewArtifactStore.delete(review.screenshot_path)
-        FillReviewArtifactStore.delete(review.trace_path)
-        session.delete(review)
-    session.commit()
-    return {"message": f"Cleared {len(reviews)} fill-review record{'' if len(reviews) == 1 else 's'}"}
+def clear_application_fill_reviews(app_id: int):
+    raise_browser_automation_retired()
 
 @router.post("/agent/prepare-application", response_model=ApplicationPackageResponse)
 async def prepare_application(
@@ -3199,8 +3291,8 @@ async def prepare_application(
     session: Session = Depends(get_session)
 ):
     """
-    Generates a full application package: tailored cover letter, talking points,
-    tailored resume summary, and common Q&A answers for a specific job.
+    Generates a full application package: tailored cover letter, resume improvement
+    checklist, talking points, and common Q&A answers for a specific job.
     """
     resume = get_latest_resume(session, user.id)
     profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
@@ -3252,6 +3344,7 @@ async def prepare_application(
 Return a JSON object with exactly these keys:
 - "cover_letter": A professional, personalized cover letter (3-4 paragraphs). Address to 'Hiring Manager'. Sign off with candidate's full name.
 - "tailored_summary": A 2-3 sentence resume summary tailored to this job, mirroring its keywords.
+- "resume_improvements": A list of 8-10 detailed bullet strings describing exactly what should be improved in the candidate's resume for THIS role. Each item should name the resume area, explain why it matters for the job, and give a concrete rewrite/addition suggestion. Do not invent experience; frame gaps as honest improvements.
 - "talking_points": A list of 4-5 concise bullet strings — strongest selling points for THIS specific role.
 - "qa_answers": A list of 5 objects each with "question" and "answer" covering:
   1. Why do you want to work at {company}?
@@ -3314,6 +3407,145 @@ Return a JSON object with exactly these keys:
         session.commit()
 
     return result
+
+
+def package_filename_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "_", (value or "").strip()).strip("_")
+    return cleaned[:64] or "application"
+
+
+def pdf_safe_text(value: Optional[str]) -> str:
+    return (value or "").encode("latin-1", errors="replace").decode("latin-1")
+
+
+def pdf_multi_cell(pdf, height: float, text: str) -> None:
+    pdf.multi_cell(0, height, text, new_x="LMARGIN", new_y="NEXT")
+
+
+def add_package_pdf_header(pdf, title: str, app: Application, profile: Optional[Profile]) -> None:
+    pdf.set_margins(22, 22, 22)
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 17)
+    pdf_multi_cell(pdf, 8, pdf_safe_text(title))
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(90, 90, 90)
+    pdf_multi_cell(pdf, 6, pdf_safe_text(f"{app.job_title} at {app.company}"))
+    contact_parts = []
+    if profile:
+        contact_parts.append(f"{profile.first_name} {profile.last_name}")
+        if profile.email:
+            contact_parts.append(profile.email)
+        if profile.phone:
+            contact_parts.append(profile.phone)
+        if profile.linkedin_url:
+            contact_parts.append(profile.linkedin_url)
+    if contact_parts:
+        pdf_multi_cell(pdf, 5, pdf_safe_text("  |  ".join(contact_parts)))
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(180, 180, 180)
+    pdf.set_line_width(0.35)
+    pdf.line(22, pdf.get_y() + 3, 188, pdf.get_y() + 3)
+    pdf.ln(9)
+
+
+def add_pdf_section(pdf, title: str, body: Optional[str]) -> None:
+    if not body:
+        return
+    pdf.set_font("Helvetica", "B", 12)
+    pdf_multi_cell(pdf, 7, pdf_safe_text(title))
+    pdf.ln(1)
+    pdf.set_font("Helvetica", "", 10.5)
+    for paragraph in str(body).split("\n"):
+        paragraph = paragraph.strip()
+        if paragraph:
+            pdf_multi_cell(pdf, 6.5, pdf_safe_text(paragraph))
+            pdf.ln(2)
+    pdf.ln(2)
+
+
+def add_pdf_bullets(pdf, title: str, items: Optional[List[str]]) -> None:
+    if not items:
+        return
+    pdf.set_font("Helvetica", "B", 12)
+    pdf_multi_cell(pdf, 7, pdf_safe_text(title))
+    pdf.ln(1)
+    pdf.set_font("Helvetica", "", 10.5)
+    for item in items:
+        if str(item).strip():
+            pdf_multi_cell(pdf, 6.5, pdf_safe_text(f"- {item}"))
+    pdf.ln(4)
+
+
+def add_pdf_qa_items(pdf, title: str, items: Optional[List[dict]], answer_key: str) -> None:
+    if not items:
+        return
+    pdf.set_font("Helvetica", "B", 12)
+    pdf_multi_cell(pdf, 7, pdf_safe_text(title))
+    pdf.ln(1)
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip()
+        answer = str(item.get(answer_key) or "").strip()
+        if not question and not answer:
+            continue
+        pdf.set_font("Helvetica", "B", 10.5)
+        pdf_multi_cell(pdf, 6.5, pdf_safe_text(f"{index}. {question}" if question else f"{index}."))
+        if answer:
+            pdf.set_font("Helvetica", "", 10.5)
+            pdf_multi_cell(pdf, 6.5, pdf_safe_text(answer))
+        pdf.ln(3)
+    pdf.ln(2)
+
+
+def build_pdf_bytes(title: str, app: Application, profile: Optional[Profile], sections: List[dict]) -> bytes:
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    add_package_pdf_header(pdf, title, app, profile)
+    for section in sections:
+        kind = section.get("kind")
+        if kind == "text":
+            add_pdf_section(pdf, section.get("title", ""), section.get("body"))
+        elif kind == "bullets":
+            add_pdf_bullets(pdf, section.get("title", ""), section.get("items"))
+        elif kind == "qa":
+            add_pdf_qa_items(pdf, section.get("title", ""), section.get("items"), section.get("answer_key", "answer"))
+    return bytes(pdf.output())
+
+
+def build_copy_paste_fields(app: Application, package_data: ApplicationPackageResponse) -> str:
+    lines = [
+        f"Application package: {app.job_title} at {app.company}",
+        f"Generated: {utc_now().isoformat()}",
+        "",
+    ]
+    if package_data.cover_letter:
+        lines.extend(["Cover letter", "============", package_data.cover_letter.strip(), ""])
+    if package_data.tailored_summary:
+        lines.extend(["Tailored resume summary", "=======================", package_data.tailored_summary.strip(), ""])
+    if package_data.resume_improvements:
+        lines.extend(["Resume improvements", "==================="])
+        lines.extend([f"- {item}" for item in package_data.resume_improvements if str(item).strip()])
+        lines.append("")
+    if package_data.qa_answers:
+        lines.extend(["Application answers", "==================="])
+        for index, qa in enumerate(package_data.qa_answers, start=1):
+            question = str(qa.get("question") or "").strip()
+            answer = str(qa.get("answer") or "").strip()
+            lines.extend([f"{index}. {question}", answer, ""])
+    if package_data.talking_points:
+        lines.extend(["Talking points", "=============="])
+        lines.extend([f"- {point}" for point in package_data.talking_points])
+        lines.append("")
+    company_brief = package_data.company_brief or {}
+    questions_to_ask = company_brief.get("questions_to_ask") if isinstance(company_brief, dict) else None
+    if questions_to_ask:
+        lines.extend(["Questions to ask", "================"])
+        lines.extend([f"- {question}" for question in questions_to_ask])
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
 
 
 @router.get("/applications/{app_id}/cover-letter.pdf")
@@ -3394,6 +3626,102 @@ def download_cover_letter_pdf(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.post("/applications/{app_id}/package.zip")
+def download_application_package_zip(
+    app_id: int,
+    package_data: ApplicationPackageResponse,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    app = session.get(Application, app_id)
+    if not app or app.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+    assert_application_matches_threshold(app, session, user.id, "application package download")
+
+    profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
+    cover_letter = package_data.cover_letter or app.cover_letter or "No cover letter was generated for this package."
+    summary = package_data.tailored_summary or "No tailored resume summary was generated for this package."
+    resume_improvements = [str(item).strip() for item in package_data.resume_improvements if str(item).strip()]
+    if not resume_improvements:
+        resume_improvements = [
+            f"Add a targeted summary for {app.job_title} that mirrors the role's most important keywords while staying truthful to your experience.",
+            "Rewrite the most relevant experience bullets to show scope, tools, business impact, and measurable outcomes instead of only listing responsibilities.",
+            "Move the strongest role-matching skills into an easy-to-scan skills section so recruiters can find them in the first few seconds.",
+            f"Add one or two bullets that connect your recent work directly to the responsibilities described by {app.company} for this role.",
+            "Remove or compress older, less relevant details so the resume gives more space to the experience that supports this application.",
+        ]
+    company_brief = package_data.company_brief or {}
+
+    cover_pdf = build_pdf_bytes(
+        "Cover Letter",
+        app,
+        profile,
+        [
+            {"kind": "text", "title": datetime.now().strftime("%B %d, %Y"), "body": f"Re: {app.job_title} at {app.company}"},
+            {"kind": "text", "title": "Letter", "body": cover_letter},
+        ],
+    )
+    resume_improvements_pdf = build_pdf_bytes(
+        "Resume Improvements",
+        app,
+        profile,
+        [
+            {"kind": "text", "title": "How to use this", "body": "Use this checklist to revise your resume before submitting the application. Keep every change truthful and grounded in your actual experience."},
+            {"kind": "text", "title": "Tailored summary draft", "body": summary},
+            {"kind": "bullets", "title": "Recommended resume improvements", "items": resume_improvements},
+        ],
+    )
+
+    prep_sections = [
+        {"kind": "qa", "title": "Application Answers", "items": package_data.qa_answers, "answer_key": "answer"},
+    ]
+    if isinstance(company_brief, dict):
+        prep_sections.extend(
+            [
+                {"kind": "text", "title": "Company Overview", "body": company_brief.get("overview")},
+                {"kind": "text", "title": "Mission and Values", "body": company_brief.get("mission")},
+                {"kind": "bullets", "title": "Culture Signals", "items": company_brief.get("culture_signals")},
+                {"kind": "bullets", "title": "Questions to Ask", "items": company_brief.get("questions_to_ask")},
+            ]
+        )
+    prep_sections.extend(
+        [
+            {"kind": "qa", "title": "Interview Prep", "items": package_data.interview_questions, "answer_key": "suggested_answer"},
+            {"kind": "bullets", "title": "Talking Points", "items": package_data.talking_points},
+        ]
+    )
+    if not any(section.get("body") or section.get("items") for section in prep_sections):
+        prep_sections.append({"kind": "text", "title": "Application Notes", "body": "No application notes were generated for this package."})
+
+    prep_pdf = build_pdf_bytes("Application Notes", app, profile, prep_sections)
+    copy_payload = package_data.model_copy(
+        update={
+            "cover_letter": cover_letter,
+            "tailored_summary": summary,
+            "resume_improvements": resume_improvements,
+        }
+    )
+    copy_paste_text = build_copy_paste_fields(app, copy_payload)
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as package_zip:
+        package_zip.writestr("01-cover-letter.pdf", cover_pdf)
+        package_zip.writestr("02-resume-improvements.pdf", resume_improvements_pdf)
+        package_zip.writestr("03-application-notes.pdf", prep_pdf)
+        package_zip.writestr("copy-paste-fields.txt", copy_paste_text)
+    zip_buffer.seek(0)
+
+    filename = "JobMatchKit_{}_{}.zip".format(
+        package_filename_part(app.company),
+        package_filename_part(app.job_title),
+    )
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

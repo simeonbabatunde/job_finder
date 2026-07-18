@@ -78,7 +78,7 @@ def get_llm(model_type: Optional[str] = None, model_name: Optional[str] = None):
             model_kwargs={"extra_body": {"reasoning": {"enabled": True}}},
             default_headers={
                 "HTTP-Referer": os.getenv("FRONTEND_URL", "http://localhost:5173"),
-                "X-Title": "JobMatchHero Matching Workflow"
+                "X-Title": "JobMatchKit Matching Workflow"
             }
         )
     else:

@@ -17,7 +17,7 @@ import {
     X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { getErrorMessage, prepareApplication, downloadCoverLetterPdf, updateApplicationStatus } from '../api/client';
+import { getErrorMessage, prepareApplication, downloadCoverLetterPdf, downloadApplicationPackageZip, updateApplicationStatus } from '../api/client';
 import { cn } from '../lib/cn';
 import { Button, IconButton, Notice, StatusChip } from './ui';
 
@@ -32,6 +32,7 @@ interface CompanyBrief {
 interface ApplicationPackage {
     cover_letter?: string;
     tailored_summary?: string;
+    resume_improvements?: string[];
     talking_points?: string[];
     qa_answers?: QAItem[];
     interview_questions?: InterviewQuestion[];
@@ -51,7 +52,7 @@ interface Props {
     onStatusChange: (appId: number, status: string) => void;
 }
 
-type Tab = 'cover_letter' | 'summary' | 'talking_points' | 'qa' | 'interview' | 'company';
+type Tab = 'cover_letter' | 'resume' | 'talking_points' | 'qa' | 'interview' | 'company';
 
 const STATUS_PIPELINE = [
     { key: 'Applied', label: 'Applied', tone: 'success' },
@@ -96,94 +97,12 @@ function StatusPipeline({ current, onChange, saving }: { current: string; onChan
 
 const tabs: { key: Tab; label: string; Icon: LucideIcon; requiresPkg?: boolean }[] = [
     { key: 'cover_letter', label: 'Cover letter', Icon: FileText },
-    { key: 'summary', label: 'Summary', Icon: AlignLeft, requiresPkg: true },
+    { key: 'resume', label: 'Resume fixes', Icon: AlignLeft, requiresPkg: true },
     { key: 'talking_points', label: 'Talking points', Icon: Sparkles, requiresPkg: true },
     { key: 'qa', label: 'Application Q&A', Icon: MessageSquareText, requiresPkg: true },
     { key: 'interview', label: 'Interview', Icon: Target, requiresPkg: true },
     { key: 'company', label: 'Company', Icon: Building2, requiresPkg: true },
 ];
-
-function safeFilenamePart(value: string) {
-    const cleaned = value
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-    return cleaned.slice(0, 64) || 'application';
-}
-
-function downloadTextFile(filename: string, content: string, type = 'text/markdown;charset=utf-8') {
-    const blob = new Blob([content], { type });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-}
-
-function listBlock(items?: string[]) {
-    if (!items?.length) return '';
-    return items.map(item => `- ${item}`).join('\n');
-}
-
-function buildPackageMarkdown(app: Props['app'], pkg: ApplicationPackage, coverLetter?: string | null) {
-    const sections: string[] = [
-        `# Application Package: ${app.job_title}`,
-        `Company: ${app.company}`,
-        app.job_url ? `Job URL: ${app.job_url}` : '',
-        `Generated: ${new Date().toLocaleString()}`,
-    ].filter(Boolean);
-
-    if (coverLetter) {
-        sections.push(`## Cover Letter\n\n${coverLetter}`);
-    }
-
-    if (pkg.tailored_summary) {
-        sections.push(`## Tailored Resume Summary\n\n${pkg.tailored_summary}`);
-    }
-
-    if (pkg.talking_points?.length) {
-        sections.push(`## Talking Points\n\n${listBlock(pkg.talking_points)}`);
-    }
-
-    if (pkg.qa_answers?.length) {
-        sections.push([
-            '## Application Q&A',
-            ...pkg.qa_answers.map((qa, index) => `### ${index + 1}. ${qa.question}\n\n${qa.answer}`),
-        ].join('\n\n'));
-    }
-
-    if (pkg.interview_questions?.length) {
-        sections.push([
-            '## Interview Prep',
-            ...pkg.interview_questions.map((q, index) => `### ${index + 1}. ${q.question}\n\n${q.suggested_answer}`),
-        ].join('\n\n'));
-    }
-
-    if (pkg.company_brief) {
-        const companySections = ['## Company Brief'];
-        if (pkg.company_brief.overview) {
-            companySections.push(`### Overview\n\n${pkg.company_brief.overview}`);
-        }
-        if (pkg.company_brief.mission) {
-            companySections.push(`### Mission and Values\n\n${pkg.company_brief.mission}`);
-        }
-        if (pkg.company_brief.culture_signals?.length) {
-            companySections.push(`### Culture Signals\n\n${listBlock(pkg.company_brief.culture_signals)}`);
-        }
-        if (pkg.company_brief.questions_to_ask?.length) {
-            companySections.push(`### Questions to Ask\n\n${listBlock(pkg.company_brief.questions_to_ask)}`);
-        }
-        if (companySections.length > 1) {
-            sections.push(companySections.join('\n\n'));
-        }
-    }
-
-    return `${sections.join('\n\n')}\n`;
-}
 
 export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatusChange }) => {
     const [pkg, setPkg] = useState<ApplicationPackage | null>(null);
@@ -192,6 +111,7 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
     const [activeTab, setActiveTab] = useState<Tab>('cover_letter');
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
     const [downloading, setDownloading] = useState(false);
+    const [downloadingPackage, setDownloadingPackage] = useState(false);
     const [currentStatus, setCurrentStatus] = useState(app.status);
     const [savingStatus, setSavingStatus] = useState(false);
     const [coverLetterOverride] = useState<string | null>(app.cover_letter || null);
@@ -245,14 +165,19 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
         }
     };
 
-    const handleDownloadPackage = () => {
+    const handleDownloadPackage = async () => {
         if (!pkg) return;
-        const filename = [
-            'application-package',
-            safeFilenamePart(app.company),
-            safeFilenamePart(app.job_title),
-        ].join('-');
-        downloadTextFile(`${filename}.md`, buildPackageMarkdown(app, pkg, pkg.cover_letter || coverLetterOverride));
+        setDownloadingPackage(true);
+        try {
+            await downloadApplicationPackageZip(app.id, {
+                ...pkg,
+                cover_letter: pkg.cover_letter || coverLetterOverride,
+            });
+        } catch (e) {
+            setError(getErrorMessage(e, 'Package download failed. Generate the package first.'));
+        } finally {
+            setDownloadingPackage(false);
+        }
     };
 
     const coverLetter = pkg?.cover_letter || coverLetterOverride;
@@ -305,9 +230,9 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                     )}
 
                     {pkg && (
-                        <Button variant="secondary" onClick={handleDownloadPackage}>
-                            <Download size={16} />
-                            Download package
+                        <Button variant="secondary" onClick={() => void handleDownloadPackage()} disabled={downloadingPackage}>
+                            {downloadingPackage ? <LoaderCircle className="animate-spin" size={16} /> : <Download size={16} />}
+                            {downloadingPackage ? 'Preparing ZIP' : 'Download package'}
                         </Button>
                     )}
 
@@ -364,7 +289,7 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                             <HelpCircle size={36} className="mb-3 text-[var(--accent)]" />
                             <p className="text-lg font-semibold text-[var(--ink)]">Turn this match into application-ready materials</p>
                             <p className="mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-                                Generate a cover letter, tailored summary, application Q&A, interview prep, and company brief built from your resume and this role.
+                                Generate a cover letter, resume improvement checklist, application Q&A, interview prep, and company brief built from your resume and this role.
                             </p>
                         </div>
                     )}
@@ -389,15 +314,37 @@ export const ApplicationPackageModal: React.FC<Props> = ({ app, onClose, onStatu
                         </div>
                     )}
 
-                    {!loading && activeTab === 'summary' && pkg?.tailored_summary && (
-                        <div>
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">Tailored resume summary</h3>
-                                <CopySmallButton text={pkg.tailored_summary} id="summary" />
+                    {!loading && activeTab === 'resume' && pkg && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">Resume improvement checklist</h3>
+                                {pkg.resume_improvements?.length ? (
+                                    <CopySmallButton text={pkg.resume_improvements.map(item => `- ${item}`).join('\n')} id="resume-improvements" label="Copy all" />
+                                ) : null}
                             </div>
-                            <div className="rounded-lg border border-[var(--line)] bg-[var(--page)] p-5 text-sm leading-6 text-[var(--ink)]">
-                                {pkg.tailored_summary}
-                            </div>
+
+                            {pkg.tailored_summary && (
+                                <div className="rounded-lg border border-[var(--line)] bg-[var(--page)] p-4">
+                                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">Tailored summary draft</p>
+                                    <p className="text-sm leading-6 text-[var(--ink)]">{pkg.tailored_summary}</p>
+                                </div>
+                            )}
+
+                            {pkg.resume_improvements?.length ? (
+                                <div className="space-y-2">
+                                    {pkg.resume_improvements.map((item, i) => (
+                                        <div key={`${item}-${i}`} className="flex items-start gap-3 rounded-lg border border-[var(--line)] bg-white p-3">
+                                            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent)]">{i + 1}</span>
+                                            <p className="flex-1 text-sm leading-6 text-[var(--ink)]">{item}</p>
+                                            <IconButton label="Copy resume improvement" variant="ghost" size="sm" onClick={() => copyText(item, `resume-${i}`)}>
+                                                {copiedKey === `resume-${i}` ? <Check size={14} /> : <Copy size={14} />}
+                                            </IconButton>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <Notice tone="warning">No resume improvement checklist was generated. Regenerate the kit to try again.</Notice>
+                            )}
                         </div>
                     )}
 

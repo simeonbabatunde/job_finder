@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { LoaderCircle, Play, ShieldAlert } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { LoaderCircle, Play, Square } from 'lucide-react';
 import { getAuthHeaders, API_URL } from '../api/client';
 import type { AgentQuotaStatus } from '../api/client';
 import type { ResumeUploadHandle } from './ResumeUpload';
@@ -12,26 +12,25 @@ interface AgentControlsProps {
     prefsRef: React.RefObject<JobPreferencesHandle | null>;
     isLoggedIn: boolean;
     quota?: AgentQuotaStatus | null;
-    subscriptionTier?: string;
-    userRole?: string;
+    matchingProfileId?: number | null;
     onAuthRequired: () => void;
 }
 
-export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resumeRef, prefsRef, isLoggedIn, quota, subscriptionTier, userRole, onAuthRequired }) => {
-    const [isRunning, setIsRunning] = useState(false);
-    const [status, setStatus] = useState<string>('');
-    const [autoApply, setAutoApply] = useState(false);
-    const [quotaRemaining, setQuotaRemaining] = useState<number | null>(quota?.agent_runs_remaining ?? null);
+const STOP_PENDING_MESSAGE = 'Stop requested. Matching will stop after the current step finishes.';
+const STOPPED_MESSAGE = 'Matching stopped. No more jobs will be processed.';
 
-    const canAutoApply = useMemo(() => {
-        return Boolean(quota?.auto_apply_enabled || subscriptionTier === 'pro' || userRole === 'admin');
-    }, [quota?.auto_apply_enabled, subscriptionTier, userRole]);
+export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resumeRef, prefsRef, isLoggedIn, quota, matchingProfileId, onAuthRequired }) => {
+    const [isRunning, setIsRunning] = useState(false);
+    const [isStopping, setIsStopping] = useState(false);
+    const [activeRunId, setActiveRunId] = useState<number | null>(null);
+    const [status, setStatus] = useState<string>('');
+    const [quotaRemaining, setQuotaRemaining] = useState<number | null>(quota?.agent_runs_remaining ?? null);
 
     useEffect(() => {
         setQuotaRemaining(quota?.agent_runs_remaining ?? null);
     }, [quota?.agent_runs_remaining]);
 
-    const pollAgentRun = async (runId: number, shouldAutoApply: boolean, wasFileSelected: boolean) => {
+    const pollAgentRun = async (runId: number) => {
         for (let attempt = 0; attempt < 90; attempt += 1) {
             await new Promise(resolve => window.setTimeout(resolve, attempt === 0 ? 800 : 2000));
 
@@ -49,12 +48,24 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 return;
             }
 
+            if (run.status === 'canceled') {
+                setStatus(STOPPED_MESSAGE);
+                onComplete();
+                return;
+            }
+
+            if (run.status === 'cancel_requested') {
+                setStatus(STOP_PENDING_MESSAGE);
+                continue;
+            }
+
             if (run.status !== 'queued' && run.status !== 'running') {
-                const prefix = wasFileSelected ? 'Resume uploaded. ' : '';
-                const msg = shouldAutoApply
-                    ? `Fill-for-review prepared ${run.applications_count} jobs.`
-                    : `Matched and prepared ${run.applications_count} jobs for review.`;
-                setStatus(`${prefix}${msg}`);
+                const foundCount = Number(run.found_jobs_count || 0);
+                const readyCount = Number(run.applications_count || 0);
+                const logs = Array.isArray(run.logs) ? run.logs : [];
+                const funnelLog = [...logs].reverse().find((log: string) => log.startsWith('AI scored '));
+                const msg = `Found ${foundCount} application-ready roles. ${readyCount} cleared your minimum score and ${readyCount === 1 ? 'is' : 'are'} ready for review.`;
+                setStatus(funnelLog ? `${msg} ${funnelLog}` : msg);
                 onComplete();
                 return;
             }
@@ -66,6 +77,43 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
         onComplete();
     };
 
+    const stopAgent = async () => {
+        if (!activeRunId) return;
+
+        setIsStopping(true);
+        setStatus(STOP_PENDING_MESSAGE);
+
+        try {
+            const response = await fetch(`${API_URL}/agent/runs/${activeRunId}/cancel`, {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                if (response.status === 400) {
+                    setStatus('Matching has already finished. Refreshing your results...');
+                    onComplete();
+                    return;
+                }
+                setStatus(`Error: ${data.detail || 'Failed to stop matching'}`);
+                setIsStopping(false);
+                return;
+            }
+
+            if (data.status === 'canceled') {
+                setStatus(STOPPED_MESSAGE);
+                onComplete();
+            } else {
+                setStatus(STOP_PENDING_MESSAGE);
+            }
+        } catch (error) {
+            console.error('Error stopping matching workflow:', error);
+            setStatus('Failed to connect to backend.');
+            setIsStopping(false);
+        }
+    };
+
     const startAgent = async () => {
         if (!isLoggedIn) {
             setStatus('Please sign in or create an account to start matching.');
@@ -74,61 +122,64 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
         }
 
         setIsRunning(true);
+        setIsStopping(false);
+        setActiveRunId(null);
         setStatus('');
 
         try {
-            if (!resumeRef.current?.hasFile) {
-                resumeRef.current?.setError('Please select a resume first.');
-                setIsRunning(false);
-                return;
-            }
-
-            const wasFileSelected = resumeRef.current?.hasFile;
-            const resumeSuccess = await resumeRef.current?.handleUpload(true);
+            const resumeSuccess = resumeRef.current
+                ? await resumeRef.current.handleUpload(true)
+                : true;
             if (!resumeSuccess) {
-                setStatus('Error: Failed to upload resume.');
-                setIsRunning(false);
+                setStatus('Error: Failed to upload resume. No matching run was started.');
                 return;
             }
 
             const prefsSuccess = await prefsRef.current?.submitPrefs(true);
             if (!prefsSuccess) {
-                setStatus('Error: Failed to save preferences.');
-                setIsRunning(false);
+                setStatus('Error: Failed to save preferences. No matching run was started.');
                 return;
             }
 
-            const shouldAutoApply = canAutoApply && autoApply;
-            const response = await fetch(`${API_URL}/agent/run?auto_apply=${shouldAutoApply}`, {
+            const runParams = new URLSearchParams();
+            if (matchingProfileId) {
+                runParams.set('matching_profile_id', String(matchingProfileId));
+            }
+            const runQuery = runParams.toString();
+            const response = await fetch(`${API_URL}/agent/run${runQuery ? `?${runQuery}` : ''}`, {
                 method: 'POST',
                 headers: getAuthHeaders()
             });
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
             if (response.ok) {
                 if (typeof data.quota_remaining === 'number') {
                     setQuotaRemaining(data.quota_remaining);
                 }
                 setStatus('Matching workflow queued...');
                 if (data.agent_run_id) {
-                    await pollAgentRun(data.agent_run_id, shouldAutoApply, Boolean(wasFileSelected));
+                    setActiveRunId(data.agent_run_id);
+                    await pollAgentRun(data.agent_run_id);
                 } else {
                     onComplete();
                 }
             } else {
-                setStatus(`Error: ${data.detail || 'Failed to run search'}`);
+                setStatus(`Error: ${data.detail || 'Failed to run search'}. No matching run was started.`);
             }
         } catch (error) {
             console.error('Error running matching workflow:', error);
             setStatus('Failed to connect to backend.');
         } finally {
             setIsRunning(false);
+            setIsStopping(false);
+            setActiveRunId(null);
         }
     };
 
     const isProblem = status.startsWith('Error') || status.includes('sign in') || status.includes('Failed');
-    const isProgress = status.includes('queued') || status.includes('Finding') || status.includes('still running');
+    const isProgress = status.includes('queued') || status.includes('Finding') || status.includes('still running') || status.includes('Stop requested');
+    const isStopped = status === STOPPED_MESSAGE;
     const noticeTone = isProblem ? 'error' : isProgress ? 'info' : 'success';
-    const noticeTitle = isProblem ? 'Something needs attention' : isProgress ? 'Matching update' : 'Matching complete';
+    const noticeTitle = isProblem ? 'Something needs attention' : isStopped ? 'Matching stopped' : isProgress ? 'Matching update' : 'Matching complete';
 
     return (
         <div className="w-full">
@@ -136,9 +187,7 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                 <div>
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                         <StatusChip tone="accent">Match roles</StatusChip>
-                        <StatusChip tone={autoApply ? 'warning' : 'neutral'}>
-                            {canAutoApply && autoApply ? 'Fill review on' : 'Prepare only'}
-                        </StatusChip>
+                        <StatusChip tone="neutral">Package materials</StatusChip>
                         {quota && (
                             <StatusChip tone={quotaRemaining === 0 ? 'danger' : 'neutral'}>
                                 {quotaRemaining ?? quota.agent_runs_remaining} runs left
@@ -146,38 +195,28 @@ export const AgentControls: React.FC<AgentControlsProps> = ({ onComplete, resume
                         )}
                     </div>
                     <p className="text-sm leading-6 text-[var(--muted)]">
-                        JobMatchHero compares open roles with your resume and preferences, saves the strongest matches, and packages materials for review.
+                        JobMatchKit compares open roles with your resume and preferences, saves the strongest matches, and packages materials for review.
                     </p>
                 </div>
 
-                <label className="relative flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-white p-3 transition-colors hover:border-[var(--accent)]">
-                    <input
-                        type="checkbox"
-                        checked={canAutoApply && autoApply}
-                        disabled={!canAutoApply}
-                        onChange={(e) => setAutoApply(canAutoApply && e.target.checked)}
-                        className="peer sr-only disabled:cursor-not-allowed"
-                    />
-                    <span className="mt-0.5 flex h-5 w-10 shrink-0 rounded-full bg-[var(--soft)] p-0.5 transition-colors peer-checked:bg-[var(--accent)] peer-disabled:opacity-60">
-                        <span className="h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5" />
-                    </span>
-                    <span>
-                        <span className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
-                            <ShieldAlert size={16} className="text-[var(--warning)]" />
-                            Fill supported applications for review
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">
-                            {canAutoApply
-                                ? 'When enabled, supported ATS forms can be prepared for review, but final submit still stays off.'
-                                : 'Pro plan required. Free accounts can match jobs and prepare packages for review.'}
-                        </span>
-                    </span>
-                </label>
-
-                <Button onClick={startAgent} disabled={isRunning} size="lg" className="w-full">
-                    {isRunning ? <LoaderCircle className="animate-spin" size={18} /> : <Play size={18} />}
-                    {isRunning ? 'Matching jobs' : 'Start matching'}
-                </Button>
+                <div className={isRunning && activeRunId ? 'grid gap-2 sm:grid-cols-[1fr_auto]' : ''}>
+                    <Button onClick={startAgent} disabled={isRunning} size="lg" className="w-full">
+                        {isRunning ? <LoaderCircle className="animate-spin" size={18} /> : <Play size={18} />}
+                        {isRunning ? 'Matching jobs' : 'Start matching'}
+                    </Button>
+                    {isRunning && activeRunId && (
+                        <Button
+                            onClick={stopAgent}
+                            disabled={isStopping}
+                            variant="danger"
+                            size="lg"
+                            className="w-full sm:w-auto sm:min-w-36"
+                        >
+                            {isStopping ? <LoaderCircle className="animate-spin" size={18} /> : <Square size={16} />}
+                            {isStopping ? 'Stopping' : 'Stop matching'}
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {status && (

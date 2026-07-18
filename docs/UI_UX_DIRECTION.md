@@ -1,6 +1,6 @@
-# JobMatchHero UI/UX Direction
+# JobMatchKit UI/UX Direction
 
-This document translates the Influence Chart visual language into a JobMatchHero product experience.
+This document translates the Influence Chart visual language into a JobMatchKit product experience.
 
 ## Source Reference
 
@@ -21,13 +21,13 @@ Relevant files reviewed:
 
 ## Design Principles
 
-JobMatchHero should feel like a career operations console, not a marketing landing page.
+JobMatchKit should feel like a career operations console, not a marketing landing page.
 
 - Put the usable product on the first screen.
 - Frame the product as a smart job search assistant that matches roles to the user's resume and preferences, then packages the application materials.
 - Favor clear navigation, compact sections, tables, forms, and status surfaces.
 - Use a quiet color system with one confident accent.
-- Make the resume, profile, preferences, run state, and application pipeline easy to scan.
+- Make the selected matching profile, resume, preferences, run state, and application pipeline easy to scan.
 - Keep motion subtle and purposeful.
 - Avoid decorative gradient blobs, heavy hero panels, and nested cards.
 - Use cards only for repeated items, modals, or genuinely framed tools.
@@ -85,7 +85,7 @@ Use this token system instead of one-off indigo/violet classes:
 The app shell should stay dashboard-first:
 
 - Top app header, white background, bottom border.
-- Brand block: small domain or app label, then "JobMatchHero".
+- Brand block: small domain or app label, then "JobMatchKit".
 - Navigation: Dashboard, Applications, Account, and Admin when permitted.
 - Account actions: plan chip, email, sign out.
 - Main background: `var(--page)`.
@@ -95,13 +95,24 @@ The app shell should stay dashboard-first:
 
 The first screen should show the actual workflow:
 
-- Top overview strip: resume, profile, preference, and quota readiness.
-- Main setup panel: Resume, Preferences, and Profile in one compact workflow with divider-separated sections.
-- Right action rail: search assistant controls with fill-for-review toggle, quota or plan state.
+- Top overview strip: selected matching profile, resume, preference, profile, and quota readiness.
+- Profile selector band: current saved profile, attached resume, target-role summary, and actions to switch/add/rename/archive.
+- Main setup panel: Resume, Preferences, and account Profile in one compact workflow with divider-separated sections.
+- Right action rail: matching controls with quota, plan state, and package-generation status.
 - Right recent matches panel with compact job rows; the full table lives on the Applications page.
 - Full application pipeline lives on the Applications page.
 
 Use full-width bands or grids instead of a single card containing the entire app.
+
+### Matching Profile Selector
+
+The selector should feel operational, not like account settings:
+
+- Show current profile name, attached resume filename, target-role summary, and last-used state.
+- Use a compact select/menu for switching profiles.
+- Provide clear actions: New profile, Duplicate, Rename, Archive.
+- Do not hide the selected profile in tiny nav text; it should be visible near Start Matching.
+- Account-level profile/contact details remain separate from matching profiles.
 
 ### Setup Sections
 
@@ -118,10 +129,10 @@ Resume, Profile, and Preferences should share field styling:
 The run control should look operational:
 
 - Header: "Match and package jobs".
-- Metrics: minimum match, date range, selected boards, fill-for-review state.
+- Metrics: selected matching profile, minimum match, date range, selected sources, and package state.
 - Primary action: "Start matching".
 - Secondary actions: "Preview matches", "Refresh history" where supported.
-- Fill-for-review must be visually separated, and true auto-submit should stay out of the primary UI until a real-submit pilot is explicitly approved.
+- Browser-form automation is retired; the supported flow is package generation plus manual employer links.
 
 ### Application History
 
@@ -129,7 +140,7 @@ Use the Influence Chart table language:
 
 - Rounded table wrapper with border.
 - Soft header row.
-- Columns: Role, Company, Fit, Status, Updated, Actions.
+- Columns: Role, Company, Profile, Fit, Status, Updated, Actions.
 - Status chips should map to a stable palette.
 - Default display remains the most recent 5 matches, with the full history available through the `/applications` route.
 

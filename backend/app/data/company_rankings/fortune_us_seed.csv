@@ -1,0 +1,106 @@
+rank,company,sector,role_tags,aliases
+1,Walmart,Retail,software|data|logistics|retail,Wal-Mart|Walmart Inc
+2,Amazon,Retail and cloud,software|cloud|ai|data|logistics|hardware,Amazon.com|Amazon Web Services|AWS
+3,UnitedHealth Group,Healthcare,healthcare|data|software,UnitedHealth
+4,Apple,Technology,software|hardware|firmware|embedded|consumer electronics,Apple Inc
+5,CVS Health,Healthcare,healthcare|data|software,CVS
+6,Berkshire Hathaway,Financial services,finance|insurance|data,Berkshire
+7,Alphabet,Technology,software|cloud|ai|data|hardware,Google|Alphabet Inc
+8,ExxonMobil,Energy,energy|industrial|data,Exxon Mobil
+9,McKesson,Healthcare,healthcare|logistics|data,McKesson Corporation
+10,Cencora,Healthcare,healthcare|logistics|data,AmerisourceBergen
+11,JPMorgan Chase,Financial services,finance|software|data,JPMorgan|JP Morgan Chase
+12,Costco Wholesale,Retail,retail|logistics|data|software,Costco
+13,Cigna Group,Healthcare,healthcare|data|software,Cigna
+14,Microsoft,Technology,software|cloud|ai|data|hardware,Microsoft Corporation
+15,Cardinal Health,Healthcare,healthcare|logistics|data,Cardinal Health
+16,Chevron,Energy,energy|industrial|data,Chevron Corporation
+17,Bank of America,Financial services,finance|software|data,BofA
+18,General Motors,Automotive,automotive|hardware|firmware|embedded|software,GM
+19,Ford Motor,Automotive,automotive|hardware|firmware|embedded|software,Ford|Ford Motor Company
+20,Elevance Health,Healthcare,healthcare|data|software,Anthem
+21,Citigroup,Financial services,finance|software|data,Citi
+22,Centene,Healthcare,healthcare|data|software,Centene Corporation
+23,Home Depot,Retail,retail|logistics|software|data,The Home Depot
+24,Marathon Petroleum,Energy,energy|industrial|data,Marathon
+25,Kroger,Retail,retail|logistics|data|software,The Kroger Co
+26,Phillips 66,Energy,energy|industrial|data,Phillips 66
+27,Fannie Mae,Financial services,finance|software|data,Federal National Mortgage Association
+28,Walgreens Boots Alliance,Healthcare,healthcare|retail|data|software,Walgreens
+29,Valero Energy,Energy,energy|industrial|data,Valero
+30,Meta Platforms,Technology,software|ai|data|hardware|embedded,Meta|Facebook
+31,Verizon Communications,Telecommunications,network|software|data|hardware,Verizon
+32,AT&T,Telecommunications,network|software|data|hardware,ATT
+33,Comcast,Telecommunications,network|software|media|data,Comcast Corporation
+34,Wells Fargo,Financial services,finance|software|data,Wells Fargo
+35,Goldman Sachs,Financial services,finance|software|data,Goldman Sachs Group
+36,Morgan Stanley,Financial services,finance|software|data,Morgan Stanley
+37,Target,Retail,retail|logistics|software|data,Target Corporation
+38,Dell Technologies,Technology,hardware|software|cloud|data,Dell
+39,Lowe's,Retail,retail|logistics|software|data,Lowes
+40,Johnson & Johnson,Healthcare,healthcare|medtech|hardware|data,J&J
+41,FedEx,Logistics,logistics|software|data|hardware,Federal Express
+42,Humana,Healthcare,healthcare|data|software,Humana
+43,PepsiCo,Consumer goods,manufacturing|logistics|data|software,Pepsi
+44,Archer Daniels Midland,Agribusiness,manufacturing|logistics|data|industrial,ADM
+45,Procter & Gamble,Consumer goods,manufacturing|data|software,P&G|Procter and Gamble
+46,State Farm,Insurance,insurance|finance|data|software,State Farm Insurance
+47,Tesla,Automotive,automotive|hardware|firmware|embedded|software|battery,Tesla Motors
+48,Walt Disney,Media,media|software|data|consumer,Disney
+49,IBM,Technology,software|cloud|ai|data|hardware,International Business Machines
+50,Lockheed Martin,Aerospace and defense,aerospace|hardware|firmware|embedded|software,Lockheed
+52,RTX,Aerospace and defense,aerospace|hardware|firmware|embedded|software,Raytheon|Raytheon Technologies
+53,Boeing,Aerospace and defense,aerospace|hardware|firmware|embedded|software,The Boeing Company
+54,Intel,Semiconductors,semiconductor|hardware|firmware|embedded|software,Intel Corporation
+55,Cisco Systems,Technology,network|hardware|software|firmware|embedded,Cisco
+56,Oracle,Technology,software|cloud|data|ai,Oracle Corporation
+57,GE Aerospace,Aerospace and industrial,aerospace|industrial|hardware|firmware|embedded|software,General Electric|GE
+58,HP,Technology,hardware|software|firmware,HP Inc
+59,Hewlett Packard Enterprise,Technology,hardware|cloud|network|software,HPE
+60,Nvidia,Semiconductors,semiconductor|ai|hardware|firmware|embedded|software,NVIDIA
+61,Qualcomm,Semiconductors,semiconductor|hardware|firmware|embedded|software,Qualcomm Incorporated
+62,Broadcom,Semiconductors,semiconductor|hardware|firmware|embedded|software,Broadcom Inc
+63,Texas Instruments,Semiconductors,semiconductor|hardware|firmware|embedded|software,TI
+64,Micron Technology,Semiconductors,semiconductor|hardware|firmware|embedded|software,Micron
+65,Honeywell International,Industrial,industrial|aerospace|hardware|firmware|embedded|software,Honeywell
+66,Northrop Grumman,Aerospace and defense,aerospace|hardware|firmware|embedded|software,Northrop
+67,General Dynamics,Aerospace and defense,aerospace|hardware|firmware|embedded|software,General Dynamics
+68,Caterpillar,Industrial,industrial|hardware|embedded|software,Caterpillar Inc
+69,Deere,Industrial,industrial|hardware|firmware|embedded|software,John Deere|Deere & Company
+70,Cummins,Industrial,industrial|automotive|hardware|embedded|software,Cummins Inc
+71,Emerson Electric,Industrial automation,industrial|automation|hardware|firmware|embedded|software,Emerson
+72,Eaton,Industrial,industrial|electrical|hardware|firmware|embedded|software,Eaton Corporation
+73,Rockwell Automation,Industrial automation,industrial|automation|hardware|firmware|embedded|software,Rockwell
+74,Motorola Solutions,Communications,network|hardware|firmware|embedded|software,Motorola
+75,Applied Materials,Semiconductors,semiconductor|hardware|software|industrial,Applied Materials Inc
+76,Lam Research,Semiconductors,semiconductor|hardware|software|industrial,Lam
+77,KLA,Semiconductors,semiconductor|hardware|software|industrial,KLA Corporation
+78,Analog Devices,Semiconductors,semiconductor|hardware|firmware|embedded|software,ADI
+79,Microchip Technology,Semiconductors,semiconductor|hardware|firmware|embedded|software,Microchip
+80,Advanced Micro Devices,Semiconductors,semiconductor|hardware|firmware|embedded|software,AMD
+501,Garmin,Consumer electronics,hardware|firmware|embedded|software|consumer electronics,Garmin Ltd
+520,Zebra Technologies,Industrial technology,hardware|firmware|embedded|software|logistics,Zebra
+540,Teradyne,Semiconductor equipment,semiconductor|hardware|software|industrial,Teradyne Inc
+560,Teledyne Technologies,Industrial technology,aerospace|hardware|firmware|embedded|software,Teledyne
+575,Trimble,Industrial technology,industrial|hardware|software|embedded,Trimble Inc
+590,Keysight Technologies,Test and measurement,hardware|software|network|semiconductor,Keysight
+610,Qorvo,Semiconductors,semiconductor|hardware|firmware|embedded,Qorvo Inc
+630,Skyworks Solutions,Semiconductors,semiconductor|hardware|firmware|embedded,Skyworks
+650,Synaptics,Semiconductors,semiconductor|hardware|firmware|embedded|software,Synaptics Incorporated
+670,Cirrus Logic,Semiconductors,semiconductor|hardware|firmware|embedded,Cirrus
+690,Rogers Corporation,Electronics materials,semiconductor|hardware|industrial,Rogers Corp
+710,Benchmark Electronics,Electronics manufacturing,hardware|manufacturing|embedded|firmware,Benchmark
+730,Plexus,Electronics manufacturing,hardware|manufacturing|embedded|firmware,Plexus Corp
+750,Belden,Network infrastructure,network|hardware|industrial|embedded,Belden Inc
+770,Vishay Intertechnology,Semiconductors,semiconductor|hardware|industrial,Vishay
+790,MaxLinear,Semiconductors,semiconductor|hardware|firmware|embedded,MaxLinear Inc
+810,Onto Innovation,Semiconductor equipment,semiconductor|hardware|software|industrial,Onto
+830,OSI Systems,Security and healthcare technology,hardware|embedded|software|industrial,OSI
+850,Entegris,Semiconductor materials,semiconductor|industrial|hardware,Entegris Inc
+870,MKS Instruments,Semiconductor equipment,semiconductor|hardware|software|industrial,MKS
+890,Coherent,Photonics and semiconductors,semiconductor|hardware|firmware|embedded|optics,Coherent Corp
+910,IPG Photonics,Photonics,hardware|firmware|embedded|industrial,IPG
+930,Wolfspeed,Semiconductors,semiconductor|hardware|firmware|embedded,Wolfspeed Inc
+950,Knowles,Electronics,hardware|firmware|embedded|consumer electronics,Knowles Corporation
+970,Novanta,Photonics and precision technology,hardware|firmware|embedded|software,Novanta Inc
+990,Sanmina,Electronics manufacturing,hardware|manufacturing|embedded|firmware,Sanmina Corporation

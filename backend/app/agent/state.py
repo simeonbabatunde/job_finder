@@ -12,6 +12,12 @@ class Job(TypedDict):
     explanation: NotRequired[str]
     cover_letter: Optional[str]
     application_url: NotRequired[str]
+    source_url: NotRequired[str]
+    resolved_url: NotRequired[str]
+    source_type: NotRequired[str]
+    ats_type: NotRequired[str]
+    resolution_status: NotRequired[str]
+    resolution_notes: NotRequired[str]
     pre_screen_status: NotRequired[str]
     pre_screen_reasons: NotRequired[List[str]]
 
@@ -32,5 +38,7 @@ class AgentState(TypedDict):
     logs: List[str]
     user_id: int
     agent_run_id: Optional[int]
+    matching_profile_id: Optional[int]
     auto_apply: bool
     auto_apply_audit: List[dict]
+    allowed_companies: NotRequired[List[str]]

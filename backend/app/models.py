@@ -25,6 +25,24 @@ class JobPreference(SQLModel, table=True):
     posted_within_days: int = Field(default=7)
     created_at: datetime = Field(default_factory=utc_now)
 
+class MatchingProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    name: str = Field(default="Default profile")
+    resume_id: Optional[int] = Field(default=None, foreign_key="resume.id", index=True)
+    role: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    experience_level: List[str] = Field(default_factory=lambda: ["Intermediate"], sa_column=Column(JSON))
+    location: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    job_type: List[str] = Field(default_factory=lambda: ["Full-time"], sa_column=Column(JSON))
+    target_companies: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    min_match_score: int = Field(default=70)
+    posted_within_days: int = Field(default=7)
+    is_default: bool = Field(default=False, index=True)
+    is_archived: bool = Field(default=False, index=True)
+    last_used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(unique=True)
@@ -64,6 +82,8 @@ class Application(SQLModel, table=True):
     resolution_status: str = Field(default="unresolved")
     resolution_notes: Optional[str] = Field(default=None)
     status: str = Field(default="Applied") # Applied, Rejected, Interview, Submitted
+    matching_profile_id: Optional[int] = Field(default=None, foreign_key="matchingprofile.id", index=True)
+    agent_run_id: Optional[int] = Field(default=None, foreign_key="agentrun.id", index=True)
     fit_score: float
     explanation: Optional[str] = Field(default=None)
     cover_letter: Optional[str] = Field(default=None)
@@ -74,6 +94,8 @@ class Application(SQLModel, table=True):
 class AgentRun(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
+    matching_profile_id: Optional[int] = Field(default=None, foreign_key="matchingprofile.id", index=True)
+    resume_id: Optional[int] = Field(default=None, foreign_key="resume.id", index=True)
     status: str = Field(default="running")
     auto_apply: bool = Field(default=False)
     logs: List[str] = Field(default_factory=list, sa_column=Column(JSON))

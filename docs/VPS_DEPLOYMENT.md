@@ -1,6 +1,6 @@
 # VPS Deployment Guide
 
-This guide is the production VPS path for JobMatchHero. It assumes a single
+This guide is the production VPS path for JobMatchKit. It assumes a single
 Ubuntu server running Docker Compose, with Caddy serving the frontend, proxying
 API requests, and managing HTTPS certificates.
 
@@ -14,7 +14,6 @@ VPS is not enough.
 - `backend`: FastAPI on port `8000`, exposed only inside the Docker network.
 - `worker`: queued matching workflow runner using `AGENT_RUNNER_MODE=worker`.
 - `db`: Postgres 15 with a named Docker volume.
-- `fill_review_artifacts`: named volume for authenticated screenshots/traces.
 - `caddy_data`: named volume for Caddy certificates.
 - Cloudflare DNS in front of the VPS.
 - Daily encrypted Postgres backups copied to Cloudflare R2, S3, or another
@@ -33,7 +32,7 @@ regional availability change often.
 | AWS Lightsail | Linux 2 vCPU / 4 GB / 80 GB | Useful if you want AWS account consolidation, but not the best value for this app. |
 
 Start with 4 GB RAM only if traffic is low and add swap. Prefer 8 GB RAM if you
-expect browser fill-review, larger matching batches, or multiple users.
+expect larger matching batches or multiple users.
 
 ## LLM Recommendation
 
@@ -66,7 +65,7 @@ If you want both root and `www`, set `APP_DOMAIN` in `.env.production` to both
 hostnames:
 
 ```text
-APP_DOMAIN=jobmatchhero.com,www.jobmatchhero.com
+APP_DOMAIN=jobmatchkit.com,www.jobmatchkit.com
 ```
 
 ## 2. Provision The VPS
@@ -124,8 +123,8 @@ Log out and back in so the group change applies.
 ## 4. Clone The Repo
 
 ```bash
-git clone <repo-url> jobmatchhero
-cd jobmatchhero
+git clone https://github.com/simeonbabatunde/jobmatchkit.git jobmatchkit
+cd jobmatchkit
 ```
 
 ## 5. Create Production Secrets
@@ -148,15 +147,15 @@ openssl rand -base64 32
 Fill `.env.production` with real values:
 
 ```text
-APP_DOMAIN=jobmatchhero.com
-FRONTEND_URL=https://jobmatchhero.com
-CORS_ALLOWED_ORIGINS=https://jobmatchhero.com
+APP_DOMAIN=jobmatchkit.com
+FRONTEND_URL=https://jobmatchkit.com
+CORS_ALLOWED_ORIGINS=https://jobmatchkit.com
 VITE_API_URL=/api
 
-POSTGRES_USER=jobmatchhero
+POSTGRES_USER=jobmatchkit
 POSTGRES_PASSWORD=<long random password>
-POSTGRES_DB=jobmatchhero
-DATABASE_URL=postgresql://jobmatchhero:<long random password>@db:5432/jobmatchhero
+POSTGRES_DB=jobmatchkit
+DATABASE_URL=postgresql://jobmatchkit:<long random password>@db:5432/jobmatchkit
 
 APP_ENV=production
 AUTH_SECRET_KEY=<32+ random characters>
@@ -169,9 +168,9 @@ STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRO_PRICE_ID=price_...
 PRO_PLAN_PRICE_LABEL=$10/mo
-BILLING_SUCCESS_URL=https://jobmatchhero.com/settings?billing=success
-BILLING_CANCEL_URL=https://jobmatchhero.com/settings?billing=cancelled
-BILLING_PORTAL_RETURN_URL=https://jobmatchhero.com/settings?billing=portal_return
+BILLING_SUCCESS_URL=https://jobmatchkit.com/settings?billing=success
+BILLING_CANCEL_URL=https://jobmatchkit.com/settings?billing=cancelled
+BILLING_PORTAL_RETURN_URL=https://jobmatchkit.com/settings?billing=portal_return
 
 LLM_PROVIDER=openai
 OPENAI_MODEL=gpt-5-mini
@@ -186,8 +185,8 @@ If Google or LinkedIn OAuth is enabled, use the same-origin `/api` callback URLs
 because Caddy strips `/api` before forwarding to FastAPI:
 
 ```text
-GOOGLE_REDIRECT_URI=https://jobmatchhero.com/api/auth/google/callback
-LINKEDIN_REDIRECT_URI=https://jobmatchhero.com/api/auth/linkedin/callback
+GOOGLE_REDIRECT_URI=https://jobmatchkit.com/api/auth/google/callback
+LINKEDIN_REDIRECT_URI=https://jobmatchkit.com/api/auth/linkedin/callback
 ```
 
 Register the exact same URLs in each provider dashboard.
@@ -195,14 +194,14 @@ Register the exact same URLs in each provider dashboard.
 
 ## 7. Stripe Billing Setup
 
-Create one Stripe product for JobMatchHero Pro and one recurring monthly price for
+Create one Stripe product for JobMatchKit Pro and one recurring monthly price for
 `$10/month`. Copy the Stripe price ID into `STRIPE_PRO_PRICE_ID`. Use live keys
 only in production and test keys locally.
 
 Create a webhook endpoint in Stripe pointing to:
 
 ```text
-https://jobmatchhero.com/api/billing/webhook
+https://jobmatchkit.com/api/billing/webhook
 ```
 
 Subscribe the endpoint to these events:
@@ -253,9 +252,9 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec -T bac
 Public checks after DNS and HTTPS are ready:
 
 ```bash
-curl https://jobmatchhero.com/api/health
-curl https://jobmatchhero.com/api/health/db
-curl https://jobmatchhero.com/api/health/worker
+curl https://jobmatchkit.com/api/health
+curl https://jobmatchkit.com/api/health/db
+curl https://jobmatchkit.com/api/health/worker
 ```
 
 `/api/health/worker` should be healthy when the worker heartbeat is fresh.
@@ -274,14 +273,14 @@ Recommended settings in `.env.production` or the shell:
 BACKUP_DIR=backups
 BACKUP_RETENTION_DAYS=14
 BACKUP_ENCRYPTION_PASSPHRASE=<strong passphrase>
-R2_RCLONE_REMOTE=cloudflare-r2:jobmatchhero-db-backups
+R2_RCLONE_REMOTE=cloudflare-r2:jobmatchkit-db-backups
 ```
 
 For off-server uploads, install and configure `rclone` for Cloudflare R2 or S3.
 Run the backup script from cron:
 
 ```cron
-15 3 * * * cd /home/deploy/jobmatchhero && /home/deploy/jobmatchhero/scripts/backup-postgres.sh >> /home/deploy/jobmatchhero/backups/backup.log 2>&1
+15 3 * * * cd /home/deploy/jobmatchkit && /home/deploy/jobmatchkit/scripts/backup-postgres.sh >> /home/deploy/jobmatchkit/backups/backup.log 2>&1
 ```
 
 Backup retention target:
@@ -296,14 +295,14 @@ Backup retention target:
 Never let the first restore test be a real incident.
 
 For an unencrypted local backup, copy the dump into the database container and
-restore it into a disposable database. Replace `jobmatchhero` if your
+restore it into a disposable database. Replace `jobmatchkit` if your
 `POSTGRES_USER` differs:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml cp backups/<backup-file>.dump db:/tmp/jobmatchhero.restore.dump
-docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db createdb -U jobmatchhero jobmatchhero_restore_check
-docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db pg_restore -U jobmatchhero -d jobmatchhero_restore_check --clean --if-exists /tmp/jobmatchhero.restore.dump
-docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db dropdb -U jobmatchhero jobmatchhero_restore_check
+docker compose --env-file .env.production -f docker-compose.prod.yml cp backups/<backup-file>.dump db:/tmp/jobmatchkit.restore.dump
+docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db createdb -U jobmatchkit jobmatchkit_restore_check
+docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db pg_restore -U jobmatchkit -d jobmatchkit_restore_check --clean --if-exists /tmp/jobmatchkit.restore.dump
+docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db dropdb -U jobmatchkit jobmatchkit_restore_check
 ```
 
 For encrypted backups, decrypt first on a secure machine:
@@ -317,7 +316,7 @@ Then copy the dump into the database container and run `pg_restore`.
 ## 12. Updating Production
 
 ```bash
-cd /home/deploy/jobmatchhero
+cd /home/deploy/jobmatchkit
 git pull
 ./scripts/deploy-prod.sh
 ```
@@ -346,8 +345,8 @@ disposable environment first and confirm the old code can read it.
 
 Minimum monitoring:
 
-- Uptime monitor for `https://jobmatchhero.com/api/health`.
-- Uptime monitor for `https://jobmatchhero.com/api/health/db`.
+- Uptime monitor for `https://jobmatchkit.com/api/health`.
+- Uptime monitor for `https://jobmatchkit.com/api/health/db`.
 - Alert if `/api/health/worker` returns 503 for more than a few minutes.
 - Disk usage alert before 80%.
 - Backup success/failure alert.
@@ -371,7 +370,5 @@ Move pieces only when there is evidence:
   becomes more important than cost.
 - Move `worker` to a separate VPS when browser automation or matching runs compete
   with API latency.
-- Store fill-review artifacts in object storage when local volume growth becomes
-  meaningful.
 - Add Redis/queue infrastructure only after the persisted database queue becomes
   a bottleneck.

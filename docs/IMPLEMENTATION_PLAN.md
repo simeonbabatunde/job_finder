@@ -1,4 +1,4 @@
-# JobMatchHero Implementation Plan
+# JobMatchKit Implementation Plan
 
 This plan is based on a code review of the current repository on 2026-05-31 and the Influence Chart UI/UX reference project.
 
@@ -18,11 +18,12 @@ The frontend is a Vite React app in `frontend/`.
 
 Key files:
 
-- `src/App.tsx`: manual route switching, top-level layout, auth state, resume/preferences/profile loading, and the main workflow.
+- `src/App.tsx`: manual route switching, top-level layout, auth state, matching-profile/resume/preferences/profile loading, and the main workflow.
 - `src/components/ResumeUpload.tsx`: drag/drop upload, stored resume display, extracted skills, summary.
+- `src/components/MatchingProfileSelector.tsx`: planned selector/manager for saved profile tracks.
 - `src/components/ResumeFeedback.tsx`: AI resume review panel.
-- `src/components/UserProfile.tsx`: application profile fields and completeness banner.
-- `src/components/JobPreferences.tsx`: target roles, location, experience, job type, target companies, match score, recency.
+- `src/components/UserProfile.tsx`: account-level profile fields and completeness banner.
+- `src/components/JobPreferences.tsx`: profile-specific target roles, location, experience, job type, target companies, match score, recency.
 - `src/components/AgentControls.tsx`: validates resume/preferences, uploads and saves silently, starts the search workflow.
 - `src/components/AgentDashboard.tsx`: application table, sorting, inline "view all", clear history, package modal trigger.
 - `src/components/ApplicationPackageModal.tsx`: cover letter, summary, talking points, Q&A, interview prep, company brief, PDF download, status updates.
@@ -39,7 +40,7 @@ Strengths:
 
 Resolved and residual notes:
 
-- The main UI has been moved onto the JobMatchHero token system with a dashboard-first shell.
+- The main UI has been moved onto the JobMatchKit token system with a dashboard-first shell.
 - `src/App.css` previously contained Vite template styles; those have been replaced with a minimal note.
 - Shared UI primitives now cover the app shell, panels, headers, buttons, chips, progress bars, fields, and empty states.
 - Manual routing in `App.tsx` will get brittle as pages grow.
@@ -57,11 +58,11 @@ Key files:
 - `app/api/endpoints.py`: auth, OAuth callbacks, resume upload, preferences, profile, matching run, applications, admin config, password reset, application package, status update, resume feedback.
 - `app/models.py`: SQLModel tables for resumes, preferences, users, applications, profiles, scraper config, reset tokens.
 - `app/agent/graph.py`: LangGraph workflow.
-- `app/agent/nodes.py`: resume parsing, job search, fit analysis, submission selection, browser application.
+- `app/agent/nodes.py`: resume parsing, job search, fit analysis, and application-readiness tagging.
 - `app/agent/llm_factory.py`: OpenAI, OpenRouter, Gemini, Ollama factory.
 - `app/services/job_search.py`: JobSpy plus custom scraper config.
 - `app/services/persistence.py`: application upsert and dedupe.
-- `app/services/browser_apply.py`: Playwright form fill and optional submission.
+- Browser automation services are retired and are not part of the current product workflow.
 - `app/services/resume_parser.py`: resume text extraction.
 - `app/services/ats_scraper.py` and `app/services/motion_recruitment.py`: custom discovery paths.
 
@@ -75,19 +76,19 @@ Strengths:
 
 Resolved and residual notes:
 
-- Resume and preferences are now user-scoped in the core backend flows.
+- Resume and preferences are user-scoped; the next implementation layer binds them into named matching profiles so runs do not depend on whichever resume was uploaded latest.
 - Auth now uses signed bearer tokens with server-side session records, logout invalidation, rotating refresh tokens, replay protection, and previous-secret verification for key rotation.
 - Startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to `create_all` plus the lightweight `schema_migrations` table.
 - Core public API request and response schemas are explicit for the main app flows.
 - Daily free/pro run quotas are enforced server-side.
-- Matching runs are persisted as queued records, can run in local background mode, and can be processed by the Docker worker service in worker mode.
-- Browser fill-for-review is gated to pro/admin users; true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`, and future readiness settings require an approved pilot user/admin plus optional ATS allowlisting.
-- Auto-apply reliability, ATS adapters, hard stop rules, work authorization, and voluntary self-ID handling are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
+- Matching runs are persisted as queued records, can run in local background mode, can be processed by the Docker worker service in worker mode, and can be stopped from the dashboard through queued-run cancellation plus running-run checkpoints.
+- Browser automation is retired; users open employer application links manually from the pipeline.
+- Browser automation retirement and future reconsideration notes are documented in `docs/AUTO_APPLY_RELIABILITY_PLAN.md`.
 - The application answer vault foundation is implemented with `ApplicationAnswerProfile`, `GET/POST /application-profile`, and a dashboard `Application answers` section.
-- Fill-for-review adapters are implemented for resolved Greenhouse, Lever, Ashby, SmartRecruiters, Workday, BambooHR, iCIMS, Recruitee, and Taleo links via `POST /applications/{app_id}/fill-review`.
-- Fill-review attempts are now saved as application-scoped history through `ApplicationFillReview` and `GET /applications/{app_id}/fill-reviews`.
-- Fill-review screenshots and Playwright traces are persisted as authenticated local artifacts and surfaced from saved review history.
-- Final-submit guardrails are implemented with user-scoped submission settings, per-application readiness checks, a no-click final confirmation endpoint with fixture-backed submit-control detection, and persisted `AutoApplyAttempt` records tying fill-review and confirmation into one auditable workflow. Attempts now include compact step-level telemetry for fill-review and final-confirmation transitions. Actual final submission remains disabled.
+- Application prep adapters were retired; `POST /applications/{app_id}/fill-review` now returns `410 Gone`.
+- Historical `ApplicationFillReview` rows remain only for backward-compatible cleanup/export safety.
+- No new application prep screenshots or Playwright traces are created.
+- Submit-readiness and final-confirmation routes are retired and return `410 Gone`; manual employer-site submission is the current supported flow.
 - A focused backend test suite now covers auth, ownership, migrations, application queries, quotas, matching run persistence, LLM provider configuration, and structured errors.
 
 ## Milestone 0: Repository Hygiene and Documentation
@@ -119,7 +120,7 @@ Implementation notes:
 
 - Added root `.gitignore` and `.env.example`.
 - Added `docs/AUTO_APPLY_RELIABILITY_PLAN.md` for the reliability path before production auto-submit.
-- User-facing brand and new local database defaults are standardized as "JobMatchHero"/`jobmatchhero`; legacy local installs may still have pre-rebrand local data until migrated.
+- User-facing brand and new local database defaults are standardized as "JobMatchKit"/`jobmatchkit`; legacy local installs may still have pre-rebrand local data until migrated.
 
 ## Milestone 1: Design System Foundation
 
@@ -207,7 +208,7 @@ Deliverables:
 - Resume section using shared upload and status styles.
 - Profile section using shared fields and completion chip.
 - Preferences section with compact controls.
-- Right-rail search assistant panel with clear fill-for-review state and risk language.
+- Right-rail matching panel with quota state, package-generation status, and clear completion language.
 - Right-rail recent applications list limited to 5 rows, with the full table kept on the Applications page.
 
 Acceptance criteria:
@@ -260,9 +261,52 @@ Implementation notes:
 
 - Backend now supports `/applications` query parameters for `limit`, `sort`, `direction`, and `status`.
 - Dashboard requests the recent limited view; the full `/applications` view requests the complete history.
-- Application rows now include link-resolution metadata so aggregator links can be resolved before future fill/submit workflows.
-- Dashboard shows a link readiness chip and can call `POST /applications/{app_id}/resolve-link` to update a saved record with the resolved employer URL.
-- The auto-apply path now requires a resolved supported ATS link; unresolved aggregator/company/unknown links are marked for review instead of browser automation.
+- Application rows now include source metadata so official apply links can be preferred before future fill/submit workflows.
+- Matching now uses official company/application sources first, then job boards as fallback discovery hints.
+- Dashboard shows user-facing link readiness (`Official apply link`, `Company apply page`, or `Source page only`) without exposing a manual resolve action.
+- Matching-run package generation is allowed only for threshold-cleared jobs; unresolved aggregator links are hidden or held for manual review until they resolve to employer links.
+
+
+## Milestone 4A: Saved Matching Profiles
+
+Status: Next
+
+Goal:
+
+Let users maintain multiple named matching tracks, each with its own resume and matching preferences, while preserving the existing one-profile workflow for current users.
+
+Product rules:
+
+- Account profile and reusable application answers remain global.
+- A matching profile owns the selected resume and matching preferences.
+- A matching run must use an explicit matching profile.
+- Existing users get a default matching profile built from their latest resume and latest preferences.
+- If the frontend does not pass a profile ID, the backend falls back to the default profile for backward compatibility.
+- Applications and matching runs should store `matching_profile_id` and `agent_run_id` where possible so results can be filtered and audited.
+
+Backend deliverables:
+
+- `MatchingProfile` SQLModel table with user ownership, name, selected `resume_id`, preference fields, default/archive flags, and timestamps.
+- Lightweight migration/backfill that creates one default profile per user from latest resume/preferences.
+- APIs for listing, creating, updating, archiving, selecting defaults, and attaching/uploading resumes.
+- `/agent/run` accepts `matching_profile_id` and snapshots that profile into the run.
+- Run execution uses the profile's resume and preferences rather than latest records.
+- Application persistence tags saved jobs with `matching_profile_id` and `agent_run_id`.
+
+Frontend deliverables:
+
+- Dashboard profile selector with create/rename/duplicate/archive affordances.
+- Resume and preferences panels load/save against the selected profile.
+- Start Matching runs the selected profile.
+- Applications page can filter by matching profile and show the profile label.
+
+Acceptance criteria:
+
+- A user can create at least two matching profiles with different resumes and role targets.
+- Starting matching with profile A uses profile A's resume/preferences, even if profile B was edited more recently.
+- Existing single-profile users can still upload a resume, save preferences, and run matching without manual migration steps.
+- Historical runs/applications keep showing after a profile is archived.
+- Tests cover default-profile backfill, selected-profile run execution, and pipeline filtering.
 
 ## Milestone 5: Application Package UX
 
@@ -311,9 +355,9 @@ Deliverables:
 - Subscription model with enforced quotas.
 - Free/pro plan behavior:
   - Free: daily matching-run limit.
-  - Pro: larger daily matching-run limit and browser fill-for-review access.
+  - Pro: larger daily matching-run limit and priority package generation.
   - True auto-submit: keep gated server-side, blocked by default, and unavailable until an approved pilot.
-- Account settings page. Implemented at `/settings` with billing, profile details, saved application answers, and submission guardrails.
+- Account settings page. Implemented at `/settings` with billing, profile details, and saved application answers.
 
 Acceptance criteria:
 
@@ -340,9 +384,9 @@ Deliverables:
 - User ownership fields on resumes and preferences. Implemented with a versioned startup migration for existing local databases.
 - Query parameters for applications sorting, filtering, and limiting. Implemented on `GET /applications`.
 - Match buckets for the application pipeline. Implemented with `match_bucket=strong|below_threshold|all`; `all` excludes skipped/screened-out legacy rows.
-- Account data export. Implemented with `GET /account/export` for resumes, preferences, generated package records, applications, matching runs, fill-review history, automation attempts, audits, and authenticated artifact URLs.
+- Account data export. Implemented with `GET /account/export` for resumes, preferences, generated package records, applications, matching runs, answer audits, and historical compatibility records where present.
 - Conservative pre-screen before LLM analysis. Implemented with pass/maybe/reject buckets; reject jobs are skipped without being saved.
-- Server-side action guards for match quality. Implemented so package generation and fill-for-review are blocked for legacy screened-out jobs and jobs below the latest minimum match score.
+- Server-side action guards for match quality. Implemented so package generation is blocked for legacy screened-out jobs and jobs below the latest minimum match score.
 - Matching run records and logs. Implemented with `AgentRun`; `/agent/run` now queues background work and the frontend polls run status.
 - Safer auto-apply audit trail. Implemented with `AutoApplyAudit`; stronger confirmation rules remain.
 - LLM provider setting per deployment. Implemented with `LLM_PROVIDER`, `LLM_MODEL`, and provider-specific model overrides flowing through the shared LLM factory.
@@ -404,7 +448,7 @@ Deliverables:
 - Environment templates.
 - CORS and frontend URL settings documented.
 - Health and readiness endpoints. Implemented for API, DB, and worker.
-- Logging strategy. Implemented with structured JSON operational events for matching runs, workers, browser fill-review, and submit confirmation.
+- Logging strategy. Implemented with structured JSON operational events for matching runs, workers, package generation, billing, and account workflows.
 - Background job or worker strategy for long matching runs. Implemented with worker mode and heartbeat checks.
 - Deployment guide. Implemented through `docs/DEPLOYMENT_READINESS.md` and `docs/OPERATIONS_RUNBOOK.md`.
 - CI preflight workflow. Implemented in `.github/workflows/preflight.yml`.

@@ -698,7 +698,7 @@ wheels = [
 ]
 
 [[package]]
-name = "job-match-hero"
+name = "job-match-kit"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

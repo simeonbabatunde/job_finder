@@ -1,6 +1,6 @@
-# JobMatchHero Frontend
+# JobMatchKit Frontend
 
-The frontend is a React 19 + TypeScript + Vite app that powers the JobMatchHero user workflow.
+The frontend is a React 19 + TypeScript + Vite app that powers the JobMatchKit user workflow.
 
 ## Current Responsibilities
 
@@ -113,7 +113,7 @@ The first Influence Chart-style UI pass is now in place:
 - Application history rows show link readiness, can resolve supported aggregator links, and open the resolved employer URL when available.
 - Resolved Greenhouse and Lever rows show `Fill review` and return a structured review summary without submitting.
 - Fill-review responses can show an ephemeral prepared-form screenshot preview.
-- The fill-review modal shows recent saved review attempts for the selected application.
+- The application pipeline focuses on generated packages and manual employer links.
 - Candidate Profile now includes `Application answers` for common application questions and optional self-identification fields.
 - Application answers can be reset from the dashboard.
 

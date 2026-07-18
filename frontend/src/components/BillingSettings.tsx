@@ -10,7 +10,7 @@ import type { BillingStatus } from '../api/client';
 import { Button, Notice, StatusChip } from './ui';
 
 const freeFeatures = ['3 matching runs per day', 'Generated packages', 'Pipeline tracking'];
-const proFeatures = ['50 matching runs per day', 'Fill-for-review', 'Higher search volume'];
+const proFeatures = ['50 matching runs per day', 'Higher search volume', 'Priority package generation'];
 
 function formatBillingDate(value?: string | null) {
     if (!value) return null;

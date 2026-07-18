@@ -135,7 +135,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onClose, initialMo
                         </span>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-                                JobMatchHero
+                                JobMatchKit
                             </p>
                             <h2 className="mt-1 text-2xl font-semibold text-[var(--ink)]">{title}</h2>
                             <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{subtitle}</p>

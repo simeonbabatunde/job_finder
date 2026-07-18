@@ -312,9 +312,9 @@ export function ApplicationAnswers({ initialData, onSaved }: ApplicationAnswersP
                     className="mt-1 h-4 w-4 rounded border-[var(--line)] text-[var(--accent)]"
                 />
                 <span>
-                    <span className="block text-sm font-semibold text-[var(--ink)]">Use these answers for fill-for-review</span>
+                    <span className="block text-sm font-semibold text-[var(--ink)]">Use these answers for generated materials</span>
                     <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">
-                        Future form filling can use these answers only when this is enabled.
+                        Generated packages can include these answers only when this is enabled.
                     </span>
                 </span>
             </label>

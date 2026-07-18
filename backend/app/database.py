@@ -3,11 +3,12 @@ from sqlmodel import SQLModel, create_engine, Session
 from typing import Callable, Generator
 from pathlib import Path
 
+import json
 import os
 
 from app.observability import log_event
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/jobmatchhero")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/jobmatchkit")
 USE_ALEMBIC_MIGRATIONS = os.getenv("USE_ALEMBIC_MIGRATIONS", "").lower() in {"1", "true", "yes"}
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 STARTUP_MIGRATION_LOCK_ID = 741319502
@@ -492,6 +493,204 @@ def migrate_user_billing_fields(connection):
         )
     )
 
+
+def migrate_matching_profiles(connection):
+    """Create saved matching profiles and backfill a default profile per user."""
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "user" not in table_names:
+        return
+
+    id_column = "SERIAL PRIMARY KEY" if connection.dialect.name == "postgresql" else "INTEGER PRIMARY KEY"
+    bool_false = "FALSE" if connection.dialect.name == "postgresql" else "0"
+    json_type = "JSON"
+    connection.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS matchingprofile (
+                id {id_column},
+                user_id INTEGER NOT NULL,
+                name VARCHAR NOT NULL DEFAULT 'Default profile',
+                resume_id INTEGER,
+                role {json_type},
+                experience_level {json_type},
+                location {json_type},
+                job_type {json_type},
+                target_companies {json_type},
+                min_match_score INTEGER NOT NULL DEFAULT 70,
+                posted_within_days INTEGER NOT NULL DEFAULT 7,
+                is_default BOOLEAN NOT NULL DEFAULT {bool_false},
+                is_archived BOOLEAN NOT NULL DEFAULT {bool_false},
+                last_used_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES "user" (id),
+                FOREIGN KEY(resume_id) REFERENCES resume (id)
+            )
+            """
+        )
+    )
+
+    for index_name, columns in (
+        ("ix_matchingprofile_user_default", "user_id, is_default"),
+        ("ix_matchingprofile_user_archived", "user_id, is_archived"),
+        ("ix_matchingprofile_resume_id", "resume_id"),
+    ):
+        connection.execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {index_name} "
+                f"ON matchingprofile ({columns})"
+            )
+        )
+
+    for table_name, column_defs in (
+        (
+            "agentrun",
+            {
+                "matching_profile_id": "INTEGER",
+                "resume_id": "INTEGER",
+            },
+        ),
+        (
+            "application",
+            {
+                "matching_profile_id": "INTEGER",
+                "agent_run_id": "INTEGER",
+            },
+        ),
+    ):
+        if table_name not in table_names:
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table_name)}
+        for column_name, column_def in column_defs.items():
+            if column_name not in columns:
+                connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}"))
+        for index_name, columns_sql in (
+            (f"ix_{table_name}_matching_profile", "matching_profile_id"),
+            (f"ix_{table_name}_agent_run", "agent_run_id") if table_name == "application" else (f"ix_{table_name}_resume", "resume_id"),
+        ):
+            connection.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {index_name} "
+                    f"ON {table_name} ({columns_sql})"
+                )
+            )
+
+    empty_json = "[]"
+    default_experience = '["Intermediate"]'
+    default_job_type = '["Full-time"]'
+
+    def json_value(value, fallback):
+        if value is None:
+            return fallback
+        return value if isinstance(value, str) else json.dumps(value)
+
+    users = connection.execute(text('SELECT id FROM "user"')).mappings().all()
+    for user in users:
+        user_id = user["id"]
+        existing = connection.execute(
+            text("SELECT id FROM matchingprofile WHERE user_id = :user_id LIMIT 1"),
+            {"user_id": user_id},
+        ).first()
+        if existing:
+            continue
+
+        resume_row = None
+        if "resume" in table_names:
+            resume_row = connection.execute(
+                text(
+                    "SELECT id FROM resume WHERE user_id = :user_id "
+                    "ORDER BY upload_date DESC LIMIT 1"
+                ),
+                {"user_id": user_id},
+            ).mappings().first()
+
+        pref_row = None
+        if "jobpreference" in table_names:
+            pref_row = connection.execute(
+                text(
+                    "SELECT role, experience_level, location, job_type, target_companies, "
+                    "min_match_score, posted_within_days FROM jobpreference "
+                    "WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"user_id": user_id},
+            ).mappings().first()
+
+        connection.execute(
+            text(
+                """
+                INSERT INTO matchingprofile (
+                    user_id, name, resume_id, role, experience_level, location,
+                    job_type, target_companies, min_match_score, posted_within_days,
+                    is_default, is_archived, created_at, updated_at
+                ) VALUES (
+                    :user_id, :name, :resume_id, :role, :experience_level, :location,
+                    :job_type, :target_companies, :min_match_score, :posted_within_days,
+                    :is_default, :is_archived, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {
+                "user_id": user_id,
+                "name": "Default profile",
+                "resume_id": resume_row["id"] if resume_row else None,
+                "role": json_value(pref_row["role"] if pref_row else None, empty_json),
+                "experience_level": json_value(pref_row["experience_level"] if pref_row else None, default_experience),
+                "location": json_value(pref_row["location"] if pref_row else None, empty_json),
+                "job_type": json_value(pref_row["job_type"] if pref_row else None, default_job_type),
+                "target_companies": json_value(pref_row["target_companies"] if pref_row else None, empty_json),
+                "min_match_score": pref_row["min_match_score"] if pref_row and pref_row["min_match_score"] is not None else 70,
+                "posted_within_days": pref_row["posted_within_days"] if pref_row and pref_row["posted_within_days"] is not None else 7,
+                "is_default": True,
+                "is_archived": False,
+            },
+        )
+
+        profile_row = connection.execute(
+            text(
+                """
+                SELECT id, resume_id FROM matchingprofile
+                WHERE user_id = :user_id
+                ORDER BY is_default DESC, updated_at DESC, id ASC
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        ).mappings().first()
+        if not profile_row:
+            continue
+
+        if "agentrun" in table_names:
+            connection.execute(
+                text(
+                    """
+                    UPDATE agentrun
+                    SET matching_profile_id = :profile_id,
+                        resume_id = COALESCE(resume_id, :resume_id)
+                    WHERE user_id = :user_id
+                    AND matching_profile_id IS NULL
+                    """
+                ),
+                {
+                    "profile_id": profile_row["id"],
+                    "resume_id": profile_row["resume_id"],
+                    "user_id": user_id,
+                },
+            )
+
+        if "application" in table_names:
+            connection.execute(
+                text(
+                    """
+                    UPDATE application
+                    SET matching_profile_id = :profile_id
+                    WHERE user_id = :user_id
+                    AND matching_profile_id IS NULL
+                    """
+                ),
+                {"profile_id": profile_row["id"], "user_id": user_id},
+            )
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0001_user_scope_resume_preferences", migrate_user_scope_resume_preferences),
     ("0002_application_link_resolution", migrate_application_link_resolution),
@@ -508,6 +707,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, Callable], ...] = (
     ("0013_worker_heartbeat", migrate_worker_heartbeat),
     ("0014_application_answer_audit", migrate_application_answer_audit),
     ("0015_user_billing_fields", migrate_user_billing_fields),
+    ("0016_matching_profiles", migrate_matching_profiles),
 )
 
 def ensure_schema_migrations_table(connection):

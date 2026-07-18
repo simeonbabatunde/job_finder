@@ -12,7 +12,7 @@ from langchain_core.output_parsers import JsonOutputParser
 class BrowserApplyService:
     @staticmethod
     def true_submit_enabled() -> bool:
-        return os.getenv("ENABLE_TRUE_AUTO_SUBMIT", "false").strip().lower() in {"1", "true", "yes", "on"}
+        return False
 
     @staticmethod
     async def apply_to_job(job_url: str, profile: Profile, resume_bytes: bytes, resume_filename: str, cover_letter: Optional[str] = None, submit: bool = False) -> Dict[str, Any]:
@@ -29,16 +29,16 @@ class BrowserApplyService:
         if not profile:
             log_event("browser_apply.blocked", level="warning", source_host=url_host(job_url), reason="missing_profile")
             return {"status": "failed", "message": "User profile is required for auto-apply."}
-        if submit and not BrowserApplyService.true_submit_enabled():
+        if submit:
             log_event(
                 "browser_apply.blocked",
                 level="warning",
                 source_host=url_host(job_url),
-                reason="true_submit_disabled",
+                reason="legacy_true_submit_disabled",
             )
             return {
                 "status": "blocked",
-                "message": "Automated final submit is disabled. Set ENABLE_TRUE_AUTO_SUBMIT=true only for an approved pilot.",
+                "message": "Legacy browser automation never performs final submit. Use the guarded confirmation workflow instead.",
             }
 
         async with async_playwright() as p:

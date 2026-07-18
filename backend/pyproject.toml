@@ -1,7 +1,7 @@
 [project]
-name = "job-match-hero"
+name = "job-match-kit"
 version = "0.1.0"
-description = "JobMatchHero application"
+description = "JobMatchKit application"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

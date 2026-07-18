@@ -25,7 +25,7 @@ SENSITIVE_FIELD_MARKERS = (
 
 
 def _build_logger() -> logging.Logger:
-    logger = logging.getLogger("jobmatchhero.events")
+    logger = logging.getLogger("jobmatchkit.events")
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(logging.Formatter("%(message)s"))

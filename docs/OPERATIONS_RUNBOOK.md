@@ -53,20 +53,20 @@ Local Compose rehearsal:
 
 ```bash
 mkdir -p backups
-docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/jobmatchhero.backup
-docker cp jobmatchhero-db-1:/tmp/jobmatchhero.backup backups/jobmatchhero.backup
-docker compose exec db createdb -U "$POSTGRES_USER" jobmatchhero_restore_check
-docker cp backups/jobmatchhero.backup jobmatchhero-db-1:/tmp/jobmatchhero.backup
-docker compose exec db pg_restore -U "$POSTGRES_USER" -d jobmatchhero_restore_check --clean --if-exists /tmp/jobmatchhero.backup
-docker compose exec db dropdb -U "$POSTGRES_USER" jobmatchhero_restore_check
+docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/jobmatchkit.backup
+docker cp jobmatchkit-db-1:/tmp/jobmatchkit.backup backups/jobmatchkit.backup
+docker compose exec db createdb -U "$POSTGRES_USER" jobmatchkit_restore_check
+docker cp backups/jobmatchkit.backup jobmatchkit-db-1:/tmp/jobmatchkit.backup
+docker compose exec db pg_restore -U "$POSTGRES_USER" -d jobmatchkit_restore_check --clean --if-exists /tmp/jobmatchkit.backup
+docker compose exec db dropdb -U "$POSTGRES_USER" jobmatchkit_restore_check
 ```
 
 Backup artifacts are private data. Do not commit or attach them to tickets.
 
-Legacy local databases created before the JobMatchHero rebrand may still live
+Legacy local databases created before the JobMatchKit rebrand may still live
 under pre-rebrand database, project, or volume names. Back up that data before
 changing `POSTGRES_DB`, `DATABASE_URL`, `COMPOSE_PROJECT_NAME`, or the root
-folder name. Restore into `jobmatchhero` after the rename if you need to
+folder name. Restore into `jobmatchkit` after the rename if you need to
 preserve local records.
 
 ## Account Export Handling
@@ -114,24 +114,20 @@ Useful event families:
 
 - `agent_run.*`: queue, start, claim, complete, failure, stale timeout.
 - `agent_worker.*`: worker start, claim, completion, failure, heartbeat failure.
-- `agent_node.*`: search, pre-screen, analysis, application readiness, browser-fill batches.
-- `browser_fill_review.*`: API fill-review request/completion.
-- `submit_readiness.*` and `submit_confirmation.*`: final-review readiness and no-click confirmation preparation.
-- `auto_apply_attempt.*`: persisted attempt steps and state transitions.
+- `agent_node.*`: search, pre-screen, analysis, and application readiness.
+- `application_package.*`: package generation events where emitted.
+- Retired browser automation routes should return `410 Gone` and should not emit new fill/submit workflow events.
 
 Set `STRUCTURED_LOG_LEVEL` only when the hosting logger needs a different verbosity.
 
-## True-Submit Pilot Gate
+## Retired Browser Automation
 
-Do not enable true-submit behavior for normal staging or demos. If a controlled pilot is explicitly approved:
+Browser form filling and final-submit preparation are not part of the supported product. For staging and production checks:
 
-1. Keep `require_human_confirmation=true` in user submission settings.
-2. Set `ENABLE_TRUE_AUTO_SUBMIT=true` only in the target pilot environment.
-3. Add the approved users to `TRUE_SUBMIT_PILOT_USER_EMAILS`.
-4. Optionally limit ATS scope with `TRUE_SUBMIT_PILOT_ATS_TYPES`, for example `greenhouse,lever`.
-5. Confirm non-pilot users still see the submission guardrail as locked.
-6. Confirm `POST /applications/{app_id}/submit-confirmation` still returns `can_submit=false` until a separate final-click endpoint is deliberately implemented.
-7. Roll back immediately by setting `ENABLE_TRUE_AUTO_SUBMIT=false`.
+1. Confirm no Apply with assistant, Application Prep, screenshot, trace, readiness, or final-confirmation controls are visible in the UI.
+2. Confirm `/agent/run?auto_apply=true` returns `410 Gone`.
+3. Confirm retired application-prep and submit-confirmation routes return `410 Gone`.
+4. Keep any historical fill-review/automation records private and treat them as compatibility data only.
 
 ## Rollback Notes
 

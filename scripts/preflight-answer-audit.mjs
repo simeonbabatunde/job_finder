@@ -1,6 +1,6 @@
 const baseUrl = process.env.PREFLIGHT_API_URL ?? "http://127.0.0.1:8000";
 const stamp = Date.now();
-const email = `preflight-answer-audit+${stamp}@jobfinder.test`;
+const email = `preflight-answer-audit+${stamp}@jobmatchkit.test`;
 const password = "Password123!";
 
 function assert(condition, message) {

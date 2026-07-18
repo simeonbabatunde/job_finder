@@ -5,7 +5,6 @@ import { getAuthHeaders, API_URL, saveProfile } from '../api/client';
 import type { ProfilePayload } from '../api/client';
 import { Button, Notice, Panel, TextField } from './ui';
 import { ApplicationAnswers } from './ApplicationAnswers';
-import { SubmissionSettings } from './SubmissionSettings';
 import { BillingSettings } from './BillingSettings';
 
 const EMPTY_PROFILE: ProfilePayload = {
@@ -87,7 +86,7 @@ export const ProfileSettings = () => {
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Profile settings</p>
                     <h3 className="mt-1 text-xl font-semibold text-[var(--ink)]">Personal profile details</h3>
                     <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
-                        These details help the assistant fill applications and personalize generated materials.
+                        These details help JobMatchKit personalize matching signals and generated materials.
                     </p>
                 </div>
 
@@ -132,9 +131,6 @@ export const ProfileSettings = () => {
             </form>
             <div className="mt-5 border-t border-[var(--line)] pt-5">
                 <ApplicationAnswers />
-            </div>
-            <div className="mt-5 border-t border-[var(--line)] pt-5">
-                <SubmissionSettings />
             </div>
         </Panel>
     );

@@ -2,12 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2, Circle, FileText, Play, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { clearAuthSession, getUserStatus, hasAuthSession, revokeAuthSession } from './api/client';
+import {
+  archiveMatchingProfile,
+  clearAuthSession,
+  createMatchingProfile,
+  getErrorMessage,
+  getUserStatus,
+  hasAuthSession,
+  revokeAuthSession,
+  updateMatchingProfile,
+} from './api/client';
 import type {
   AgentQuotaStatus,
   AppUser,
   ApplicationAnswerProfilePayload,
   JobPreferencesPayload,
+  MatchingProfile,
+  MatchingProfilePayload,
   ProfilePayload,
   ResumeStatus,
 } from './api/client';
@@ -18,8 +29,8 @@ import { ResumeFeedback } from './components/ResumeFeedback';
 import { UserProfile } from './components/UserProfile';
 import { ProfileSettings } from './components/ProfileSettings';
 import { ApplicationAnswers } from './components/ApplicationAnswers';
-import { SubmissionSettings } from './components/SubmissionSettings';
 import { JobPreferences } from './components/JobPreferences';
+import { MatchingProfileSelector } from './components/MatchingProfileSelector';
 import type { JobPreferencesHandle } from './components/JobPreferences';
 import { AgentControls } from './components/AgentControls';
 import { AgentDashboard } from './components/AgentDashboard';
@@ -36,6 +47,42 @@ interface OverviewItem {
   icon: LucideIcon;
 }
 
+const summarizeList = (items?: string[], fallback = 'Not set') => {
+  const cleanItems = (items || []).map(item => item.trim()).filter(Boolean);
+  if (!cleanItems.length) return fallback;
+  if (cleanItems.length === 1) return cleanItems[0];
+  return `${cleanItems[0]} +${cleanItems.length - 1}`;
+};
+
+const profileToPreferences = (profile?: MatchingProfile | null): JobPreferencesPayload | null => {
+  if (!profile) return null;
+  return {
+    role: profile.role || [],
+    experience_level: profile.experience_level || ['Intermediate'],
+    location: profile.location || [],
+    job_type: profile.job_type || ['Full-time'],
+    target_companies: profile.target_companies || [],
+    min_match_score: profile.min_match_score ?? 70,
+    posted_within_days: profile.posted_within_days ?? 7,
+  };
+};
+
+const profileToPayload = (
+  profile: MatchingProfile,
+  overrides: Partial<MatchingProfilePayload> = {},
+): MatchingProfilePayload => ({
+  name: (overrides.name ?? profile.name ?? 'Untitled profile').trim() || 'Untitled profile',
+  resume_id: overrides.resume_id ?? profile.resume_id ?? profile.resume?.id ?? null,
+  is_default: overrides.is_default ?? profile.is_default,
+  role: overrides.role ?? profile.role ?? [],
+  experience_level: overrides.experience_level ?? profile.experience_level ?? ['Intermediate'],
+  location: overrides.location ?? profile.location ?? [],
+  job_type: overrides.job_type ?? profile.job_type ?? ['Full-time'],
+  target_companies: overrides.target_companies ?? profile.target_companies ?? [],
+  min_match_score: overrides.min_match_score ?? profile.min_match_score ?? 70,
+  posted_within_days: overrides.posted_within_days ?? profile.posted_within_days ?? 7,
+});
+
 function App() {
   const currentPath = window.location.pathname;
   const [refreshHistory, setRefreshHistory] = useState(0);
@@ -47,9 +94,18 @@ function App() {
   const [profileData, setProfileData] = useState<ProfilePayload | null>(null);
   const [applicationProfileData, setApplicationProfileData] = useState<ApplicationAnswerProfilePayload | null>(null);
   const [quotaData, setQuotaData] = useState<AgentQuotaStatus | null>(null);
+  const [matchingProfiles, setMatchingProfiles] = useState<MatchingProfile[]>([]);
+  const [selectedMatchingProfileId, setSelectedMatchingProfileId] = useState<number | null>(null);
+  const [applicationProfileFilterId, setApplicationProfileFilterId] = useState<number | 'all' | null>(null);
+  const [profileActionBusy, setProfileActionBusy] = useState(false);
+  const [profileActionError, setProfileActionError] = useState<string | null>(null);
 
   const resumeRef = useRef<ResumeUploadHandle>(null);
   const prefsRef = useRef<JobPreferencesHandle>(null);
+
+  const selectedMatchingProfile = useMemo(() => {
+    return matchingProfiles.find(profile => profile.id === selectedMatchingProfileId) || matchingProfiles[0] || null;
+  }, [matchingProfiles, selectedMatchingProfileId]);
 
   const resetSessionState = useCallback(() => {
     clearAuthSession();
@@ -59,6 +115,10 @@ function App() {
     setProfileData(null);
     setApplicationProfileData(null);
     setQuotaData(null);
+    setMatchingProfiles([]);
+    setSelectedMatchingProfileId(null);
+    setApplicationProfileFilterId(null);
+    setProfileActionError(null);
   }, []);
 
   const refreshStatus = useCallback(async (showLoading = true) => {
@@ -67,9 +127,20 @@ function App() {
       try {
         const data = await getUserStatus();
         if (data.user) {
+          const profiles = data.matching_profiles || [];
+          const selectedFromResponse = data.selected_matching_profile
+            ? profiles.find(profile => profile.id === data.selected_matching_profile?.id) || data.selected_matching_profile
+            : null;
+          const selectedProfile = profiles.find(profile => profile.id === selectedMatchingProfileId)
+            || selectedFromResponse
+            || profiles[0]
+            || null;
+
           setUser(data.user);
-          setResumeData(data.resume ?? null);
-          setPrefsData(data.preferences ?? null);
+          setMatchingProfiles(profiles);
+          setSelectedMatchingProfileId(selectedProfile?.id ?? null);
+          setResumeData(selectedProfile?.resume ?? data.resume ?? null);
+          setPrefsData(profileToPreferences(selectedProfile) ?? data.preferences ?? null);
           setProfileData(data.profile ?? null);
           setApplicationProfileData(data.application_profile ?? null);
           setQuotaData(data.quota ?? null);
@@ -83,7 +154,7 @@ function App() {
     } else {
       setLoading(false);
     }
-  }, [resetSessionState]);
+  }, [resetSessionState, selectedMatchingProfileId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -93,10 +164,43 @@ function App() {
   }, [refreshStatus]);
 
   useEffect(() => {
-    if (!loading && resumeData && resumeRef.current) {
+    if (!loading && resumeRef.current) {
       resumeRef.current.setResumeData(resumeData);
     }
   }, [loading, resumeData]);
+
+  useEffect(() => {
+    if (!selectedMatchingProfile) return;
+    setResumeData(selectedMatchingProfile.resume ?? null);
+    setPrefsData(profileToPreferences(selectedMatchingProfile));
+    setProfileActionError(null);
+  }, [selectedMatchingProfile]);
+
+  useEffect(() => {
+    if (applicationProfileFilterId === null && selectedMatchingProfile?.id) {
+      setApplicationProfileFilterId(selectedMatchingProfile.id);
+    }
+  }, [applicationProfileFilterId, selectedMatchingProfile?.id]);
+
+  useEffect(() => {
+    if (typeof applicationProfileFilterId !== 'number' || !matchingProfiles.length) return;
+    if (!matchingProfiles.some(profile => profile.id === applicationProfileFilterId)) {
+      setApplicationProfileFilterId(selectedMatchingProfile?.id ?? null);
+    }
+  }, [applicationProfileFilterId, matchingProfiles, selectedMatchingProfile?.id]);
+
+  const applicationProfileFilter = useMemo(() => {
+    if (typeof applicationProfileFilterId !== 'number') return null;
+    return matchingProfiles.find(profile => profile.id === applicationProfileFilterId) || null;
+  }, [applicationProfileFilterId, matchingProfiles]);
+
+  const applicationDashboardProfileId = typeof applicationProfileFilterId === 'number'
+    ? applicationProfileFilterId
+    : null;
+  const applicationDashboardMinMatchScore = applicationProfileFilter?.min_match_score
+    ?? selectedMatchingProfile?.min_match_score
+    ?? prefsData?.min_match_score
+    ?? 70;
 
   const handleLogout = async () => {
     try {
@@ -112,6 +216,81 @@ function App() {
     setUser(u);
     setShowAuth(null);
     refreshStatus();
+  };
+
+  const handleSelectMatchingProfile = (profileId: number) => {
+    const profile = matchingProfiles.find(item => item.id === profileId);
+    setSelectedMatchingProfileId(profileId);
+    setResumeData(profile?.resume ?? null);
+    setPrefsData(profileToPreferences(profile));
+  };
+
+  const handleCreateMatchingProfile = async () => {
+    setProfileActionBusy(true);
+    setProfileActionError(null);
+    try {
+      const profile = await createMatchingProfile({ name: `Search profile ${matchingProfiles.length + 1}` });
+      setMatchingProfiles(prev => [profile, ...prev.filter(item => item.id !== profile.id)]);
+      setSelectedMatchingProfileId(profile.id);
+      setResumeData(profile.resume ?? null);
+      setPrefsData(profileToPreferences(profile));
+    } catch (error) {
+      setProfileActionError(getErrorMessage(error, 'Failed to create matching profile.'));
+    } finally {
+      setProfileActionBusy(false);
+    }
+  };
+
+  const handleDuplicateMatchingProfile = async () => {
+    if (!selectedMatchingProfile) return;
+    setProfileActionBusy(true);
+    setProfileActionError(null);
+    try {
+      const profile = await createMatchingProfile({
+        name: `${selectedMatchingProfile.name} copy`,
+        duplicate_from_id: selectedMatchingProfile.id,
+      });
+      setMatchingProfiles(prev => [profile, ...prev.filter(item => item.id !== profile.id)]);
+      setSelectedMatchingProfileId(profile.id);
+      setResumeData(profile.resume ?? null);
+      setPrefsData(profileToPreferences(profile));
+    } catch (error) {
+      setProfileActionError(getErrorMessage(error, 'Failed to duplicate matching profile.'));
+    } finally {
+      setProfileActionBusy(false);
+    }
+  };
+
+  const handleRenameMatchingProfile = async (name: string) => {
+    if (!selectedMatchingProfile) return;
+    setProfileActionBusy(true);
+    setProfileActionError(null);
+    try {
+      const profile = await updateMatchingProfile(
+        selectedMatchingProfile.id,
+        profileToPayload(selectedMatchingProfile, { name }),
+      );
+      setMatchingProfiles(prev => prev.map(item => item.id === profile.id ? profile : item));
+      setSelectedMatchingProfileId(profile.id);
+    } catch (error) {
+      setProfileActionError(getErrorMessage(error, 'Failed to rename matching profile.'));
+    } finally {
+      setProfileActionBusy(false);
+    }
+  };
+
+  const handleArchiveMatchingProfile = async () => {
+    if (!selectedMatchingProfile) return;
+    setProfileActionBusy(true);
+    setProfileActionError(null);
+    try {
+      await archiveMatchingProfile(selectedMatchingProfile.id);
+      await refreshStatus(false);
+    } catch (error) {
+      setProfileActionError(getErrorMessage(error, 'Failed to archive matching profile.'));
+    } finally {
+      setProfileActionBusy(false);
+    }
   };
 
   const profileComplete = useMemo(() => {
@@ -144,7 +323,7 @@ function App() {
       label: 'Preferences',
       ready: preferencesReady,
       detail: prefsData
-        ? `${prefsData.role?.[0] || 'Role'} / ${prefsData.location?.[0] || 'Market'}`
+        ? `${summarizeList(prefsData.role, 'Role')} / ${summarizeList(prefsData.location, 'Market')}`
         : 'Matching targets needed',
       icon: SlidersHorizontal,
     },
@@ -198,15 +377,62 @@ function App() {
   );
 
   if (currentPath === '/applications') {
+    const applicationFilterValue = applicationProfileFilterId === null
+      ? ''
+      : applicationProfileFilterId === 'all'
+        ? 'all'
+        : String(applicationProfileFilterId);
+    const applicationFilterRoleSummary = applicationProfileFilter
+      ? summarizeList(applicationProfileFilter.role, 'No role targets yet')
+      : 'All saved matching profiles';
+    const applicationFilterResume = applicationProfileFilter?.resume?.filename || 'Multiple resume signals';
+    const applicationFilterControl = user && matchingProfiles.length > 0 ? (
+      <div className="min-w-[220px] sm:w-64">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Profile</label>
+        <select
+          value={applicationFilterValue}
+          onChange={(event) => {
+            const value = event.target.value;
+            setApplicationProfileFilterId(value === 'all' ? 'all' : Number(value));
+          }}
+          className="min-h-9 w-full rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--ink)] outline-none transition-colors focus:border-[var(--accent)]"
+        >
+          {applicationProfileFilterId === null && <option value="">Loading profiles</option>}
+          {matchingProfiles.map(profile => (
+            <option key={profile.id} value={profile.id}>{profile.name}</option>
+          ))}
+          <option value="all">All profiles</option>
+        </select>
+      </div>
+    ) : null;
+    const applicationFilterSummary = user && matchingProfiles.length > 0 ? (
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+        <StatusChip tone={applicationProfileFilterId === 'all' ? 'neutral' : 'accent'}>
+          {applicationProfileFilterId === 'all' ? `${matchingProfiles.length} profiles` : applicationProfileFilter?.name || 'Selected profile'}
+        </StatusChip>
+        <span className="min-w-0 truncate">{applicationFilterRoleSummary}</span>
+        <span className="hidden text-[var(--line)] sm:inline">/</span>
+        <span className="min-w-0 truncate">{applicationFilterResume}</span>
+      </div>
+    ) : null;
+
     return shell(
       <PageShell>
         <SectionHeader
           eyebrow="Pipeline"
           title="Application pipeline"
-          description="Track every best-fit role, manage status, and open the generated materials for each application."
+          description="Track best-fit roles by saved matching profile, manage status, and open generated materials for each application."
         />
         <div className="mt-5">
-          <AgentDashboard key={refreshHistory} fullPage minMatchScore={prefsData?.min_match_score ?? 70} />
+          <AgentDashboard
+            key={`${refreshHistory}-${applicationProfileFilterId ?? 'pending'}`}
+            fullPage
+            minMatchScore={applicationDashboardMinMatchScore}
+            minMatchScoreLabel={applicationProfileFilterId === 'all' ? 'Minimum match score varies by profile' : undefined}
+            matchingProfileId={applicationDashboardProfileId}
+            profileFilterControl={applicationFilterControl}
+            profileFilterSummary={applicationFilterSummary}
+          />
         </div>
       </PageShell>,
     );
@@ -218,7 +444,7 @@ function App() {
         <SectionHeader
           eyebrow="Account"
           title="Account settings"
-          description="Manage the profile details, reusable application answers, and submission guardrails JobMatchHero uses for matching and application prep."
+          description="Manage the profile details and reusable application answers JobMatchKit uses for matching and generated materials."
         />
         <div className="mt-5">
           {user ? (
@@ -251,7 +477,7 @@ function App() {
             <SectionHeader
               eyebrow="Dashboard"
               title="Match better jobs, faster"
-              description="JobMatchHero compares roles with your resume and preferences, highlights strong fits, and prepares application materials for review."
+              description="JobMatchKit compares roles with your resume and preferences, highlights strong fits, and prepares application materials for review."
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {user ? (
@@ -300,8 +526,24 @@ function App() {
           <SectionHeader
             eyebrow="Setup"
             title="Workspace setup"
-            description="Give JobMatchHero the resume, targets, and profile details it needs to match roles and write accurate materials."
+            description="Give JobMatchKit the resume, targets, and profile details it needs to match roles and write accurate materials."
           />
+
+          {user && (
+            <div className="mt-4">
+              <MatchingProfileSelector
+                profiles={matchingProfiles}
+                selectedProfileId={selectedMatchingProfile?.id ?? selectedMatchingProfileId}
+                saving={profileActionBusy}
+                error={profileActionError}
+                onSelect={handleSelectMatchingProfile}
+                onCreate={handleCreateMatchingProfile}
+                onDuplicate={handleDuplicateMatchingProfile}
+                onArchive={handleArchiveMatchingProfile}
+                onRename={handleRenameMatchingProfile}
+              />
+            </div>
+          )}
 
           <div className="mt-4 divide-y divide-[var(--line)] border-t border-[var(--line)]">
             <section className="py-4">
@@ -311,7 +553,7 @@ function App() {
                   {resumeData?.filename ? 'Ready' : 'Upload needed'}
                 </StatusChip>
               </div>
-              <ResumeUpload ref={resumeRef} initialData={resumeData} />
+              <ResumeUpload ref={resumeRef} initialData={resumeData} matchingProfileId={selectedMatchingProfile?.id ?? selectedMatchingProfileId} />
               <ResumeFeedback hasResume={!!resumeData?.filename} />
             </section>
 
@@ -322,7 +564,7 @@ function App() {
                   {preferencesReady ? 'Ready' : 'Targets needed'}
                 </StatusChip>
               </div>
-              <JobPreferences ref={prefsRef} initialData={prefsData} />
+              <JobPreferences ref={prefsRef} initialData={prefsData} matchingProfileId={selectedMatchingProfile?.id ?? selectedMatchingProfileId} />
             </section>
 
             <section className="pt-4">
@@ -338,9 +580,6 @@ function App() {
                   initialData={applicationProfileData}
                   onSaved={setApplicationProfileData}
                 />
-              </div>
-              <div className="mt-4 border-t border-[var(--line)] pt-4">
-                <SubmissionSettings />
               </div>
             </section>
           </div>
@@ -360,8 +599,7 @@ function App() {
                 prefsRef={prefsRef}
                 isLoggedIn={!!user}
                 quota={quotaData}
-                subscriptionTier={user?.subscription_tier}
-                userRole={user?.role}
+                matchingProfileId={selectedMatchingProfile?.id ?? selectedMatchingProfileId}
                 onAuthRequired={() => setShowAuth('register')}
                 onComplete={() => {
                   setRefreshHistory(prev => prev + 1);
@@ -377,7 +615,7 @@ function App() {
               title="Best-fit jobs"
               description="Latest roles scored against your resume and preferences."
             />
-            <AgentDashboard key={refreshHistory} limit={5} compact minMatchScore={prefsData?.min_match_score ?? 70} />
+            <AgentDashboard key={refreshHistory} limit={5} compact minMatchScore={selectedMatchingProfile?.min_match_score ?? prefsData?.min_match_score ?? 70} matchingProfileId={selectedMatchingProfile?.id ?? selectedMatchingProfileId} />
           </Panel>
         </aside>
       </section>

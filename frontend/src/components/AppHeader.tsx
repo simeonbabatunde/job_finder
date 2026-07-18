@@ -35,7 +35,7 @@ export function AppHeader({ user, currentPath, onLogin, onLogout }: AppHeaderPro
                             job matching assistant
                         </span>
                         <span className="mt-0.5 block text-xl font-semibold text-[var(--ink)]">
-                            JobMatchHero
+                            JobMatchKit
                         </span>
                     </span>
                 </a>

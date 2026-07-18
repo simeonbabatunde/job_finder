@@ -78,12 +78,22 @@ def get_cors_allowed_origins() -> list[str]:
 
     return normalized_origins
 
+
+def get_cors_allowed_origin_regex() -> str | None:
+    configured = os.getenv("CORS_ALLOWED_ORIGIN_REGEX", "").strip()
+    if configured:
+        return configured
+    if get_app_env() not in PRODUCTION_LIKE_ENVS:
+        return r"^chrome-extension://.*$"
+    return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
 
-app = FastAPI(title="JobMatchHero API", lifespan=lifespan)
+app = FastAPI(title="JobMatchKit API", lifespan=lifespan)
 
 
 def error_payload(
@@ -152,6 +162,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_allowed_origins(),
+    allow_origin_regex=get_cors_allowed_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -161,7 +172,7 @@ app.include_router(api_router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from JobMatchHero API"}
+    return {"message": "Hello from JobMatchKit API"}
 
 
 if __name__ == "__main__":

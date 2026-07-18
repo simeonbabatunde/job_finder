@@ -1,6 +1,6 @@
 import { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
-import type { ChangeEvent } from 'react';
-import { ChevronDown } from 'lucide-react';
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent } from 'react';
+import { ChevronDown, Plus, X } from 'lucide-react';
 import type { JobPreferencesPayload } from '../api/client';
 import { savePreferences } from '../api/client';
 import { cn } from '../lib/cn';
@@ -12,52 +12,89 @@ export interface JobPreferencesHandle {
 
 export interface JobPreferencesProps {
     initialData?: Partial<JobPreferencesPayload> | null;
+    matchingProfileId?: number | null;
 }
 
 const fieldClass = 'min-h-10 w-full rounded-md border border-[var(--line)] bg-white px-3 text-sm text-[var(--ink)] outline-none transition-colors placeholder:text-slate-400 focus:border-[var(--accent)]';
 const labelClass = 'mb-1 block text-sm font-semibold text-[var(--ink)]';
 const hintClass = 'mt-1 text-xs text-[var(--muted)]';
 
-export const JobPreferences = forwardRef<JobPreferencesHandle, JobPreferencesProps>((props, ref) => {
-    const [formData, setFormData] = useState({
-        role: props.initialData?.role?.join(', ') || '',
-        experience_level: props.initialData?.experience_level || ['Intermediate'],
-        location: props.initialData?.location?.join(', ') || '',
-        job_type: props.initialData?.job_type || ['Full-time'],
-        target_companies: props.initialData?.target_companies?.join(', ') || '',
-        min_match_score: props.initialData?.min_match_score || 70,
-        posted_within_days: props.initialData?.posted_within_days || 7,
+const parseListInput = (value: string): string[] => {
+    return value
+        .split(/[,;\n]+/)
+        .map(item => item.replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+};
+
+const mergeUniqueList = (...lists: Array<string[] | undefined>): string[] => {
+    const seen = new Set<string>();
+    const merged: string[] = [];
+
+    lists.flatMap(list => list || []).forEach(item => {
+        const clean = item.replace(/\s+/g, ' ').trim();
+        const key = clean.toLowerCase();
+        if (!clean || seen.has(key)) return;
+        seen.add(key);
+        merged.push(clean);
     });
+
+    return merged;
+};
+
+const listFromInitialData = (items?: string[]) => mergeUniqueList(items);
+
+const formStateFromInitialData = (initialData?: Partial<JobPreferencesPayload> | null) => ({
+    role: listFromInitialData(initialData?.role),
+    experience_level: initialData?.experience_level?.length ? initialData.experience_level : ['Intermediate'],
+    location: initialData?.location?.join(', ') || '',
+    job_type: initialData?.job_type?.length ? initialData.job_type : ['Full-time'],
+    target_companies: initialData?.target_companies?.join(', ') || '',
+    min_match_score: initialData?.min_match_score ?? 70,
+    posted_within_days: initialData?.posted_within_days ?? 7,
+});
+
+export const JobPreferences = forwardRef<JobPreferencesHandle, JobPreferencesProps>((props, ref) => {
+    const [formData, setFormData] = useState(() => formStateFromInitialData(props.initialData));
+    const [roleDraft, setRoleDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState('');
     const [openDropdown, setOpenDropdown] = useState<'experience_level' | 'job_type' | null>(null);
 
     useEffect(() => {
-        if (props.initialData) {
-            setFormData({
-                role: props.initialData.role?.join(', ') || '',
-                experience_level: props.initialData.experience_level || ['Intermediate'],
-                location: props.initialData.location?.join(', ') || '',
-                job_type: props.initialData.job_type || ['Full-time'],
-                target_companies: props.initialData.target_companies?.join(', ') || '',
-                min_match_score: props.initialData.min_match_score || 70,
-                posted_within_days: props.initialData.posted_within_days || 7,
-            });
-        }
+        setFormData(formStateFromInitialData(props.initialData));
+        setRoleDraft('');
+        setMessage('');
     }, [props.initialData]);
+
+    const commitRoleDraft = (rawValue = roleDraft) => {
+        const roles = parseListInput(rawValue);
+        if (!roles.length) return;
+        setFormData(prev => ({ ...prev, role: mergeUniqueList(prev.role, roles) }));
+        setRoleDraft('');
+    };
+
+    const removeRole = (role: string) => {
+        setFormData(prev => ({
+            ...prev,
+            role: prev.role.filter(item => item.toLowerCase() !== role.toLowerCase()),
+        }));
+    };
 
     useImperativeHandle(ref, () => ({
         submitPrefs: async (silent: boolean = false) => {
             setSaving(true);
             setMessage('');
             try {
+                const submittedRoles = mergeUniqueList(formData.role, parseListInput(roleDraft));
                 const payload = {
                     ...formData,
-                    role: formData.role.split(',').map((s: string) => s.trim()).filter((s: string) => s !== ''),
+                    role: submittedRoles,
                     location: formData.location.split(',').map((s: string) => s.trim()).filter((s: string) => s !== ''),
                     target_companies: formData.target_companies.split(',').map((s: string) => s.trim()).filter((s: string) => s !== ''),
                 };
-                await savePreferences(payload);
+                await savePreferences(payload, props.matchingProfileId);
+                setFormData(prev => ({ ...prev, role: submittedRoles }));
+                setRoleDraft('');
                 if (!silent) {
                     setMessage('Preferences saved successfully.');
                 }
@@ -80,6 +117,25 @@ export const JobPreferences = forwardRef<JobPreferencesHandle, JobPreferencesPro
             }
             return { ...prev, [name]: value };
         });
+    };
+
+    const handleRoleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
+            event.preventDefault();
+            commitRoleDraft();
+            return;
+        }
+
+        if (event.key === 'Backspace' && !roleDraft && formData.role.length > 0) {
+            removeRole(formData.role[formData.role.length - 1]);
+        }
+    };
+
+    const handleRolePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+        const pasted = event.clipboardData.getData('text');
+        if (!/[,;\n]/.test(pasted)) return;
+        event.preventDefault();
+        commitRoleDraft(`${roleDraft}${roleDraft ? ', ' : ''}${pasted}`);
     };
 
     const handleCheckboxChange = (name: 'job_type' | 'experience_level', value: string) => {
@@ -120,17 +176,43 @@ export const JobPreferences = forwardRef<JobPreferencesHandle, JobPreferencesPro
             <div className="space-y-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div>
-                        <label className={labelClass}>Target role</label>
-                        <input
-                            type="text"
-                            name="role"
-                            value={formData.role}
-                            onChange={handleChange}
-                            className={fieldClass}
-                            required
-                            placeholder="Software Engineer, Data Scientist"
-                        />
-                        <p className={hintClass}>Separate multiple roles with commas.</p>
+                        <label className={labelClass}>Target roles</label>
+                        <div className="flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-2 py-1.5 text-sm text-[var(--ink)] transition-colors focus-within:border-[var(--accent)]">
+                            {formData.role.map(role => (
+                                <span key={role} className="inline-flex h-7 max-w-full items-center gap-1 rounded-md border border-[var(--line)] bg-[var(--soft)] px-2 text-xs font-medium text-[var(--ink)]">
+                                    <span className="truncate">{role}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeRole(role)}
+                                        className="grid h-4 w-4 shrink-0 place-items-center rounded text-[var(--muted)] transition-colors hover:bg-white hover:text-[var(--ink)]"
+                                        aria-label={`Remove ${role}`}
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                </span>
+                            ))}
+                            <input
+                                type="text"
+                                value={roleDraft}
+                                onChange={(event) => setRoleDraft(event.target.value)}
+                                onKeyDown={handleRoleKeyDown}
+                                onPaste={handleRolePaste}
+                                onBlur={() => commitRoleDraft()}
+                                className="min-h-7 min-w-[12rem] flex-1 bg-transparent px-1 text-sm text-[var(--ink)] outline-none placeholder:text-slate-400"
+                                placeholder={formData.role.length ? 'Add another role' : 'Software Engineer'}
+                            />
+                            <button
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => commitRoleDraft()}
+                                disabled={!roleDraft.trim()}
+                                className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-[var(--line)] text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                                aria-label="Add target role"
+                            >
+                                <Plus size={15} />
+                            </button>
+                        </div>
+                        <p className={hintClass}>Press Enter or comma after each role.</p>
                     </div>
 
                     <div className="relative" data-preferences-dropdown>

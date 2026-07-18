@@ -16,9 +16,11 @@ export interface AppUser {
 }
 
 export interface ResumeStatus {
+    id?: number | null;
     filename: string;
+    uploaded_at?: string;
     skills?: string[];
-    summary?: string;
+    summary?: string | null;
 }
 
 export interface ProfilePayload {
@@ -64,125 +66,19 @@ export interface ApplicationAnswerAuditRecord {
     created_at: string;
 }
 
-export interface ApplicationFillReviewResult {
-    review_id?: number;
-    attempt_id?: number;
-    status: string;
-    ats_type: string;
-    application_url: string;
-    fields_filled: string[];
-    fields_missing: string[];
-    blockers: string[];
-    message: string;
-    application_status: string;
-    screenshot_base64?: string | null;
-    screenshot_url?: string | null;
-    trace_url?: string | null;
-}
-
-export interface ApplicationFillReviewRecord {
-    id: number;
-    application_id: number;
-    ats_type: string;
-    application_url: string;
-    status: string;
-    message?: string;
-    fields_filled: string[];
-    fields_missing: string[];
-    blockers: string[];
-    screenshot_url?: string | null;
-    trace_url?: string | null;
-    created_at: string;
-}
-
-export interface AutoApplyAttemptRecord {
-    id: number;
-    application_id: number;
-    agent_run_id?: number | null;
-    fill_review_id?: number | null;
-    job_url: string;
-    job_title?: string | null;
-    company?: string | null;
-    ats_type?: string | null;
-    mode: string;
-    status: string;
-    confidence_score: number;
-    blocked_reason?: string | null;
-    filled_fields: string[];
-    missing_fields: string[];
-    blockers: string[];
-    readiness_snapshot: Record<string, unknown>;
-    submit_control: Record<string, unknown>;
-    steps: Array<{
-        name: string;
-        status: string;
-        message?: string | null;
-        details?: Record<string, unknown>;
-        at: string;
-    }>;
-    screenshot_url?: string | null;
-    trace_url?: string | null;
-    submitted_at?: string | null;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface ApplicationSubmitSettingsPayload {
-    id?: number;
-    true_submit_enabled: boolean;
-    true_submit_pilot_enabled?: boolean;
-    true_submit_pilot_approved?: boolean;
-    true_submit_pilot_blockers?: string[];
-    require_human_confirmation: boolean;
-    min_fit_score: number;
-    max_submits_per_day: number;
-    allowed_companies: string[];
-    denied_companies: string[];
-    allowed_domains: string[];
-    denied_domains: string[];
-    allowed_job_title_keywords: string[];
-    consent_to_submit?: boolean;
-    consented_at?: string | null;
-    updated_at?: string | null;
-}
-
-export interface ApplicationSubmitReadiness {
-    application_id: number;
-    ready: boolean;
-    can_submit: boolean;
-    status: string;
-    message: string;
-    blockers: string[];
-    warnings: string[];
-    checks: string[];
-    evaluated_at: string;
-}
-
-export interface SubmitControlDetection {
-    status: string;
-    detected: boolean;
-    confidence: number;
-    label?: string | null;
-    selector?: string | null;
-    button_type?: string | null;
-    current_url?: string | null;
-    evidence: string[];
-    blockers: string[];
-    warnings: string[];
-}
-
-export interface ApplicationSubmitConfirmation {
-    application_id: number;
-    ready: boolean;
-    can_submit: boolean;
-    status: string;
-    message: string;
-    readiness: ApplicationSubmitReadiness;
-    submit_control: SubmitControlDetection;
-    blockers: string[];
-    warnings: string[];
-    checks: string[];
-    evaluated_at: string;
+export interface ApplicationPackagePayload {
+    cover_letter?: string | null;
+    tailored_summary?: string | null;
+    resume_improvements?: string[];
+    talking_points?: string[];
+    qa_answers?: { question: string; answer: string }[];
+    interview_questions?: { question: string; suggested_answer: string }[];
+    company_brief?: {
+        overview?: string;
+        mission?: string;
+        culture_signals?: string[];
+        questions_to_ask?: string[];
+    };
 }
 
 export interface RegisterProfile {
@@ -203,10 +99,32 @@ export interface JobPreferencesPayload {
     posted_within_days: number;
 }
 
+export interface MatchingProfilePayload extends JobPreferencesPayload {
+    name: string;
+    resume_id?: number | null;
+    is_default?: boolean;
+}
+
+export interface MatchingProfile extends MatchingProfilePayload {
+    id: number;
+    is_archived: boolean;
+    resume?: ResumeStatus | null;
+    last_used_at?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+}
+
+export interface MatchingProfileCreatePayload extends Partial<MatchingProfilePayload> {
+    name: string;
+    duplicate_from_id?: number | null;
+}
+
 export interface UserStatusResponse {
     user?: AppUser;
     resume?: ResumeStatus | null;
     preferences?: JobPreferencesPayload | null;
+    matching_profiles?: MatchingProfile[];
+    selected_matching_profile?: MatchingProfile | null;
     profile?: ProfilePayload | null;
     application_profile?: ApplicationAnswerProfilePayload | null;
     quota?: AgentQuotaStatus | null;
@@ -226,7 +144,29 @@ export interface AgentQuotaStatus {
     agent_runs_used_today: number;
     agent_run_limit: number;
     agent_runs_remaining: number;
-    auto_apply_enabled: boolean;
+}
+
+export interface AgentRunRecord {
+    id: number;
+    status: string;
+    auto_apply: boolean;
+    matching_profile_id?: number | null;
+    matching_profile_name?: string | null;
+    resume_id?: number | null;
+    logs: string[];
+    applications_count: number;
+    found_jobs_count: number;
+    error?: string | null;
+    started_at: string;
+    completed_at?: string | null;
+}
+
+export interface ApplicationSummary {
+    strong_count: number;
+    below_threshold_count: number;
+    visible_count: number;
+    min_match_score: number;
+    latest_run?: AgentRunRecord | null;
 }
 
 export interface BillingStatus {
@@ -482,11 +422,12 @@ export async function socialLogin(email: string, provider: string, first_name: s
     return data;
 }
 
-export async function uploadResume(file: File) {
+export async function uploadResume(file: File, matchingProfileId?: number | null) {
     const formData = new FormData();
     formData.append('file', file);
+    const query = matchingProfileId ? `?matching_profile_id=${matchingProfileId}` : '';
 
-    const response = await fetch(`${API_URL}/upload-resume`, {
+    const response = await fetch(`${API_URL}/upload-resume${query}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: formData,
@@ -499,8 +440,9 @@ export async function uploadResume(file: File) {
     return response.json();
 }
 
-export async function savePreferences(preferences: JobPreferencesPayload) {
-    const response = await fetch(`${API_URL}/preferences`, {
+export async function savePreferences(preferences: JobPreferencesPayload, matchingProfileId?: number | null) {
+    const query = matchingProfileId ? `?matching_profile_id=${matchingProfileId}` : '';
+    const response = await fetch(`${API_URL}/preferences${query}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -513,6 +455,67 @@ export async function savePreferences(preferences: JobPreferencesPayload) {
         throw new Error('Failed to save preferences');
     }
 
+    return response.json();
+}
+
+export async function getResumes(): Promise<ResumeStatus[]> {
+    const response = await fetch(`${API_URL}/resumes`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch resumes'));
+    }
+    return response.json();
+}
+
+export async function getMatchingProfiles(): Promise<MatchingProfile[]> {
+    const response = await fetch(`${API_URL}/matching-profiles`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch matching profiles'));
+    }
+    return response.json();
+}
+
+export async function createMatchingProfile(payload: MatchingProfileCreatePayload): Promise<MatchingProfile> {
+    const response = await fetch(`${API_URL}/matching-profiles`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to create matching profile'));
+    }
+    return response.json();
+}
+
+export async function updateMatchingProfile(profileId: number, payload: MatchingProfilePayload): Promise<MatchingProfile> {
+    const response = await fetch(`${API_URL}/matching-profiles/${profileId}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to update matching profile'));
+    }
+    return response.json();
+}
+
+export async function archiveMatchingProfile(profileId: number): Promise<MatchingProfile> {
+    const response = await fetch(`${API_URL}/matching-profiles/${profileId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to archive matching profile'));
+    }
     return response.json();
 }
 
@@ -530,6 +533,27 @@ export async function searchJobs(query: string, location: string) {
         throw new Error('Failed to search jobs');
     }
 
+    return response.json();
+}
+
+export async function getAgentRuns(limit = 5): Promise<AgentRunRecord[]> {
+    const response = await fetch(`${API_URL}/agent/runs?limit=${limit}`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch matching runs'));
+    }
+    return response.json();
+}
+
+export async function getApplicationSummary(matchingProfileId?: number | null): Promise<ApplicationSummary> {
+    const query = matchingProfileId ? `?matching_profile_id=${matchingProfileId}` : '';
+    const response = await fetch(`${API_URL}/applications/summary${query}`, {
+        headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to fetch application summary'));
+    }
     return response.json();
 }
 
@@ -601,6 +625,31 @@ export async function downloadCoverLetterPdf(appId: number) {
     window.URL.revokeObjectURL(url);
 }
 
+export async function downloadApplicationPackageZip(appId: number, packageData: ApplicationPackagePayload) {
+    const response = await fetch(`${API_URL}/applications/${appId}/package.zip`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+        },
+        body: JSON.stringify(packageData),
+    });
+    if (!response.ok) {
+        throw new Error(await getResponseDetail(response, 'Failed to download application package'));
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const disposition = response.headers.get('Content-Disposition');
+    const match = disposition?.match(/filename="(.+?)"/);
+    a.download = match ? match[1] : `application_package_${appId}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+}
+
 export async function updateApplicationStatus(appId: number, status: string) {
     const response = await fetch(`${API_URL}/applications/${appId}/status`, {
         method: 'PATCH',
@@ -614,59 +663,6 @@ export async function updateApplicationStatus(appId: number, status: string) {
     return response.json();
 }
 
-export async function resolveApplicationLink(appId: number) {
-    const response = await fetch(`${API_URL}/applications/${appId}/resolve-link`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to resolve application link'));
-    }
-    return response.json();
-}
-
-export async function fillApplicationForReview(appId: number): Promise<ApplicationFillReviewResult> {
-    const response = await fetch(`${API_URL}/applications/${appId}/fill-review`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to prepare fill review'));
-    }
-    return response.json();
-}
-
-export async function getApplicationFillReviews(appId: number): Promise<ApplicationFillReviewRecord[]> {
-    const response = await fetch(`${API_URL}/applications/${appId}/fill-reviews`, {
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to fetch fill-review history'));
-    }
-    return response.json();
-}
-
-export async function getApplicationAutomationAttempts(appId: number): Promise<AutoApplyAttemptRecord[]> {
-    const response = await fetch(`${API_URL}/applications/${appId}/automation-attempts`, {
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to fetch automation attempts'));
-    }
-    return response.json();
-}
-
-export async function clearApplicationFillReviews(appId: number) {
-    const response = await fetch(`${API_URL}/applications/${appId}/fill-reviews`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to clear fill-review history'));
-    }
-    return response.json();
-}
-
 export async function clearApplications(): Promise<{ message: string }> {
     const response = await fetch(`${API_URL}/applications`, {
         method: 'DELETE',
@@ -676,75 +672,6 @@ export async function clearApplications(): Promise<{ message: string }> {
         throw new Error(await getResponseDetail(response, 'Failed to clear application history'));
     }
     return response.json();
-}
-
-export async function getSubmissionSettings(): Promise<ApplicationSubmitSettingsPayload> {
-    const response = await fetch(`${API_URL}/submission-settings`, {
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to fetch submission settings'));
-    }
-    return response.json();
-}
-
-export async function saveSubmissionSettings(settings: ApplicationSubmitSettingsPayload): Promise<ApplicationSubmitSettingsPayload> {
-    const response = await fetch(`${API_URL}/submission-settings`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders(),
-        },
-        body: JSON.stringify(settings),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to save submission settings'));
-    }
-    return response.json();
-}
-
-export async function resetSubmissionSettings(): Promise<ApplicationSubmitSettingsPayload> {
-    const response = await fetch(`${API_URL}/submission-settings`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to reset submission settings'));
-    }
-    return response.json();
-}
-
-export async function checkApplicationSubmitReadiness(appId: number): Promise<ApplicationSubmitReadiness> {
-    const response = await fetch(`${API_URL}/applications/${appId}/submit-readiness`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to check final-submit readiness'));
-    }
-    return response.json();
-}
-
-export async function createApplicationSubmitConfirmation(appId: number): Promise<ApplicationSubmitConfirmation> {
-    const response = await fetch(`${API_URL}/applications/${appId}/submit-confirmation`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to prepare final confirmation'));
-    }
-    return response.json();
-}
-
-export async function fetchFillReviewArtifact(path: string): Promise<Blob> {
-    const url = path.startsWith('http') ? path : `${API_URL}${path}`;
-    const response = await fetch(url, {
-        headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
-        throw new Error(await getResponseDetail(response, 'Failed to fetch fill-review artifact'));
-    }
-    return response.blob();
 }
 
 export async function getBillingStatus(): Promise<BillingStatus> {

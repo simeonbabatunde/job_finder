@@ -10,11 +10,12 @@ export interface ResumeUploadHandle {
   setError: (msg: string | null) => void;
   handleUpload: (silent?: boolean) => Promise<boolean>;
   setExistingResume: (filename: string) => void;
-  setResumeData: (data: { filename: string, skills?: string[], summary?: string }) => void;
+  setResumeData: (data: { filename: string, skills?: string[], summary?: string | null } | null) => void;
 }
 
 export interface ResumeUploadProps {
   initialData?: ResumeStatus | null;
+  matchingProfileId?: number | null;
 }
 
 export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((props, ref) => {
@@ -28,11 +29,12 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
   const [summary, setSummary] = useState<string>(props.initialData?.summary || '');
 
   useEffect(() => {
-    if (props.initialData) {
-      setExistingFile(props.initialData.filename);
-      if (props.initialData.skills) setSkills(props.initialData.skills);
-      if (props.initialData.summary) setSummary(props.initialData.summary);
-    }
+    setExistingFile(props.initialData?.filename || null);
+    setSkills(props.initialData?.skills || []);
+    setSummary(props.initialData?.summary || '');
+    setFile(null);
+    setMessage('');
+    setIsError(false);
   }, [props.initialData]);
 
   useImperativeHandle(ref, () => ({
@@ -51,7 +53,7 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
       setMessage('');
       setIsError(false);
       try {
-        await uploadResume(file);
+        await uploadResume(file, props.matchingProfileId);
         if (!silent) {
           setMessage('Resume uploaded successfully.');
         }
@@ -71,9 +73,9 @@ export const ResumeUpload = forwardRef<ResumeUploadHandle, ResumeUploadProps>((p
       setExistingFile(filename);
     },
     setResumeData: (data) => {
-      setExistingFile(data.filename);
-      if (data.skills) setSkills(data.skills);
-      if (data.summary) setSummary(data.summary);
+      setExistingFile(data?.filename || null);
+      setSkills(data?.skills || []);
+      setSummary(data?.summary || '');
     }
   }));
 

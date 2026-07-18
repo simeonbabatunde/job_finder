@@ -39,7 +39,7 @@ fi
 mkdir -p "$backup_dir"
 
 timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
-backup_file="${backup_dir}/jobmatchhero-${postgres_db}-${timestamp}.dump"
+backup_file="${backup_dir}/jobmatchkit-${postgres_db}-${timestamp}.dump"
 final_file="$backup_file"
 compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 

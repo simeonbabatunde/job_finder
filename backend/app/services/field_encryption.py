@@ -20,9 +20,9 @@ def _key_material() -> str:
         os.getenv("APP_DATA_ENCRYPTION_KEY")
         or os.getenv("AUTH_SECRET_KEY")
         or os.getenv("SECRET_KEY")
-        or "jobmatchhero-dev-secret-change-me"
+        or "jobmatchkit-dev-secret-change-me"
     ).strip()
-    return material or "jobmatchhero-dev-secret-change-me"
+    return material or "jobmatchkit-dev-secret-change-me"
 
 
 def _previous_key_materials() -> list[str]:

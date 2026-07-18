@@ -1,4 +1,4 @@
-# JobMatchHero Backend
+# JobMatchKit Backend
 
 The backend is a FastAPI application that supports resume parsing, job discovery, LLM-based matching, application tracking, generated application materials, password reset, OAuth callbacks, scraper configuration, and optional browser automation.
 
@@ -76,7 +76,7 @@ http://localhost:8000
 Important variables:
 
 ```text
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/jobmatchhero
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/jobmatchkit
 LLM_PROVIDER=openai
 LLM_MODEL=
 OPENAI_MODEL=
@@ -97,8 +97,6 @@ APP_DATA_ENCRYPTION_KEY=
 APP_DATA_PREVIOUS_ENCRYPTION_KEYS=
 FREE_DAILY_AGENT_RUN_LIMIT=3
 PRO_DAILY_AGENT_RUN_LIMIT=50
-FILL_REVIEW_ARTIFACT_DIR=storage/fill_review_artifacts
-FILL_REVIEW_ARTIFACT_RETENTION_DAYS=14
 AGENT_RUNNER_MODE=background
 AGENT_WORKER_POLL_SECONDS=2
 AGENT_WORKER_HEARTBEAT_SECONDS=10
@@ -197,12 +195,6 @@ Applications:
 - `DELETE /applications`
 - `PATCH /applications/{app_id}/status`
 - `POST /applications/{app_id}/resolve-link`
-- `POST /applications/{app_id}/fill-review`
-- `POST /applications/{app_id}/submit-readiness`
-- `POST /applications/{app_id}/submit-confirmation`
-- `GET /applications/{app_id}/fill-reviews`
-- `GET /applications/{app_id}/automation-attempts`
-- `DELETE /applications/{app_id}/fill-reviews`
 - `POST /agent/prepare-application`
 - `GET /applications/{app_id}/cover-letter.pdf`
 
@@ -219,7 +211,6 @@ The LangGraph workflow is:
 2. `search_jobs`
 3. `analyze_fit`
 4. `submit_application`
-5. `apply_browser` only when `auto_apply=true` and qualifying jobs exist
 
 The workflow currently:
 
@@ -229,7 +220,6 @@ The workflow currently:
 - analyzes pass/maybe jobs in a batch LLM call
 - persists job records incrementally, including review-only screened-out records with reasons
 - selects jobs above the minimum match score
-- optionally prepares supported application forms for review through Playwright
 
 `GET /applications` also accepts `match_bucket=strong|below_threshold|screened_out|all`.
 The dashboard uses `strong` by default so below-threshold and screened-out jobs stay out of
@@ -259,18 +249,17 @@ the main best-fit view while remaining reviewable from the full pipeline.
 - The previous README contained a plaintext OpenRouter key. It has been removed; rotate the key if it was real.
 - Database startup can run an Alembic baseline when `USE_ALEMBIC_MIGRATIONS=true`; local/dev still defaults to the lightweight `schema_migrations` runner.
 - Core public write endpoints use Pydantic request schemas, and the main app/API responses now have explicit response models.
-- Daily matching-run quotas are enforced for free/pro tiers, browser fill-for-review is gated to pro/admin users, and Stripe Checkout/Portal/webhooks now manage paid Pro status when billing env vars are set.
+- Daily matching-run quotas are enforced for free/pro tiers, and Stripe Checkout/Portal/webhooks manage paid Pro status when billing env vars are set.
 - Matching runs are queued through FastAPI background tasks and persisted for polling.
-- Matching runs, worker claims, browser fill-review, submit-readiness, and submit-confirmation emit structured JSON operational logs. Set `STRUCTURED_LOG_LEVEL` to tune verbosity.
-- Browser automation has persisted audit records, and true final submit is hard-blocked by default with `ENABLE_TRUE_AUTO_SUBMIT=false`; future readiness settings require approved pilot users or admins and optional ATS allowlisting.
+- Matching runs and worker claims emit structured JSON operational logs. Set `STRUCTURED_LOG_LEVEL` to tune verbosity.
+- Browser automation entry points have been retired and now return `410 Gone`; users open employer links manually from saved matches.
 - Application answer-vault string fields are encrypted at rest with `APP_DATA_ENCRYPTION_KEY`; development falls back to the auth secret, but production requires the dedicated key.
 - `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` keeps old encrypted answer-vault rows readable during data-key rotation while new saves use the current key.
 - After data-key rotation, run the answer-vault re-encryption job before removing old previous keys:
   - `uv run python -m app.jobs.reencrypt_application_answers --dry-run`
   - `uv run python -m app.jobs.reencrypt_application_answers --apply`
-- Application answer-vault export, view, reset, dashboard preload, and automation-use events are audited without storing answer values in the audit log.
-- `GET /account/export` returns a signed-in user's resumes, preferences, profile, application answers, generated package records, application history, matching runs, fill-review history, automation attempts, audit records, and authenticated artifact URLs.
-- Fill-review screenshots and traces are served only through authenticated endpoints and pruned by `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
+- Application answer-vault export, view, reset, and dashboard preload events are audited without storing answer values in the audit log.
+- `GET /account/export` returns a signed-in user's resumes, preferences, profile, application answers, generated package records, application history, matching runs, and audit records.
 - Health endpoints expose API liveness, DB reachability, and worker heartbeat freshness without returning user data.
 - LLM calls are live by default and need test doubles for repeatable automated tests.
 

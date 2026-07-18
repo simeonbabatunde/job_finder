@@ -162,10 +162,36 @@ class ResumeUploadResponse(BaseModel):
 
 
 class ResumeStatusResponse(BaseModel):
+    id: Optional[int] = None
     filename: str
     uploaded_at: datetime
     skills: List[str] = Field(default_factory=list)
     summary: Optional[str] = None
+
+
+class ResumeLibraryResponse(ResumeStatusResponse):
+    pass
+
+
+class MatchingProfileRequest(JobPreferenceRequest):
+    name: str = "Default profile"
+    resume_id: Optional[int] = None
+    is_default: bool = False
+
+
+class MatchingProfileResponse(MatchingProfileRequest):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = None
+    is_archived: bool = False
+    last_used_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    resume: Optional[ResumeStatusResponse] = None
+
+
+class MatchingProfileCreateRequest(MatchingProfileRequest):
+    duplicate_from_id: Optional[int] = None
 
 
 class JobPreferenceResponse(JobPreferenceRequest):
@@ -246,6 +272,8 @@ class UserStatusResponse(BaseModel):
     user: UserResponse
     resume: Optional[ResumeStatusResponse] = None
     preferences: Optional[JobPreferenceRequest] = None
+    matching_profiles: List[MatchingProfileResponse] = Field(default_factory=list)
+    selected_matching_profile: Optional[MatchingProfileResponse] = None
     profile: Optional[ProfileRequest] = None
     application_profile: Optional[ApplicationAnswerProfileResponse] = None
     quota: Optional[AgentQuotaResponse] = None
@@ -257,6 +285,7 @@ class AgentRunResponse(BaseModel):
     applications_count: int
     found_jobs_count: int = 0
     agent_run_id: Optional[int] = None
+    matching_profile_id: Optional[int] = None
     quota_limit: Optional[int] = None
     quota_remaining: Optional[int] = None
 
@@ -275,6 +304,10 @@ class ApplicationResponse(BaseModel):
     resolution_status: str = "unresolved"
     resolution_notes: Optional[str] = None
     status: str
+    matching_profile_id: Optional[int] = None
+    matching_profile_name: Optional[str] = None
+    matching_profile_min_match_score: Optional[int] = None
+    agent_run_id: Optional[int] = None
     fit_score: float
     explanation: Optional[str] = None
     cover_letter: Optional[str] = None
@@ -292,6 +325,7 @@ class JobAnalysisResponse(BaseModel):
 class ApplicationPackageResponse(BaseModel):
     cover_letter: Optional[str] = None
     tailored_summary: Optional[str] = None
+    resume_improvements: List[str] = Field(default_factory=list)
     talking_points: List[str] = Field(default_factory=list)
     qa_answers: List[Dict[str, Any]] = Field(default_factory=list)
     interview_questions: List[Dict[str, Any]] = Field(default_factory=list)
@@ -457,6 +491,9 @@ class AgentRunRecordResponse(BaseModel):
     id: Optional[int] = None
     status: str
     auto_apply: bool
+    matching_profile_id: Optional[int] = None
+    matching_profile_name: Optional[str] = None
+    resume_id: Optional[int] = None
     logs: List[str] = Field(default_factory=list)
     applications_count: int
     found_jobs_count: int

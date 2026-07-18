@@ -165,8 +165,8 @@ Local staging rehearsal with Docker Compose:
 APP_ENV=staging \
 AUTH_SECRET_KEY=<32+ random characters> \
 APP_DATA_ENCRYPTION_KEY=<32+ random characters> \
-FRONTEND_URL=https://staging.jobmatchhero.com \
-CORS_ALLOWED_ORIGINS=https://staging.jobmatchhero.com \
+FRONTEND_URL=https://staging.jobmatchkit.com \
+CORS_ALLOWED_ORIGINS=https://staging.jobmatchkit.com \
 USE_ALEMBIC_MIGRATIONS=true \
 docker compose up --build -d backend worker
 ```
@@ -203,23 +203,23 @@ Local Compose backup example:
 
 ```bash
 mkdir -p backups
-docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/jobmatchhero.backup
-docker cp jobmatchhero-db-1:/tmp/jobmatchhero.backup backups/jobmatchhero.backup
+docker compose exec db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/jobmatchkit.backup
+docker cp jobmatchkit-db-1:/tmp/jobmatchkit.backup backups/jobmatchkit.backup
 ```
 
 Local restore rehearsal against a disposable database:
 
 ```bash
-docker compose exec db createdb -U "$POSTGRES_USER" jobmatchhero_restore_check
-docker cp backups/jobmatchhero.backup jobmatchhero-db-1:/tmp/jobmatchhero.backup
-docker compose exec db pg_restore -U "$POSTGRES_USER" -d jobmatchhero_restore_check --clean --if-exists /tmp/jobmatchhero.backup
-docker compose exec db dropdb -U "$POSTGRES_USER" jobmatchhero_restore_check
+docker compose exec db createdb -U "$POSTGRES_USER" jobmatchkit_restore_check
+docker cp backups/jobmatchkit.backup jobmatchkit-db-1:/tmp/jobmatchkit.backup
+docker compose exec db pg_restore -U "$POSTGRES_USER" -d jobmatchkit_restore_check --clean --if-exists /tmp/jobmatchkit.backup
+docker compose exec db dropdb -U "$POSTGRES_USER" jobmatchkit_restore_check
 ```
 
-For local machines that already ran the app before the JobMatchHero rebrand,
+For local machines that already ran the app before the JobMatchKit rebrand,
 old data may be under pre-rebrand database, Compose project, or volume names.
 Take a backup before changing database env vars or renaming the project folder,
-then restore into `jobmatchhero` if you want to keep that local data.
+then restore into `jobmatchkit` if you want to keep that local data.
 
 For managed Postgres, use the provider's snapshot/restore tooling plus one manual
 restore rehearsal before launch.
@@ -284,6 +284,5 @@ Then use the frontend at `http://localhost:5173`:
 - Confirm CORS allows only the deployed frontend origin.
 - Confirm Postgres credentials are not local defaults.
 - Confirm backups and restore testing before storing real resumes or application answers.
-- Confirm screenshot and trace retention with `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
 - Confirm answer-vault export and audit history work for the signed-in user only.
 - Confirm account data export works for the signed-in user only and is treated as private user data.

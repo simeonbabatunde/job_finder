@@ -1,6 +1,6 @@
 # Security Checklist
 
-Use this checklist before sharing the project, deploying staging, or enabling any browser automation beyond fill-for-review.
+Use this checklist before sharing the project or deploying staging/production.
 
 ## Local Secrets
 
@@ -16,33 +16,31 @@ Use this checklist before sharing the project, deploying staging, or enabling an
 - Set a strong dedicated `APP_DATA_ENCRYPTION_KEY`; production startup rejects missing keys.
 - Use `AUTH_PREVIOUS_SECRET_KEYS` only during planned key rotation.
 - Use `APP_DATA_PREVIOUS_ENCRYPTION_KEYS` only during planned answer-vault data-key rotation.
-- Keep `ENABLE_TRUE_AUTO_SUBMIT=false` until a real-submit pilot has explicit approval and fixture coverage.
-- Keep `TRUE_SUBMIT_PILOT_USER_EMAILS` and `TRUE_SUBMIT_PILOT_ATS_TYPES` empty unless a controlled pilot is approved.
+- Keep browser automation and true-submit behavior disabled; retired automation routes should return `410 Gone`.
 - Set `USE_ALEMBIC_MIGRATIONS=true` in staging after validating the baseline against a copy of existing data.
-- Set `FILL_REVIEW_ARTIFACT_RETENTION_DAYS` to the approved screenshot/trace retention window.
 - Set `CORS_ALLOWED_ORIGINS` or `FRONTEND_URL` to deployed HTTPS origins only; production-like startup rejects localhost and wildcard CORS origins.
 - Use provider API keys with least-privilege scopes where the provider supports scoping.
 
 ## User Data
 
-- Treat resumes, profile data, application answers, screenshots, traces, and generated packages as private user data.
+- Treat resumes, profile data, application answers, generated packages, and any historical automation artifacts as private user data.
 - Application answer-vault string fields are encrypted at rest before persistence.
 - Answer-vault read/export/reset/automation-use audit rows must not store answer values.
 - Run the answer-vault re-encryption job and confirm a clean dry run before removing old `APP_DATA_PREVIOUS_ENCRYPTION_KEYS`.
 - Store voluntary self-ID answers separately from matching preferences.
 - Default voluntary self-ID answers to `prefer_not_to_answer`.
 - Do not send voluntary self-ID answers to LLM prompts for matching, scoring, or ranking.
-- Provide export/delete/reset controls for saved application answers and automation artifacts.
+- Provide export/delete/reset controls for saved application answers and account data.
 - Confirm `GET /application-profile/export` and `GET /application-profile/audit` work for the signed-in user only.
 - Confirm `GET /account/export` works for the signed-in user only and treat downloaded account-export JSON as private data.
 
 ## Browser Automation
 
-- Fill-for-review may prepare supported ATS forms, but it must stop before final submit.
-- Final-submit readiness and confirmation endpoints must keep `can_submit=false` until an approved pilot changes that behavior.
-- Screenshots and Playwright traces must remain behind authenticated endpoints.
-- Screenshots and Playwright traces are pruned according to `FILL_REVIEW_ARTIFACT_RETENTION_DAYS`.
-- Avoid logging filled field values, answers, resume text, tokens, and provider keys.
+- Browser-form automation is retired; users submit manually on employer sites.
+- Retired automation/prep endpoints must return `410 Gone`.
+- Do not create new browser screenshots or Playwright traces.
+- Keep historical automation artifacts behind authenticated access if they exist in older local data.
+- Avoid logging answer values, resume text, tokens, and provider keys.
 
 ## Deployment
 
